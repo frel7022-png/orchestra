@@ -311,6 +311,32 @@ def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
     return result, errors
 
 
+def fetch_index_quotes() -> dict:
+    """코스피/코스닥 지수 실시간 조회. 반환: {"KOSPI": {"price","change","change_pct"}, "KOSDAQ": {...}}."""
+    url = "https://polling.finance.naver.com/api/realtime/domestic/index/KOSPI,KOSDAQ"
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=6)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception:
+        return {}
+
+    result = {}
+    for d in payload.get("datas") or []:
+        code = d.get("itemCode")
+        if code not in ("KOSPI", "KOSDAQ"):
+            continue
+        try:
+            price = float(d.get("closePriceRaw"))
+            change = float(d.get("compareToPreviousClosePriceRaw"))
+            change_pct = float(d.get("fluctuationsRatioRaw"))
+        except (TypeError, ValueError):
+            continue
+        result[code] = {"price": price, "change": change, "change_pct": change_pct}
+    return result
+
+
 def refresh_all_prices(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """보유종목 시세를 전부 새로고침. 반환값: (갱신된 df, 진단 리포트 dict)."""
     df = df.copy()

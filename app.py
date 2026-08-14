@@ -22,7 +22,7 @@ from portfolio_core import (
     load_state, save_state,
     load_history, snapshot_history,
     load_sector_history, snapshot_sector_history,
-    refresh_all_prices, get_current_prices_for_names, get_closed_out_last_sells,
+    refresh_all_prices, fetch_index_quotes, get_current_prices_for_names, get_closed_out_last_sells,
     compute_metrics, compute_sector_weights,
     rebuild_portfolio_from_transactions,
 )
@@ -358,6 +358,9 @@ holdings = load_holdings()
 state = load_state()
 tx = load_transactions()
 
+if "index_quotes" not in st.session_state:
+    st.session_state["index_quotes"] = fetch_index_quotes()
+
 top_l, top_r = st.columns([5, 2])
 with top_r:
     refresh_clicked_top = st.button("시세 새로고침", use_container_width=True, key="refresh_btn_top")
@@ -365,6 +368,7 @@ with top_r:
 if refresh_clicked_top:
     with st.spinner("종목명으로 시세를 찾는 중..."):
         holdings, refresh_report = refresh_all_prices(holdings)
+        st.session_state["index_quotes"] = fetch_index_quotes()
         df_top, stock_val_top, total_assets_top, unreal_top = compute_metrics(holdings, state["cash"])
         snapshot_history(total_assets_top, total_assets_top + unreal_top)
         snapshot_sector_history(compute_sector_weights(df_top))
@@ -697,6 +701,26 @@ with tab_port:
             </div>
             """, unsafe_allow_html=True)
 
+    # ---- 코스피 / 코스닥 지수 (상단 새로고침에 같이 갱신됨) ----
+    idx = st.session_state.get("index_quotes") or {}
+    if idx:
+        tiles_html = '<div style="display:flex; gap:8px; margin-top:12px;">'
+        for code, label in (("KOSPI", "코스피"), ("KOSDAQ", "코스닥")):
+            d = idx.get(code)
+            if not d:
+                continue
+            ic = UP_COLOR if d["change"] >= 0 else DOWN_COLOR
+            isign = "+" if d["change"] >= 0 else ""
+            tiles_html += f"""
+            <div style="flex:1; background:{T['card']}; border:1px solid {T['border']}; border-radius:10px; padding:10px 12px;">
+                <div style="font-size:11px; color:{T['muted']};">{label}</div>
+                <div style="font-size:15px; font-weight:700; color:{T['text']}; margin-top:2px;">{d['price']:,.2f}</div>
+                <div style="font-size:11.5px; color:{ic};">{isign}{d['change']:,.2f} ({isign}{d['change_pct']:.2f}%)</div>
+            </div>
+            """
+        tiles_html += "</div>"
+        st.markdown(tiles_html, unsafe_allow_html=True)
+
 # ==================================================================== #
 # 탭 2: 거래 기록 + 자산 추이
 # ==================================================================== #
@@ -724,8 +748,8 @@ with tab_tx:
     </div>
     """, unsafe_allow_html=True)
 
-    # ---- 자산 추이 그래프: 일별 실현손익 vs 미실현손실 (Plotly, 확대/hover 가능) ----
-    st.markdown("##### 자산 추이")
+    # ---- 실현손익 그래프: 누적 실현손익(호버 시 그날 실현손익도 표시) vs 미실현손실 ----
+    st.markdown("##### 실현손익 그래프")
 
     tx_realized = tx[tx["구분"] == "매도"].copy()
     tx_realized["실현손익"] = pd.to_numeric(tx_realized["실현손익"], errors="coerce").fillna(0)
@@ -742,7 +766,8 @@ with tab_tx:
         all_dates = pd.date_range(min(start_candidates), today_kst_str()).strftime("%Y-%m-%d").tolist()
 
         daily_realized = tx_realized.groupby("날짜")["실현손익"].sum()
-        realized_series = [float(daily_realized.get(d, 0.0)) for d in all_dates]
+        daily_values = [float(daily_realized.get(d, 0.0)) for d in all_dates]
+        cum_values = list(pd.Series(daily_values).cumsum())
 
         hist_sorted = hist.sort_values("날짜")
         unreal_dates = hist_sorted["날짜"].tolist()
@@ -750,9 +775,10 @@ with tab_tx:
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=all_dates, y=realized_series, mode="lines+markers", name="일별 실현손익",
+            x=all_dates, y=cum_values, mode="lines+markers", name="실현손익(누적)",
             line=dict(color=UP_COLOR, width=2.5), marker=dict(size=5),
-            hovertemplate="%{x}<br>실현손익 %{y:,.0f}원<extra></extra>",
+            customdata=daily_values,
+            hovertemplate="%{x}<br>누적 실현손익 %{y:,.0f}원<br>이날 실현손익 %{customdata:,.0f}원<extra></extra>",
         ))
         fig.add_trace(go.Scatter(
             x=unreal_dates, y=unreal_series, mode="lines+markers", name="미실현손실",
@@ -772,8 +798,14 @@ with tab_tx:
             yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False,
                        tickfont=dict(size=9, color=T["muted"]), tickformat=",.0f"),
             hovermode="x unified",
+            dragmode=False,
+            modebar=dict(bgcolor="rgba(0,0,0,0)", color=T["muted2"], activecolor=T["muted"]),
         )
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, use_container_width=True, config={
+            "displayModeBar": True,
+            "displaylogo": False,
+            "modeBarButtonsToRemove": ["pan2d", "select2d", "lasso2d", "zoom2d", "autoScale2d", "toImage"],
+        })
         st.caption("미실현손실은 시세를 새로고침한 날짜부터 하루씩 쌓입니다 (과거 날짜의 시세는 알 수 없음).")
 
     with st.expander("포트폴리오 다시 계산하기 (문제 생겼을 때만)", expanded=False):
