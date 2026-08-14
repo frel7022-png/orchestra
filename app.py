@@ -1,37 +1,30 @@
 """
-한국 주식 포트폴리오 트래커 (Streamlit) — SP Orchestra
+한국 주식 포트폴리오 트래커 (Streamlit) — Meritz Orchestra
 ------------------------------------------------------------------
     streamlit run app.py
 
 시세는 네이버 금융 비공식 공개 API를 사용합니다(종목코드 자동 검색 포함).
+데이터 계층(로드/저장/replay/시세조회)은 portfolio_core.py에 있음 —
+일일 매매일지 반영 스크립트(ingest_daily.py)와 로직을 공유하기 위해서다.
 """
 
 import calendar
-import base64
-import hashlib
-import io
-import uuid
-from datetime import datetime, date
-from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import matplotlib.pyplot as plt
 import pandas as pd
-import requests
 import streamlit as st
 
-KST = ZoneInfo("Asia/Seoul")
-HERE = Path(__file__).parent
-
-HOLDINGS_FILE = HERE / "portfolio_data.csv"
-TX_FILE = HERE / "transactions.csv"
-STATE_FILE = HERE / "account_state.csv"
-HISTORY_FILE = HERE / "asset_history.csv"
-SECTOR_HISTORY_FILE = HERE / "sector_history.csv"
-IMPORT_LOG_FILE = HERE / "import_log.csv"
-
-HOLD_COLUMNS = ["종목명", "종목코드", "섹터", "수량", "평단가", "현재가", "등락률", "업데이트시각"]
-TX_COLUMNS = ["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"]
+from portfolio_core import (
+    HOLD_COLUMNS, TX_COLUMNS, group_sector,
+    now_kst, today_kst_str, now_kst_str,
+    load_holdings, save_holdings, load_transactions, save_transactions,
+    load_state, save_state,
+    load_history, snapshot_history,
+    load_sector_history, snapshot_sector_history,
+    refresh_all_prices, get_current_prices_for_names, get_closed_out_last_sells,
+    compute_metrics, compute_sector_weights,
+    rebuild_portfolio_from_transactions,
+)
 
 UP_COLOR = "#d9364f"    # 국내 관례: 상승/이익 = 빨강
 DOWN_COLOR = "#2b6cd4"  # 하락/손실 = 파랑
@@ -42,63 +35,11 @@ SECTOR_PALETTE = [
     "#FBBF24", "#60A5FA", "#F87171", "#C084FC", "#38BDF8", "#FB923C",
 ]
 
-# 섹터 비중 보기 전용 그룹 매핑 (종목별 보유현황의 세부 섹터는 그대로 유지됨)
-SECTOR_GROUP_MAP = {
-    "유통": "유통 물류",
-    "물류": "유통 물류",
-    "반도체소재": "반도체",
-    "반도체장비": "반도체",
-    "인터넷": "반도체",
-    "건자재": "건설",
-    "건설": "건설",
-    "제지": "소비재",
-    "섬유의류": "소비재",
-    "화장품": "소비재",
-    "가구": "소비재",
-    "제약바이오": "의료바이오",
-    "제약바이어": "의료바이오",  # 오타 대비
-    "의료기기": "의료바이오",
-    "해운": "해운",
-    "조선": "해운",
-    "엔터테인먼트": "엔터",
-    "게임": "엔터",
-    "렌탈서비스": "서비스",
-    "에너지기자재": "에너지",
-    "지주(에너지)": "에너지",
-    "에너지": "에너지",
-    "지주(방산소재)": "방산",
-    "금속가공": "금속철강",
-    "전자부품": "전기전자",
-    "전기전자부품": "전기전자",
-}
-
-# 종목명 → 섹터 자동 매핑 (신규 종목이 CSV로 들어올 때 "미분류" 대신 자동 지정, 기존 미분류 종목도 자동 보정)
-STOCK_SECTOR_MAP = {
-    "유한양행": "제약바이오",
-    "사조대림": "식품",
-    "SGC에너지": "에너지",
-    "크라운해태홀딩스": "식품",
-    "서흥": "제약바이오",
-    "율촌화학": "제지",
-    "한샘": "가구",
-    "계룡건설": "건설",
-    "이마트": "유통",
-    "필옵틱스": "반도체장비",
-    "종근당": "제약바이오",
-    "심텍": "반도체장비",
-    "한화시스템": "지주(방산소재)",
-}
-
 # 섹터별 목표 비중(주식 총자산 대비, %). 아직 정하지 않은 섹터는 포함하지 않음 — 추후 추가.
 SECTOR_TARGETS = {
     "식품": 30.0,
     "소비재": 20.0,
 }
-
-
-def group_sector(sector: str) -> str:
-    """섹터 비중 보기용 그룹명 반환. 매핑에 없으면 원래 섹터명 그대로."""
-    return SECTOR_GROUP_MAP.get(sector, sector)
 
 THEMES = {
     "dark": {
@@ -116,575 +57,11 @@ def theme() -> dict:
     return THEMES[st.session_state.get("theme", "light")]
 
 
-def now_kst() -> datetime:
-    return datetime.now(KST)
-
-
-def today_kst_str() -> str:
-    return now_kst().strftime("%Y-%m-%d")
-
-
-def now_kst_str() -> str:
-    return now_kst().strftime("%m/%d %H:%M")
-
-
-def clean_str(x) -> str:
-    """pd.NA / NaN / None 안전하게 빈 문자열로 처리."""
-    if x is None or (isinstance(x, float) and pd.isna(x)) or (x is pd.NA):
-        return ""
-    try:
-        if pd.isna(x):
-            return ""
-    except (TypeError, ValueError):
-        pass
-    return str(x).strip()
-
-
-# ------------------------------------------------------------------ #
-# GitHub 데이터 동기화 (재배포/컨테이너 재시작으로 로컬 CSV가 사라져도 복구되게)
-# ------------------------------------------------------------------ #
-def _github_cfg():
-    """.streamlit/secrets.toml 의 [github] 섹션에서 설정을 읽어옴.
-    예:
-        [github]
-        token = "ghp_xxx..."
-        repo = "username/reponame"
-        branch = "main"
-        # path_prefix = "data/"   # 선택: 레포 내 하위 폴더에 저장하고 싶을 때
-    미설정 시 GitHub 동기화 없이 로컬 디스크만 사용(조용히 스킵).
-    """
-    try:
-        gh = st.secrets["github"]
-        return gh["token"], gh["repo"], gh.get("branch", "main"), gh.get("path_prefix", "")
-    except Exception:
-        return None, None, None, None
-
-
-def _github_api_url(local_path: Path, prefix: str) -> str:
-    token, repo, branch, _ = _github_cfg()
-    file_path = f"{prefix}{local_path.name}" if prefix else local_path.name
-    return f"https://api.github.com/repos/{repo}/contents/{file_path}"
-
-
-def _github_log(filename: str, action: str, ok: bool, detail: str = "") -> None:
-    log = st.session_state.setdefault("github_sync_log", [])
-    log.append({"file": filename, "action": action, "ok": ok, "detail": detail})
-    st.session_state["github_sync_log"] = log[-30:]  # 최근 30건만 유지
-
-
-def github_fetch_file(local_path: Path) -> bool:
-    """로컬에 파일이 없을 때 GitHub 레포의 최신본을 받아와 로컬에 저장. 성공 시 True."""
-    token, repo, branch, prefix = _github_cfg()
-    if not token:
-        return False
-    try:
-        url = _github_api_url(local_path, prefix)
-        headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github+json"}
-        r = requests.get(url, headers=headers, params={"ref": branch}, timeout=10)
-        if r.status_code == 200:
-            content = base64.b64decode(r.json()["content"])
-            local_path.write_bytes(content)
-            _github_log(local_path.name, "fetch", True)
-            return True
-        elif r.status_code == 404:
-            _github_log(local_path.name, "fetch", False, "GitHub에 이 파일이 아직 없음(404) — 신규 생성 예정")
-        else:
-            _github_log(local_path.name, "fetch", False, f"HTTP {r.status_code}: {r.text[:200]}")
-    except Exception as e:
-        _github_log(local_path.name, "fetch", False, f"예외: {e}")
-    return False
-
-
-def github_commit_file(local_path: Path, message: str) -> bool:
-    """로컬 CSV 저장 직후, GitHub 레포에도 동일 내용을 커밋(생성 또는 업데이트). 성공 시 True."""
-    token, repo, branch, prefix = _github_cfg()
-    if not token:
-        _github_log(local_path.name, "commit", False, "GitHub secrets(token)이 설정되어 있지 않음")
-        return False
-    if not local_path.exists():
-        _github_log(local_path.name, "commit", False, "로컬 파일이 존재하지 않음")
-        return False
-    try:
-        url = _github_api_url(local_path, prefix)
-        headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github+json"}
-        content_b64 = base64.b64encode(local_path.read_bytes()).decode()
-
-        sha = None
-        r = requests.get(url, headers=headers, params={"ref": branch}, timeout=10)
-        if r.status_code == 200:
-            sha = r.json().get("sha")
-        elif r.status_code not in (200, 404):
-            _github_log(local_path.name, "commit", False, f"sha 조회 실패 HTTP {r.status_code}: {r.text[:200]}")
-            return False
-
-        payload = {"message": message, "content": content_b64, "branch": branch}
-        if sha:
-            payload["sha"] = sha
-        put_r = requests.put(url, headers=headers, json=payload, timeout=10)
-        if put_r.status_code in (200, 201):
-            _github_log(local_path.name, "commit", True)
-            return True
-        else:
-            _github_log(local_path.name, "commit", False, f"HTTP {put_r.status_code}: {put_r.text[:300]}")
-            return False
-    except Exception as e:
-        _github_log(local_path.name, "commit", False, f"예외: {e}")
-        return False
-
-
-# ------------------------------------------------------------------ #
-# 데이터 로드 / 저장
-# ------------------------------------------------------------------ #
-def load_holdings() -> pd.DataFrame:
-    if not HOLDINGS_FILE.exists():
-        github_fetch_file(HOLDINGS_FILE)
-    if HOLDINGS_FILE.exists():
-        df = pd.read_csv(HOLDINGS_FILE, dtype={"종목코드": str}, keep_default_na=False, na_values=[""])
-        for col in HOLD_COLUMNS:
-            if col not in df.columns:
-                df[col] = "" if col in ("종목명", "종목코드", "섹터", "업데이트시각") else 0.0
-        for col in ("수량", "평단가", "현재가", "등락률"):
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0).astype(float)
-        for col in ("종목명", "종목코드", "섹터", "업데이트시각"):
-            df[col] = df[col].apply(clean_str)
-        # 미분류 종목명이 STOCK_SECTOR_MAP에 등록돼 있으면 자동으로 섹터 보정
-        needs_fix = (df["섹터"].isin(["", "미분류"])) & (df["종목명"].isin(STOCK_SECTOR_MAP.keys()))
-        if needs_fix.any():
-            df.loc[needs_fix, "섹터"] = df.loc[needs_fix, "종목명"].map(STOCK_SECTOR_MAP)
-        return df[HOLD_COLUMNS]
-    return pd.DataFrame(columns=HOLD_COLUMNS)
-
-
-def save_holdings(df: pd.DataFrame) -> None:
-    df.to_csv(HOLDINGS_FILE, index=False)
-    github_commit_file(HOLDINGS_FILE, "portfolio_data.csv 업데이트")
-
-
-def load_transactions() -> pd.DataFrame:
-    if not TX_FILE.exists():
-        github_fetch_file(TX_FILE)
-    if TX_FILE.exists():
-        df = pd.read_csv(TX_FILE, dtype={"id": str}, keep_default_na=False, na_values=[""])
-        for col in TX_COLUMNS:
-            if col not in df.columns:
-                df[col] = ""
-        return df[TX_COLUMNS]
-    return pd.DataFrame(columns=TX_COLUMNS)
-
-
-def save_transactions(df: pd.DataFrame) -> None:
-    df.to_csv(TX_FILE, index=False)
-    github_commit_file(TX_FILE, "transactions.csv 업데이트")
-
-
-def load_state() -> dict:
-    if not STATE_FILE.exists():
-        github_fetch_file(STATE_FILE)
-    if STATE_FILE.exists():
-        df = pd.read_csv(STATE_FILE)
-        return {"cash": float(df.loc[0, "예수금"]), "initial": float(df.loc[0, "최초자본"])}
-    return {"cash": 10_000_000.0, "initial": 10_000_000.0}
-
-
-def save_state(state: dict) -> None:
-    pd.DataFrame([{"예수금": state["cash"], "최초자본": state["initial"]}]).to_csv(STATE_FILE, index=False)
-    github_commit_file(STATE_FILE, "account_state.csv 업데이트")
-
-
-def load_history() -> pd.DataFrame:
-    if not HISTORY_FILE.exists():
-        github_fetch_file(HISTORY_FILE)
-    if HISTORY_FILE.exists():
-        return pd.read_csv(HISTORY_FILE)
-    return pd.DataFrame(columns=["날짜", "총자산", "조정자산"])
-
-
-def save_history(df: pd.DataFrame) -> None:
-    df.to_csv(HISTORY_FILE, index=False)
-    github_commit_file(HISTORY_FILE, "asset_history.csv 업데이트")
-
-
-def snapshot_history(total_assets: float, adjusted_assets: float) -> None:
-    hist = load_history()
-    d = today_kst_str()
-    hist = hist[hist["날짜"] != d]
-    hist = pd.concat([hist, pd.DataFrame([{"날짜": d, "총자산": total_assets, "조정자산": adjusted_assets}])])
-    hist = hist.sort_values("날짜")
-    save_history(hist)
-
-
-def load_sector_history() -> pd.DataFrame:
-    if not SECTOR_HISTORY_FILE.exists():
-        github_fetch_file(SECTOR_HISTORY_FILE)
-    if SECTOR_HISTORY_FILE.exists():
-        return pd.read_csv(SECTOR_HISTORY_FILE)
-    return pd.DataFrame(columns=["날짜", "섹터그룹", "비중"])
-
-
-def save_sector_history(df: pd.DataFrame) -> None:
-    df.to_csv(SECTOR_HISTORY_FILE, index=False)
-    github_commit_file(SECTOR_HISTORY_FILE, "sector_history.csv 업데이트")
-
-
-def snapshot_sector_history(weights: dict) -> None:
-    """섹터그룹별 오늘자 비중(주식 총자산 대비 %) 스냅샷 저장. 같은 날짜 데이터는 덮어씀."""
-    if not weights:
-        return
-    hist = load_sector_history()
-    d = today_kst_str()
-    hist = hist[hist["날짜"] != d]
-    new_rows = pd.DataFrame([{"날짜": d, "섹터그룹": k, "비중": v} for k, v in weights.items()])
-    hist = pd.concat([hist, new_rows], ignore_index=True)
-    hist = hist.sort_values(["날짜", "섹터그룹"])
-    save_sector_history(hist)
-
-
-# ------------------------------------------------------------------ #
-# 네이버 금융: 종목명 → 종목코드 자동 검색 + 시세 조회
-# ------------------------------------------------------------------ #
-@st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
-def get_current_prices_for_names(names: list[str]) -> dict:
-    """종목명 리스트의 현재가 조회. 보유 여부와 무관 — 청산된 종목 추적용."""
-    name_to_code = {}
-    for n in names:
-        code = resolve_code(n)
-        if code:
-            name_to_code[n] = code
-    quotes = fetch_quotes(list(name_to_code.values()))
-    result = {}
-    for n, code in name_to_code.items():
-        if code in quotes:
-            result[n] = quotes[code]["price"]
-    return result
-
-
-def get_closed_out_last_sells(holdings_df: pd.DataFrame, tx_df: pd.DataFrame) -> pd.DataFrame:
-    """현재 보유 중이 아닌(=완전히 매도한) 종목들의 마지막 매도일/매도가."""
-    sell_tx = tx_df[tx_df["구분"] == "매도"].copy()
-    if sell_tx.empty:
-        return pd.DataFrame(columns=["종목명", "매도일", "매도가"])
-    sell_tx["단가"] = pd.to_numeric(sell_tx["단가"], errors="coerce")
-    held_names = set(holdings_df["종목명"].tolist())
-    sell_tx = sell_tx[~sell_tx["종목명"].isin(held_names)]
-    sell_tx = sell_tx[sell_tx["단가"].notna() & (sell_tx["단가"] > 0)]
-    if sell_tx.empty:
-        return pd.DataFrame(columns=["종목명", "매도일", "매도가"])
-    sell_tx = sell_tx.sort_values(["종목명", "날짜", "id"])
-    last = sell_tx.groupby("종목명", as_index=False).tail(1)[["종목명", "날짜", "단가"]]
-    last = last.rename(columns={"날짜": "매도일", "단가": "매도가"})
-    return last.reset_index(drop=True)
-
-
-def resolve_code(name: str):
-    name = (name or "").strip()
-    if not name:
-        return None
-    url = "https://ac.stock.naver.com/ac"
-    params = {"q": name, "target": "stock,index,marketindicator,coin,ipo", "st": "111"}
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        r = requests.get(url, params=params, headers=headers, timeout=6)
-        r.raise_for_status()
-        items = (r.json() or {}).get("items") or []
-        for it in items:
-            code = str(it.get("code") or "").strip()
-            if code.isdigit() and len(code) == 6:
-                return code
-    except Exception:
-        pass
-    return None
-
-
-def fetch_quotes(codes: list[str]) -> dict:
-    """네이버 실시간 시세 API는 한 번에 너무 많은 종목코드를 요청하면 일부만 응답하는
-    경우가 있어(대략 20개 안팎에서 잘림), 20개씩 나눠서 요청한 뒤 결과를 합친다."""
-    codes = [c for c in codes if c]
-    if not codes:
-        return {}
-
-    CHUNK_SIZE = 20
-    result = {}
-    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
-
-    for i in range(0, len(codes), CHUNK_SIZE):
-        chunk = codes[i:i + CHUNK_SIZE]
-        url = f"https://polling.finance.naver.com/api/realtime/domestic/stock/{','.join(chunk)}"
-        try:
-            resp = requests.get(url, headers=headers, timeout=6)
-            resp.raise_for_status()
-            payload = resp.json()
-        except Exception as e:
-            st.warning(f"시세 조회 실패({i + 1}~{i + len(chunk)}번째 종목): {e}")
-            continue
-
-        datas = payload.get("datas")
-        if datas is None:
-            try:
-                datas = payload["result"]["areas"][0]["datas"]
-            except Exception:
-                datas = []
-
-        for d in datas or []:
-            code = str(d.get("itemCode") or d.get("cd") or d.get("code") or "").strip()
-            price_raw = d.get("closePrice") or d.get("cv") or d.get("nv")
-            chg_raw = d.get("fluctuationsRatio") or d.get("cr")
-            if not code or price_raw is None:
-                continue
-            try:
-                price = float(str(price_raw).replace(",", ""))
-            except ValueError:
-                continue
-            try:
-                change_pct = float(str(chg_raw).replace(",", "").replace("%", "")) if chg_raw is not None else 0.0
-            except ValueError:
-                change_pct = 0.0
-            result[code] = {"price": price, "change_pct": change_pct}
-
-    return result
-
-
-def refresh_all_prices(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    unresolved = []
-    for i, row in df.iterrows():
-        code = clean_str(row.get("종목코드", ""))
-        if not code or code.lower() == "nan":
-            found = resolve_code(row["종목명"])
-            if found:
-                df.loc[i, "종목코드"] = found
-            else:
-                unresolved.append(row["종목명"])
-
-    codes = [clean_str(c) for c in df["종목코드"].tolist()]
-    codes = [c for c in codes if c and c.lower() != "nan"]
-    quotes = fetch_quotes(codes)
-
-    now = now_kst_str()
-    updated, failed = 0, []
-    for i, row in df.iterrows():
-        code = clean_str(row.get("종목코드", ""))
-        if code and code in quotes:
-            df.loc[i, "현재가"] = quotes[code]["price"]
-            df.loc[i, "등락률"] = quotes[code]["change_pct"]
-            df.loc[i, "업데이트시각"] = now
-            updated += 1
-        elif code:
-            failed.append(row["종목명"])
-
-    save_holdings(df)
-    if updated:
-        st.toast(f"{updated}개 종목 시세 갱신 완료")
-    if unresolved:
-        st.warning("종목명을 찾지 못했어요(직접 입력 필요): " + ", ".join(unresolved))
-    if failed:
-        st.warning("시세를 못 가져왔어요(직접 입력 필요): " + ", ".join(failed))
-    return df
-
-
-# ------------------------------------------------------------------ #
-# 지표 계산
-# ------------------------------------------------------------------ #
-def compute_metrics(df: pd.DataFrame, cash: float):
-    df = df.copy()
-    for col in ("수량", "평단가", "현재가", "등락률"):
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-    df["섹터"] = df["섹터"].replace("", "미분류").fillna("미분류")
-
-    df["평가금액"] = df["수량"] * df["현재가"]
-    df["매입금액"] = df["수량"] * df["평단가"]
-    df["손익"] = df["평가금액"] - df["매입금액"]
-    df["손익률"] = df.apply(lambda r: (r["손익"] / r["매입금액"] * 100) if r["매입금액"] else 0, axis=1)
-
-    stock_valuation = df["평가금액"].sum()
-    total_assets = stock_valuation + cash
-    df["비중"] = df["평가금액"].apply(lambda v: (v / total_assets * 100) if total_assets else 0)
-
-    unrealized_loss = -df.loc[df["손익"] < 0, "손익"].sum()
-    return df, stock_valuation, total_assets, unrealized_loss
-
-
-def compute_sector_weights(df: pd.DataFrame) -> dict:
-    """섹터그룹별 비중(%). 주식 평가금액 총합 대비이며 예수금은 포함하지 않음."""
-    if df.empty:
-        return {}
-    d = df.copy()
-    d["섹터그룹"] = d["섹터"].apply(group_sector)
-    stock_total = d["평가금액"].sum()
-    if stock_total <= 0:
-        return {}
-    grp = d.groupby("섹터그룹")["평가금액"].sum()
-    return (grp / stock_total * 100).to_dict()
-
-
-# ------------------------------------------------------------------ #
-# 거래 반영 (매수/매도)
-# ------------------------------------------------------------------ #
-def apply_transaction(holdings: pd.DataFrame, state: dict, name: str, kind: str, qty: float, price: float):
-    holdings = holdings.copy()
-    realized = None
-    match = holdings.index[holdings["종목명"] == name]
-
-    if kind == "매수":
-        cost = qty * price
-        state["cash"] -= cost
-        if len(match):
-            i = match[0]
-            old_qty = float(holdings.loc[i, "수량"])
-            old_avg = float(holdings.loc[i, "평단가"])
-            new_qty = old_qty + qty
-            new_avg = (old_qty * old_avg + cost) / new_qty if new_qty else 0
-            holdings.loc[i, "수량"] = new_qty
-            holdings.loc[i, "평단가"] = new_avg
-            if not holdings.loc[i, "현재가"] or float(holdings.loc[i, "현재가"]) == 0:
-                holdings.loc[i, "현재가"] = price
-        else:
-            new_row = {c: "" for c in HOLD_COLUMNS}
-            new_row.update({"종목명": name, "종목코드": "", "섹터": STOCK_SECTOR_MAP.get(name, "미분류"),
-                             "수량": qty, "평단가": price, "현재가": price,
-                             "등락률": 0, "업데이트시각": now_kst_str()})
-            holdings = pd.concat([holdings, pd.DataFrame([new_row])], ignore_index=True)
-    else:  # 매도
-        proceeds = qty * price
-        state["cash"] += proceeds
-        if len(match):
-            i = match[0]
-            old_qty = float(holdings.loc[i, "수량"])
-            old_avg = float(holdings.loc[i, "평단가"])
-            realized = (price - old_avg) * qty
-            new_qty = old_qty - qty
-            if new_qty <= 0:
-                holdings = holdings.drop(index=i).reset_index(drop=True)
-            else:
-                holdings.loc[i, "수량"] = new_qty
-        else:
-            realized = 0.0
-
-    return holdings, state, realized
-
-
-def load_import_log() -> pd.DataFrame:
-    if not IMPORT_LOG_FILE.exists():
-        github_fetch_file(IMPORT_LOG_FILE)
-    if IMPORT_LOG_FILE.exists():
-        return pd.read_csv(IMPORT_LOG_FILE, dtype=str)
-    return pd.DataFrame(columns=["hash", "날짜", "처리시각"])
-
-
-def save_import_log(df: pd.DataFrame) -> None:
-    df.to_csv(IMPORT_LOG_FILE, index=False)
-    github_commit_file(IMPORT_LOG_FILE, "import_log.csv 업데이트")
-
-
-def parse_broker_daily_csv(raw: bytes) -> pd.DataFrame:
-    """증권사 일일 매매일지 CSV(잔고/금일매수/금일매도 구조)를 파싱.
-    컬럼명이 병합헤더+개행문자라 인식이 불안정하므로 '위치(열 순서)' 기준으로 읽는다.
-    기대 열 순서: [상세, 종목명, 잔고구분, 잔고수량, 잔고평균단가,
-                  매수평균가, 매수수량, 매수금액, 매도평균가, 매도수량, 매도금액,
-                  수수료, 실현손익(증권사), 손익률, ...]
-    """
-    text = None
-    for enc in ("cp949", "utf-8-sig", "utf-8"):
-        try:
-            text = raw.decode(enc)
-            break
-        except UnicodeDecodeError:
-            continue
-    if text is None:
-        raise ValueError("CSV 인코딩을 인식할 수 없습니다 (cp949/utf-8 모두 실패).")
-
-    df = pd.read_csv(io.StringIO(text))
-    if len(df) < 2 or df.shape[1] < 13:
-        raise ValueError("예상한 매매일지 형식이 아닙니다 (열 개수 부족).")
-
-    # 첫 데이터 행은 '평균가/수량/매입금액...' 서브헤더이므로 건너뜀
-    df = df.iloc[1:].reset_index(drop=True)
-    c = df.columns.tolist()
-
-    def num(series):
-        return pd.to_numeric(
-            series.astype(str).str.replace(",", "").str.strip(), errors="coerce"
-        ).fillna(0)
-
-    out = pd.DataFrame({
-        "종목명": df[c[1]].astype(str).str.strip(),
-        "매수평균가": num(df[c[5]]),
-        "매수수량": num(df[c[6]]),
-        "매도평균가": num(df[c[8]]),
-        "매도수량": num(df[c[9]]),
-        "실현손익_증권사": num(df[c[12]]),
-    })
-    out = out[out["종목명"].notna() & (out["종목명"] != "") & (out["종목명"].str.lower() != "nan")]
-    return out.reset_index(drop=True)
-
-
-def rebuild_portfolio_from_transactions(tx: pd.DataFrame, initial_capital: float):
-    """transactions.csv 전체를 날짜순으로 처음부터 재생하여 holdings/state/실현손익을 다시 계산.
-    같은 날짜의 CSV 매매일지를 여러 번 업로드해도(=그 날짜 거래가 통째로 교체됨) 항상
-    '최신 업로드 기준'의 정확한 최종 상태가 되도록 하는 단일 진실 공급원(source of truth) 방식."""
-    holdings = pd.DataFrame(columns=HOLD_COLUMNS)
-    state = {"cash": initial_capital, "initial": initial_capital}
-
-    if tx.empty:
-        return holdings, state, tx
-
-    tx_sorted = tx.copy().reset_index(drop=True)
-    tx_sorted["_ord"] = range(len(tx_sorted))
-    tx_sorted = tx_sorted.sort_values(["날짜", "_ord"]).reset_index(drop=True)
-
-    realized_map = {}
-    for _, row in tx_sorted.iterrows():
-        name = row["종목명"]
-        kind = row["구분"]
-        qty = float(row["수량"])
-        price = float(row["단가"])
-        holdings, state, realized = apply_transaction(holdings, state, name, kind, qty, price)
-        if kind == "매도":
-            realized_map[row["id"]] = realized if realized is not None else 0.0
-
-    tx = tx.copy()
-    for tid, val in realized_map.items():
-        tx.loc[tx["id"] == tid, "실현손익"] = val
-
-    return holdings, state, tx
-
-
-def import_daily_trades(parsed: pd.DataFrame, holdings: pd.DataFrame, state: dict,
-                         tx: pd.DataFrame, trade_date: str):
-    """해당 날짜의 매매일지를 반영.
-    증권사 CSV는 '그날 하루 전체 누적' 내역이므로, 같은 날짜에 이미 CSV로 반영된 거래가
-    있으면 전부 지우고 이번 업로드분으로 교체한 뒤, 거래 기록 전체를 처음부터 재생해서
-    holdings/state를 다시 계산한다 (그래야 같은 날 여러 번 올려도 중복 반영되지 않음)."""
-    tx = tx.copy()
-    prior_mask = (tx["날짜"] == trade_date) & (tx["메모"] == "CSV 업로드")
-    replaced_count = int(prior_mask.sum())
-    tx = tx[~prior_mask].reset_index(drop=True)
-
-    new_rows = []
-    for _, r in parsed.iterrows():
-        name = r["종목명"]
-        if r["매수수량"] > 0 and r["매수평균가"] > 0:
-            new_rows.append({
-                "id": str(uuid.uuid4())[:8], "날짜": trade_date, "종목명": name, "구분": "매수",
-                "수량": r["매수수량"], "단가": r["매수평균가"], "실현손익": "",
-                "메모": "CSV 업로드", "정산반영": True,
-            })
-        if r["매도수량"] > 0 and r["매도평균가"] > 0:
-            new_rows.append({
-                "id": str(uuid.uuid4())[:8], "날짜": trade_date, "종목명": name, "구분": "매도",
-                "수량": r["매도수량"], "단가": r["매도평균가"], "실현손익": "",
-                "메모": "CSV 업로드", "정산반영": True,
-            })
-    if new_rows:
-        tx = pd.concat([tx, pd.DataFrame(new_rows)], ignore_index=True)
-
-    holdings2, state2, tx2 = rebuild_portfolio_from_transactions(tx, state.get("initial", 10_000_000.0))
-    return holdings2, state2, tx2, len(new_rows), replaced_count
-
 
 # ------------------------------------------------------------------ #
 # 페이지 설정
 # ------------------------------------------------------------------ #
-st.set_page_config(page_title="SP Orchestra", page_icon="◆", layout="centered")
+st.set_page_config(page_title="Meritz Orchestra", page_icon="◆", layout="centered")
 
 if "theme" not in st.session_state:
     st.session_state["theme"] = "light"
@@ -706,35 +83,6 @@ st.markdown(f"""
     .block-container {{ padding-top: 1.1rem; padding-bottom: 2rem; padding-left: 1rem; padding-right: 1rem; max-width: 480px; }}
     #MainMenu, footer, header {{ visibility: hidden; }}
     h1, h2, h3, h4, h5, p, span, label, div {{ color: {T['text']}; }}
-
-    /* 파일 업로드 위젯: 기본 다크 배경 대신 앱 테마에 맞춤 */
-    section[data-testid="stFileUploaderDropzone"] {{
-        background: {T['card2']} !important;
-        border: 1px dashed {T['border']} !important;
-        border-radius: 10px !important;
-    }}
-    section[data-testid="stFileUploaderDropzone"] * {{
-        color: {T['text']} !important;
-    }}
-    section[data-testid="stFileUploaderDropzone"] small,
-    section[data-testid="stFileUploaderDropzone"] span {{
-        color: {T['muted']} !important;
-    }}
-    section[data-testid="stFileUploaderDropzone"] button {{
-        background: {T['card']} !important;
-        color: {T['text']} !important;
-        border: 1px solid {T['border']} !important;
-    }}
-    div[data-testid="stFileUploaderFile"],
-    div[data-testid="stFileUploaderFileName"] {{
-        background: {T['card']} !important;
-        border: 1px solid {T['border']} !important;
-        border-radius: 8px !important;
-        color: {T['text']} !important;
-    }}
-    div[data-testid="stFileUploaderFile"] * {{
-        color: {T['text']} !important;
-    }}
 
     .summary-box {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:14px; padding:18px 20px; margin-bottom:14px; }}
     .summary-label {{ color:{T['muted']}; font-size:13px; margin-bottom:4px; }}
@@ -976,7 +324,7 @@ def check_password() -> bool:
         return True
     if st.session_state.get("authed"):
         return True
-    st.markdown('<div class="brand">SP Orchestra</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand">Meritz Orchestra</div>', unsafe_allow_html=True)
     pw = st.text_input("비밀번호를 입력하세요", type="password")
     if pw:
         if pw == st.secrets["app_password"]:
@@ -992,7 +340,7 @@ if not check_password():
 
 col_title, col_label, col_theme = st.columns([2.2, 1, 0.9])
 with col_title:
-    st.markdown('<div class="brand">SP Orchestra</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand">Meritz Orchestra</div>', unsafe_allow_html=True)
 with col_label:
     st.markdown(
         f"<div style='text-align:right;font-size:11px;color:{T['muted']};padding-top:12px;'>화면</div>",
@@ -1015,10 +363,18 @@ with top_r:
 
 if refresh_clicked_top:
     with st.spinner("종목명으로 시세를 찾는 중..."):
-        holdings = refresh_all_prices(holdings)
+        holdings, refresh_report = refresh_all_prices(holdings)
         df_top, stock_val_top, total_assets_top, unreal_top = compute_metrics(holdings, state["cash"])
         snapshot_history(total_assets_top, total_assets_top + unreal_top)
         snapshot_sector_history(compute_sector_weights(df_top))
+    if refresh_report["updated"]:
+        st.toast(f"{refresh_report['updated']}개 종목 시세 갱신 완료")
+    if refresh_report["unresolved"]:
+        st.warning("종목명을 찾지 못했어요(직접 입력 필요): " + ", ".join(refresh_report["unresolved"]))
+    if refresh_report["failed"]:
+        st.warning("시세를 못 가져왔어요(직접 입력 필요): " + ", ".join(refresh_report["failed"]))
+    for err in refresh_report["quote_errors"]:
+        st.warning(err)
     st.rerun()
 
 tab_port, tab_tx = st.tabs(["포트폴리오", "거래 기록"])
@@ -1131,10 +487,6 @@ with tab_port:
 
         # ---- 섹터별 현재 비중 막대 (주식 총자산 대비, 예수금 제외) + 목표 비중 ----
         if stock_weight_rank:
-            st.markdown('<div style="height:22px"></div>', unsafe_allow_html=True)
-
-            sec_stocks = df_grp.groupby("섹터그룹")["종목명"].apply(lambda s: ", ".join(s)).to_dict()
-
             sec_hist = load_sector_history()
             prev_weights = {}
             if not sec_hist.empty:
@@ -1188,10 +540,6 @@ with tab_port:
                     )
 
                 if is_open:
-                    st.markdown(
-                        f'<div class="sector-stock-names">{sec_stocks.get(name, "")}</div>',
-                        unsafe_allow_html=True,
-                    )
                     if not sec_hist.empty and name in sec_hist["섹터그룹"].unique():
                         series = sec_hist[sec_hist["섹터그룹"] == name].sort_values("날짜")
                         dates = series["날짜"].tolist()
@@ -1222,8 +570,8 @@ with tab_port:
 
     # ---- Up/Down: 청산 종목 추적 ----
     with st.expander("Up/Down", expanded=False):
-        mode = st.radio("모드", ["DOWN", "UP"], horizontal=True,
-                         label_visibility="collapsed", key="updown_mode")
+        updown_mode = st.radio("모드", ["DOWN", "UP"], horizontal=True,
+                                label_visibility="collapsed", key="updown_mode")
 
         if st.button("새로고침", key="updown_refresh", use_container_width=True):
             closed = get_closed_out_last_sells(holdings, tx)
@@ -1244,28 +592,28 @@ with tab_port:
             st.session_state["updown_checked_at"] = now_kst_str()
             st.rerun()
 
-        results = st.session_state.get("updown_results")
-        checked_at = st.session_state.get("updown_checked_at")
+        updown_results = st.session_state.get("updown_results")
+        updown_checked_at = st.session_state.get("updown_checked_at")
 
-        if results is None:
+        if updown_results is None:
             st.caption("새로고침을 누르면 청산(완전 매도)된 종목의 현재가를 마지막 매도가와 비교합니다.")
         else:
-            if checked_at:
-                st.caption(f"마지막 조회: {checked_at}")
+            if updown_checked_at:
+                st.caption(f"마지막 조회: {updown_checked_at}")
             threshold = 3.0
-            if mode == "DOWN":
-                filtered = sorted([r for r in results if r["pct"] <= -threshold], key=lambda r: r["pct"])
-                color = DOWN_COLOR
+            if updown_mode == "DOWN":
+                filtered = sorted([r for r in updown_results if r["pct"] <= -threshold], key=lambda r: r["pct"])
+                updown_color = DOWN_COLOR
             else:
-                filtered = sorted([r for r in results if r["pct"] >= threshold], key=lambda r: -r["pct"])
-                color = UP_COLOR
+                filtered = sorted([r for r in updown_results if r["pct"] >= threshold], key=lambda r: -r["pct"])
+                updown_color = UP_COLOR
 
             if not filtered:
                 st.caption("조건에 해당하는 종목이 없습니다.")
             else:
                 rows_html = "".join(
                     f'<div class="updown-row"><span class="name">{r["종목명"]}</span>'
-                    f'<span class="pct" style="color:{color}">{"+" if r["pct"] >= 0 else ""}{r["pct"]:.1f}%</span>'
+                    f'<span class="pct" style="color:{updown_color}">{"+" if r["pct"] >= 0 else ""}{r["pct"]:.1f}%</span>'
                     f'<span class="detail">{r["매도가"]:,.0f} → {r["현재가"]:,.0f}</span></div>'
                     for r in filtered
                 )
@@ -1348,10 +696,6 @@ with tab_port:
             </div>
             """, unsafe_allow_html=True)
 
-    # (시세 새로고침 버튼은 상단으로 이동했습니다)
-
-
-
 # ==================================================================== #
 # 탭 2: 거래 기록 + 자산 추이
 # ==================================================================== #
@@ -1418,66 +762,13 @@ with tab_tx:
     else:
         st.info("시세를 새로고침하면 그날의 자산 스냅샷이 하나씩 쌓여 그래프가 그려집니다.")
 
-    st.divider()
-
-    # ---- 매매일지 CSV 업로드 ----
-    st.markdown("##### 매매일지 업로드 (CSV)")
-    st.caption("같은 날짜에 다시 올리면 그날 내용은 최신 업로드로 교체되고, 다른 날짜 기록은 그대로 유지됩니다.")
-
-    up_file = st.file_uploader("CSV 파일 선택", type=["csv"], key="daily_csv_uploader")
-    up_date = st.date_input("거래 날짜", value=date.today(), key="daily_csv_date")
-
-    if up_file is not None:
-        file_bytes = up_file.getvalue()
-        file_hash = hashlib.sha256(file_bytes).hexdigest()
-        import_log = load_import_log()
-        already = file_hash in import_log["hash"].values
-
-        if already:
-            st.warning("이 파일은 이미 반영된 것 같아요 (동일 파일이 감지됨).")
-            force = st.checkbox("그래도 다시 반영하기", key="daily_csv_force")
-        else:
-            force = True
-
-        if st.button("반영하기", key="daily_csv_apply", use_container_width=True, disabled=(already and not force)):
-            try:
-                parsed = parse_broker_daily_csv(file_bytes)
-            except Exception as e:
-                st.error(f"CSV를 읽는 중 문제가 발생했어요: {e}")
-            else:
-                if parsed.empty:
-                    st.warning("파일에서 종목 데이터를 찾지 못했어요. 형식을 확인해주세요.")
-                else:
-                    trade_date_str = up_date.strftime("%Y-%m-%d")
-                    holdings2, state2, tx2, n, replaced = import_daily_trades(parsed, holdings, state, tx, trade_date_str)
-                    if n == 0:
-                        st.info("이 파일에는 매수/매도 내역이 없어요 (반영할 거래가 없음).")
-                    else:
-                        save_holdings(holdings2)
-                        save_state(state2)
-                        save_transactions(tx2)
-
-                        df5, val5, total5, unreal5 = compute_metrics(holdings2, state2["cash"])
-                        snapshot_history(total5, total5 + unreal5)
-                        snapshot_sector_history(compute_sector_weights(df5))
-
-                        import_log = pd.concat([import_log, pd.DataFrame([{
-                            "hash": file_hash, "날짜": trade_date_str, "처리시각": now_kst_str(),
-                        }])], ignore_index=True)
-                        save_import_log(import_log)
-
-                        msg = f"{n}건의 거래를 반영했어요 ({trade_date_str} 기준)."
-                        if replaced:
-                            msg += f" (같은 날짜에 이미 있던 CSV 기록 {replaced}건은 이번 내용으로 교체됨)"
-                        st.success(msg)
-                        st.rerun()
-
     with st.expander("포트폴리오 다시 계산하기 (문제 생겼을 때만)", expanded=False):
         st.caption("보유 수량/현금이 이상하게 꼬였을 때 사용하세요. 거래 기록(transactions.csv) 전체를 "
                    "처음부터 다시 재생해서 보유종목/현금/실현손익을 정확히 재계산합니다. "
                    "거래 기록 자체는 지워지지 않습니다.")
         if st.button("지금 다시 계산하기", key="rebuild_btn", use_container_width=True):
-            holdings_r, state_r, tx_r = rebuild_portfolio_from_transactions(tx, state.get("initial", 10_000_000.0))
+            holdings_r, state_r, tx_r = rebuild_portfolio_from_transactions(
+                tx, state.get("initial", 10_000_000.0), state.get("fee_rate", 0.0))
             save_holdings(holdings_r)
             save_state(state_r)
             save_transactions(tx_r)
@@ -1486,23 +777,6 @@ with tab_tx:
             snapshot_sector_history(compute_sector_weights(df_r))
             st.success("거래 기록 기준으로 포트폴리오를 다시 계산했어요.")
             st.rerun()
-
-    with st.expander("GitHub 동기화 상태 (진단용)", expanded=False):
-        token_set, repo_set, branch_set, _ = _github_cfg()
-        if not token_set:
-            st.warning("GitHub secrets(token/repo)가 설정되어 있지 않아요 — 지금은 로컬 저장만 되고 있어요.")
-        else:
-            st.caption(f"레포: {repo_set} ({branch_set} 브랜치)로 동기화 중")
-        sync_log = st.session_state.get("github_sync_log", [])
-        if not sync_log:
-            st.caption("아직 이번 세션에서 GitHub 동기화가 시도된 적이 없어요.")
-        else:
-            for entry in reversed(sync_log[-15:]):
-                icon = "✅" if entry["ok"] else "❌"
-                line = f"{icon} [{entry['action']}] {entry['file']}"
-                if entry["detail"]:
-                    line += f" — {entry['detail']}"
-                st.caption(line)
 
     st.divider()
 
