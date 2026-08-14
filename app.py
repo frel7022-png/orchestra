@@ -643,6 +643,27 @@ with tab_port:
             unsafe_allow_html=True,
         )
 
+    # ---- 코스피 / 코스닥 지수 (상단 새로고침에 같이 갱신됨) ----
+    idx = st.session_state.get("index_quotes") or {}
+    if idx:
+        idx_col1, idx_col2 = st.columns(2)
+        for idx_col, (code, label) in zip((idx_col1, idx_col2), (("KOSPI", "코스피"), ("KOSDAQ", "코스닥"))):
+            d = idx.get(code)
+            if not d:
+                continue
+            ic = UP_COLOR if d["change"] >= 0 else DOWN_COLOR
+            isign = "+" if d["change"] >= 0 else ""
+            with idx_col:
+                st.markdown(f"""
+                <div style="background:{T['card']}; border:1px solid {T['border']}; border-radius:8px;
+                            padding:5px 10px; margin-bottom:8px; display:flex; align-items:baseline;
+                            justify-content:space-between; gap:6px;">
+                    <span style="font-size:11px; color:{T['muted']}; flex-shrink:0;">{label}</span>
+                    <span style="font-size:13px; font-weight:700; color:{T['text']};">{d['price']:,.2f}</span>
+                    <span style="font-size:10.5px; color:{ic}; white-space:nowrap;">{isign}{d['change']:,.1f} ({isign}{d['change_pct']:.2f}%)</span>
+                </div>
+                """, unsafe_allow_html=True)
+
     labels = list(SORT_OPTIONS.keys())
     cur_label = next(k for k, v in SORT_OPTIONS.items() if v == st.session_state.sort_mode)
     chosen = st.radio("정렬 기준", labels, index=labels.index(cur_label),
@@ -699,25 +720,6 @@ with tab_port:
                 </div>
             </div>
             """, unsafe_allow_html=True)
-
-    # ---- 코스피 / 코스닥 지수 (상단 새로고침에 같이 갱신됨) ----
-    idx = st.session_state.get("index_quotes") or {}
-    if idx:
-        idx_col1, idx_col2 = st.columns(2)
-        for idx_col, (code, label) in zip((idx_col1, idx_col2), (("KOSPI", "코스피"), ("KOSDAQ", "코스닥"))):
-            d = idx.get(code)
-            if not d:
-                continue
-            ic = UP_COLOR if d["change"] >= 0 else DOWN_COLOR
-            isign = "+" if d["change"] >= 0 else ""
-            with idx_col:
-                st.markdown(f"""
-                <div style="background:{T['card']}; border:1px solid {T['border']}; border-radius:10px; padding:10px 12px; margin-top:12px;">
-                    <div style="font-size:11px; color:{T['muted']};">{label}</div>
-                    <div style="font-size:15px; font-weight:700; color:{T['text']}; margin-top:2px;">{d['price']:,.2f}</div>
-                    <div style="font-size:11.5px; color:{ic};">{isign}{d['change']:,.2f} ({isign}{d['change_pct']:.2f}%)</div>
-                </div>
-                """, unsafe_allow_html=True)
 
 # ==================================================================== #
 # 탭 2: 거래 기록 + 자산 추이
@@ -792,18 +794,16 @@ with tab_tx:
             font=dict(color=T["text"], size=11),
             legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5,
                         bgcolor="rgba(0,0,0,0)"),
-            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"])),
+            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
             yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False,
-                       tickfont=dict(size=9, color=T["muted"]), tickformat=",.0f"),
+                       tickfont=dict(size=9, color=T["muted"]), tickformat=",.0f", fixedrange=True),
             hovermode="x unified",
             dragmode=False,
-            modebar=dict(bgcolor="rgba(0,0,0,0)", color=T["muted2"], activecolor=T["muted"]),
         )
         st.plotly_chart(fig, use_container_width=True, config={
-            "displayModeBar": True,
-            "displaylogo": False,
-            "modeBarButtonsToRemove": ["pan2d", "select2d", "lasso2d", "zoom2d", "autoScale2d",
-                                        "resetScale2d", "toImage"],
+            "displayModeBar": False,
+            "scrollZoom": False,
+            "doubleClick": False,
         })
 
     st.divider()
