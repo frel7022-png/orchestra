@@ -12,6 +12,7 @@ import calendar
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from portfolio_core import (
@@ -723,44 +724,57 @@ with tab_tx:
     </div>
     """, unsafe_allow_html=True)
 
-    # ---- 자산 추이 그래프 ----
+    # ---- 자산 추이 그래프: 일별 실현손익 vs 미실현손실 (Plotly, 확대/hover 가능) ----
     st.markdown("##### 자산 추이")
+
+    tx_realized = tx[tx["구분"] == "매도"].copy()
+    tx_realized["실현손익"] = pd.to_numeric(tx_realized["실현손익"], errors="coerce").fillna(0)
     hist = load_history()
-    if len(hist) >= 1:
-        hist = hist.sort_values("날짜").reset_index(drop=True)
 
-        tx_realized = tx[tx["구분"] == "매도"].copy()
-        tx_realized["실현손익"] = pd.to_numeric(tx_realized["실현손익"], errors="coerce").fillna(0)
-
-        def _cum_realized_as_of(d):
-            return tx_realized.loc[tx_realized["날짜"] <= d, "실현손익"].sum()
-
-        profit_series = hist["날짜"].apply(_cum_realized_as_of)  # 누적 실현손익 (마이너스면 그대로 마이너스)
-        loss_series = hist["조정자산"] - hist["총자산"]           # 미실현 손실 합계
-
-        fig, ax = plt.subplots(figsize=(4.2, 2.6))
-        fig.patch.set_alpha(0)
-        ax.set_facecolor("none")
-        x = range(len(hist))
-        ax.plot(x, profit_series, color=UP_COLOR, linewidth=2.2, marker="o", markersize=3, label="실현손익")
-        ax.plot(x, loss_series, color=DOWN_COLOR, linewidth=2.2, marker="o", markersize=3, label="미실현손실")
-        ax.axhline(0, color=T["muted2"], linewidth=1, linestyle="--")
-        ax.set_xticks(list(x))
-        ax.set_xticklabels([d[5:] for d in hist["날짜"]], fontsize=8, color=T["muted"])
-        ax.tick_params(axis="y", labelsize=8, colors=T["muted"])
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-        ax.grid(axis="y", color=T["border"], linewidth=0.6)
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-        st.markdown(f"""
-        <div class="legend-wrap">
-            <div class="legend-item"><span class="legend-dot" style="background:{UP_COLOR}"></span>누적 실현손익</div>
-            <div class="legend-item"><span class="legend-dot" style="background:{DOWN_COLOR}"></span>미실현손실 합계</div>
-        </div>
-        """, unsafe_allow_html=True)
+    if tx_realized.empty and hist.empty:
+        st.info("거래 기록이 쌓이거나 시세를 새로고침하면 그래프가 그려집니다.")
     else:
-        st.info("시세를 새로고침하면 그날의 자산 스냅샷이 하나씩 쌓여 그래프가 그려집니다.")
+        start_candidates = []
+        if not tx_realized.empty:
+            start_candidates.append(tx_realized["날짜"].min())
+        if not hist.empty:
+            start_candidates.append(hist["날짜"].min())
+        all_dates = pd.date_range(min(start_candidates), today_kst_str()).strftime("%Y-%m-%d").tolist()
+
+        daily_realized = tx_realized.groupby("날짜")["실현손익"].sum()
+        realized_series = [float(daily_realized.get(d, 0.0)) for d in all_dates]
+
+        hist_sorted = hist.sort_values("날짜")
+        unreal_dates = hist_sorted["날짜"].tolist()
+        unreal_series = (hist_sorted["조정자산"] - hist_sorted["총자산"]).tolist()
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=all_dates, y=realized_series, mode="lines+markers", name="일별 실현손익",
+            line=dict(color=UP_COLOR, width=2.5), marker=dict(size=5),
+            hovertemplate="%{x}<br>실현손익 %{y:,.0f}원<extra></extra>",
+        ))
+        fig.add_trace(go.Scatter(
+            x=unreal_dates, y=unreal_series, mode="lines+markers", name="미실현손실",
+            line=dict(color=DOWN_COLOR, width=2.5), marker=dict(size=5),
+            hovertemplate="%{x}<br>미실현손실 %{y:,.0f}원<extra></extra>",
+        ))
+        fig.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
+        fig.update_layout(
+            height=280,
+            margin=dict(l=10, r=10, t=30, b=10),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=T["text"], size=11),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+                        bgcolor="rgba(0,0,0,0)"),
+            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"])),
+            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False,
+                       tickfont=dict(size=9, color=T["muted"]), tickformat=",.0f"),
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.caption("미실현손실은 시세를 새로고침한 날짜부터 하루씩 쌓입니다 (과거 날짜의 시세는 알 수 없음).")
 
     with st.expander("포트폴리오 다시 계산하기 (문제 생겼을 때만)", expanded=False):
         st.caption("보유 수량/현금이 이상하게 꼬였을 때 사용하세요. 거래 기록(transactions.csv) 전체를 "
