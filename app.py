@@ -16,15 +16,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from portfolio_core import (
-    HOLD_COLUMNS, TX_COLUMNS, group_sector,
+    group_sector,
     now_kst, today_kst_str, now_kst_str,
-    load_holdings, save_holdings, load_transactions, save_transactions,
-    load_state, save_state,
+    load_holdings, load_transactions,
+    load_state,
     load_history, snapshot_history,
     load_sector_history, snapshot_sector_history,
     refresh_all_prices, fetch_index_quotes, get_current_prices_for_names, get_closed_out_last_sells,
     compute_metrics, compute_sector_weights,
-    rebuild_portfolio_from_transactions,
 )
 
 UP_COLOR = "#d9364f"    # 국내 관례: 상승/이익 = 빨강
@@ -704,22 +703,21 @@ with tab_port:
     # ---- 코스피 / 코스닥 지수 (상단 새로고침에 같이 갱신됨) ----
     idx = st.session_state.get("index_quotes") or {}
     if idx:
-        tiles_html = '<div style="display:flex; gap:8px; margin-top:12px;">'
-        for code, label in (("KOSPI", "코스피"), ("KOSDAQ", "코스닥")):
+        idx_col1, idx_col2 = st.columns(2)
+        for idx_col, (code, label) in zip((idx_col1, idx_col2), (("KOSPI", "코스피"), ("KOSDAQ", "코스닥"))):
             d = idx.get(code)
             if not d:
                 continue
             ic = UP_COLOR if d["change"] >= 0 else DOWN_COLOR
             isign = "+" if d["change"] >= 0 else ""
-            tiles_html += f"""
-            <div style="flex:1; background:{T['card']}; border:1px solid {T['border']}; border-radius:10px; padding:10px 12px;">
-                <div style="font-size:11px; color:{T['muted']};">{label}</div>
-                <div style="font-size:15px; font-weight:700; color:{T['text']}; margin-top:2px;">{d['price']:,.2f}</div>
-                <div style="font-size:11.5px; color:{ic};">{isign}{d['change']:,.2f} ({isign}{d['change_pct']:.2f}%)</div>
-            </div>
-            """
-        tiles_html += "</div>"
-        st.markdown(tiles_html, unsafe_allow_html=True)
+            with idx_col:
+                st.markdown(f"""
+                <div style="background:{T['card']}; border:1px solid {T['border']}; border-radius:10px; padding:10px 12px; margin-top:12px;">
+                    <div style="font-size:11px; color:{T['muted']};">{label}</div>
+                    <div style="font-size:15px; font-weight:700; color:{T['text']}; margin-top:2px;">{d['price']:,.2f}</div>
+                    <div style="font-size:11.5px; color:{ic};">{isign}{d['change']:,.2f} ({isign}{d['change_pct']:.2f}%)</div>
+                </div>
+                """, unsafe_allow_html=True)
 
 # ==================================================================== #
 # 탭 2: 거래 기록 + 자산 추이
@@ -788,11 +786,11 @@ with tab_tx:
         fig.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig.update_layout(
             height=280,
-            margin=dict(l=10, r=10, t=30, b=10),
+            margin=dict(l=10, r=10, t=10, b=45),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+            legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5,
                         bgcolor="rgba(0,0,0,0)"),
             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"])),
             yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False,
@@ -804,25 +802,9 @@ with tab_tx:
         st.plotly_chart(fig, use_container_width=True, config={
             "displayModeBar": True,
             "displaylogo": False,
-            "modeBarButtonsToRemove": ["pan2d", "select2d", "lasso2d", "zoom2d", "autoScale2d", "toImage"],
+            "modeBarButtonsToRemove": ["pan2d", "select2d", "lasso2d", "zoom2d", "autoScale2d",
+                                        "resetScale2d", "toImage"],
         })
-        st.caption("미실현손실은 시세를 새로고침한 날짜부터 하루씩 쌓입니다 (과거 날짜의 시세는 알 수 없음).")
-
-    with st.expander("포트폴리오 다시 계산하기 (문제 생겼을 때만)", expanded=False):
-        st.caption("보유 수량/현금이 이상하게 꼬였을 때 사용하세요. 거래 기록(transactions.csv) 전체를 "
-                   "처음부터 다시 재생해서 보유종목/현금/실현손익을 정확히 재계산합니다. "
-                   "거래 기록 자체는 지워지지 않습니다.")
-        if st.button("지금 다시 계산하기", key="rebuild_btn", use_container_width=True):
-            holdings_r, state_r, tx_r = rebuild_portfolio_from_transactions(
-                tx, state.get("initial", 10_000_000.0), state.get("fee_rate", 0.0))
-            save_holdings(holdings_r)
-            save_state(state_r)
-            save_transactions(tx_r)
-            df_r, val_r, total_r, unreal_r = compute_metrics(holdings_r, state_r["cash"])
-            snapshot_history(total_r, total_r + unreal_r)
-            snapshot_sector_history(compute_sector_weights(df_r))
-            st.success("거래 기록 기준으로 포트폴리오를 다시 계산했어요.")
-            st.rerun()
 
     st.divider()
 
