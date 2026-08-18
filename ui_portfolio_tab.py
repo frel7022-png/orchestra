@@ -8,7 +8,7 @@ from constants import UP_COLOR, DOWN_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_T
 from portfolio_core import (
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
-    compute_sector_weights,
+    compute_sector_weights, load_watchlist, fetch_quotes,
 )
 
 
@@ -254,6 +254,36 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     for r in filtered
                 )
                 st.markdown(rows_html, unsafe_allow_html=True)
+
+    # ---- Fishing: 관심종목 리스트 (보유/거래와 무관, 순수 관찰용) ----
+    with st.expander("Fishing", expanded=False):
+        watchlist = load_watchlist()
+        if watchlist.empty:
+            st.caption("관심종목이 없습니다. temporary/ 폴더에 리스트 CSV를 넣고 "
+                       "import_watchlist.py로 반영해주세요.")
+        else:
+            if st.button("새로고침", key="fishing_refresh", use_container_width=True):
+                codes = [c for c in watchlist["종목코드"].tolist() if c]
+                quotes, _ = fetch_quotes(codes)
+                st.session_state["fishing_quotes"] = quotes
+                st.session_state["fishing_checked_at"] = now_kst_str()
+                st.rerun()
+
+            quotes = st.session_state.get("fishing_quotes")
+            checked_at = st.session_state.get("fishing_checked_at")
+
+            if quotes is None:
+                st.caption(f"총 {len(watchlist)}개 종목 등록됨. 새로고침을 누르면 현재가를 보여줍니다.")
+            else:
+                if checked_at:
+                    st.caption(f"마지막 조회: {checked_at}")
+                rows_html = "".join(
+                    f'<div class="updown-row"><span class="name">{r["종목명"]}</span>'
+                    f'<span class="pct">{quotes[r["종목코드"]]["price"]:,.0f}</span></div>'
+                    for _, r in watchlist.iterrows() if r["종목코드"] in quotes
+                )
+                st.markdown(rows_html or "<div class='updown-row'>시세를 가져오지 못했습니다.</div>",
+                            unsafe_allow_html=True)
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",

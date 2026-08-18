@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
 todaytrans/
+temporary/
 files/
 .streamlit/secrets.toml

@@ -15,6 +15,7 @@ app.py(웹 화면)와 ingest_daily.py(일일 매매일지 반영 스크립트)�
   "그 날짜의 기존 CSV 기반 거래는 지우고 이번 것으로 교체 후 전체 재생"한다.
 """
 
+import difflib
 import io
 import uuid
 from datetime import datetime
@@ -34,6 +35,7 @@ HISTORY_FILE = HERE / "asset_history.csv"
 SECTOR_HISTORY_FILE = HERE / "sector_history.csv"
 CODE_CACHE_FILE = HERE / "stock_code_cache.csv"
 SECTOR_CACHE_FILE = HERE / "stock_sector_cache.csv"
+WATCHLIST_FILE = HERE / "watchlist.csv"  # "Fishing" 관심종목 리스트 (보유/거래와 무관한 별도 목록)
 
 HOLD_COLUMNS = ["종목명", "종목코드", "섹터", "수량", "평단가", "현재가", "등락률", "업데이트시각"]
 TX_COLUMNS = ["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"]
@@ -259,6 +261,68 @@ def resolve_code(name: str, code_cache: dict | None = None):
     except Exception:
         pass
     return None
+
+
+def match_stock_name(query: str) -> dict | None:
+    """오탈자가 있을 수 있는 종목명을 네이버 자동완성 검색으로 정정한다("동진세미컴" → "동진쎄미켐").
+    네이버 자동완성은 접두어 일치 검색이라 오탈자가 있으면 그대로는 결과가 안 나오는 경우가 많아서,
+    검색이 비면 앞부분 글자 수를 줄여가며(4→3→2→1) 재시도하고, 후보들 중 원래 입력과 가장 비슷한
+    이름을 difflib로 골라낸다. 반환값: {"name": 정정된 종목명, "code": 종목코드} 또는 확신이
+    안 서면(유사도 낮음/후보 없음) None — 이 경우 사람이 직접 확인해야 함."""
+    query = (query or "").strip()
+    if not query:
+        return None
+
+    def search(q):
+        try:
+            r = requests.get("https://ac.stock.naver.com/ac",
+                              params={"q": q, "target": "stock,index,marketindicator,coin,ipo", "st": "111"},
+                              headers={"User-Agent": "Mozilla/5.0"}, timeout=6)
+            r.raise_for_status()
+            items = (r.json() or {}).get("items") or []
+            # 종목코드는 보통 6자리 숫자지만, 우선주 등은 "37550K"처럼 끝이 영문인 6자리 코드도 있음
+            return [it for it in items if len(str(it.get("code") or "").strip()) == 6]
+        except Exception:
+            return []
+
+    candidates = search(query)
+    for n in (4, 3, 2, 1):
+        if candidates:
+            break
+        if len(query) > n:
+            candidates = search(query[:n])
+
+    if not candidates:
+        return None
+
+    def score(it):
+        return difflib.SequenceMatcher(None, query, it.get("name", "")).ratio()
+
+    best = max(candidates, key=score)
+    if score(best) < 0.5:
+        return None
+    return {"name": best.get("name"), "code": str(best.get("code"))}
+
+
+# ------------------------------------------------------------------ #
+# "Fishing" 관심종목 리스트 — 보유/거래와 무관, 순수 관찰용
+# ------------------------------------------------------------------ #
+def load_watchlist() -> pd.DataFrame:
+    if WATCHLIST_FILE.exists():
+        df = pd.read_csv(WATCHLIST_FILE, dtype=str, keep_default_na=False)
+        for col in ("종목명", "종목코드"):
+            if col not in df.columns:
+                df[col] = ""
+        sector_cache = load_sector_cache()
+        df["섹터"] = df["종목명"].map(sector_cache).fillna("미분류")
+        return df[["종목명", "종목코드", "섹터"]]
+    return pd.DataFrame(columns=["종목명", "종목코드", "섹터"])
+
+
+def save_watchlist(names_codes: list[dict]) -> None:
+    """names_codes: [{"종목명": ..., "종목코드": ...}, ...]. 섹터는 저장 안 함(캐시에서 매번 조회)."""
+    pd.DataFrame(names_codes, columns=["종목명", "종목코드"]).drop_duplicates("종목명").to_csv(
+        WATCHLIST_FILE, index=False)
 
 
 def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
