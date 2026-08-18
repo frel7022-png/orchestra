@@ -554,25 +554,26 @@ with tab_port:
                         dates = series["날짜"].tolist()
                         vals = series["비중"].tolist()
 
-                        fig2 = go.Figure()
-                        fig2.add_trace(go.Scatter(
-                            x=dates, y=vals, mode="lines+markers",
-                            line=dict(color="#FF0000", width=3), marker=dict(size=8, color="#FF0000"),
-                            hovertemplate="%{x}<br>비중 %{y:.2f}%<extra></extra>",
-                        ))
+                        svg_w, svg_h = 600, 150
+                        pad_l, pad_r, pad_t, pad_b = 12, 12, 22, 22
+                        plot_w = svg_w - pad_l - pad_r
+                        plot_h = svg_h - pad_t - pad_b
+                        n = len(vals)
+                        xs = [pad_l if n <= 1 else pad_l + plot_w * i / (n - 1) for i in range(n)]
+                        ys = [pad_t + plot_h * (1 - min(v, 40) / 40) for v in vals]
+
+                        poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys))
+                        parts = [f'<svg viewBox="0 0 {svg_w} {svg_h}" style="width:100%;height:auto;display:block;">']
                         if target is not None:
-                            fig2.add_hline(y=target, line_dash="dash", line_color=T["muted2"], line_width=1)
-                        fig2.update_layout(
-                            height=180,
-                            margin=dict(l=10, r=10, t=20, b=10),
-                            paper_bgcolor=T["card"],
-                            plot_bgcolor=T["card"],
-                            font=dict(color=T["text"], size=10),
-                            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-                            yaxis=dict(range=[0, 40], showgrid=True, gridcolor=T["border"],
-                                       tickfont=dict(size=9, color=T["muted"])),
-                        )
-                        st.plotly_chart(fig2, width="stretch", config={"displayModeBar": False})
+                            ty = pad_t + plot_h * (1 - min(target, 40) / 40)
+                            parts.append(f'<line x1="{pad_l}" y1="{ty:.1f}" x2="{svg_w - pad_r}" y2="{ty:.1f}" stroke="{T["muted2"]}" stroke-width="1" stroke-dasharray="4,3" />')
+                        parts.append(f'<polyline points="{poly}" fill="none" stroke="{color}" stroke-width="2.5" />')
+                        for x, y, v, d in zip(xs, ys, vals, dates):
+                            parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="{color}" />')
+                            parts.append(f'<text x="{x:.1f}" y="{y - 9:.1f}" font-size="10" fill="{T["text"]}" text-anchor="middle">{v:.1f}%</text>')
+                            parts.append(f'<text x="{x:.1f}" y="{svg_h - 6}" font-size="9" fill="{T["muted"]}" text-anchor="middle">{d[5:]}</text>')
+                        parts.append('</svg>')
+                        st.markdown("".join(parts), unsafe_allow_html=True)
                     else:
                         st.info("시세 새로고침 또는 거래 기록을 하면 그날의 섹터 비중이 저장되어 추이가 쌓입니다.")
 
