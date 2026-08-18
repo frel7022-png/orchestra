@@ -8,7 +8,7 @@ from constants import UP_COLOR, DOWN_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_T
 from portfolio_core import (
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
-    compute_sector_weights, load_watchlist, fetch_quotes,
+    compute_sector_weights, load_watchlist, load_watchlist_prices, refresh_watchlist_prices,
 )
 
 
@@ -256,6 +256,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 st.markdown(rows_html, unsafe_allow_html=True)
 
     # ---- Fishing: 관심종목 리스트 (보유/거래와 무관, 순수 관찰용) ----
+    # 전일(=마지막으로 새로고침 누른 영업일) 대비 ±3% 이상 움직인 종목만 걸러서 보여준다.
+    # 최초가는 이 종목이 처음 관측된 시점 가격으로 영구 보존(다시 안 바뀜), 기준가는 캘린더
+    # 날짜가 바뀔 때마다 그 직전 최근가로 롤오버됨 — 자세한 건 refresh_watchlist_prices 참고.
     with st.expander("Fishing", expanded=False):
         watchlist = load_watchlist()
         if watchlist.empty:
@@ -263,27 +266,52 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                        "import_watchlist.py로 반영해주세요.")
         else:
             if st.button("새로고침", key="fishing_refresh", use_container_width=True):
-                codes = [c for c in watchlist["종목코드"].tolist() if c]
-                quotes, _ = fetch_quotes(codes)
-                st.session_state["fishing_quotes"] = quotes
-                st.session_state["fishing_checked_at"] = now_kst_str()
+                with st.spinner("관심종목 시세 조회 중..."):
+                    prices_df, quote_errors = refresh_watchlist_prices(watchlist)
+                st.session_state["fishing_prices"] = prices_df
+                for err in quote_errors:
+                    st.warning(err)
                 st.rerun()
 
-            quotes = st.session_state.get("fishing_quotes")
-            checked_at = st.session_state.get("fishing_checked_at")
+            prices_df = st.session_state.get("fishing_prices")
+            if prices_df is None:
+                prices_df = load_watchlist_prices()
 
-            if quotes is None:
-                st.caption(f"총 {len(watchlist)}개 종목 등록됨. 새로고침을 누르면 현재가를 보여줍니다.")
+            if prices_df.empty:
+                st.caption(f"총 {len(watchlist)}개 종목 등록됨. 새로고침을 누르면 추적을 시작합니다.")
             else:
-                if checked_at:
-                    st.caption(f"마지막 조회: {checked_at}")
-                rows_html = "".join(
-                    f'<div class="updown-row"><span class="name">{r["종목명"]}</span>'
-                    f'<span class="pct">{quotes[r["종목코드"]]["price"]:,.0f}</span></div>'
-                    for _, r in watchlist.iterrows() if r["종목코드"] in quotes
-                )
-                st.markdown(rows_html or "<div class='updown-row'>시세를 가져오지 못했습니다.</div>",
-                            unsafe_allow_html=True)
+                FISHING_THRESHOLD = 3.0
+                flagged = []
+                for _, r in prices_df.iterrows():
+                    try:
+                        origin, ref, last = float(r["최초가"]), float(r["기준가"]), float(r["최근가"])
+                    except (TypeError, ValueError):
+                        continue
+                    if not ref:
+                        continue
+                    pct_ref = (last - ref) / ref * 100
+                    if abs(pct_ref) < FISHING_THRESHOLD:
+                        continue
+                    pct_origin = (last - origin) / origin * 100 if origin else 0.0
+                    flagged.append({"종목명": r["종목명"], "현재가": last, "pct_ref": pct_ref, "pct_origin": pct_origin})
+
+                last_checked = prices_df["최근조회일시"].max() if "최근조회일시" in prices_df else ""
+                if last_checked:
+                    st.caption(f"마지막 조회: {last_checked} · 기준일 대비 ±{FISHING_THRESHOLD:.0f}% 이상만 표시")
+
+                if not flagged:
+                    st.caption("전일 대비 ±3% 이상 움직인 종목이 없습니다.")
+                else:
+                    flagged.sort(key=lambda x: abs(x["pct_ref"]), reverse=True)
+                    rows_html = "".join(
+                        f'<div class="updown-row"><span class="name">{f["종목명"]}</span>'
+                        f'<span class="pct" style="color:{UP_COLOR if f["pct_ref"] >= 0 else DOWN_COLOR}">'
+                        f'{f["현재가"]:,.0f}</span>'
+                        f'<span class="detail">최초{"+" if f["pct_origin"] >= 0 else ""}{f["pct_origin"]:.1f}% '
+                        f'· 전일{"+" if f["pct_ref"] >= 0 else ""}{f["pct_ref"]:.1f}%</span></div>'
+                        for f in flagged
+                    )
+                    st.markdown(rows_html, unsafe_allow_html=True)
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",

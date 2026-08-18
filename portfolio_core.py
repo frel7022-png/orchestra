@@ -36,6 +36,7 @@ SECTOR_HISTORY_FILE = HERE / "sector_history.csv"
 CODE_CACHE_FILE = HERE / "stock_code_cache.csv"
 SECTOR_CACHE_FILE = HERE / "stock_sector_cache.csv"
 WATCHLIST_FILE = HERE / "watchlist.csv"  # "Fishing" 관심종목 리스트 (보유/거래와 무관한 별도 목록)
+WATCHLIST_PRICES_FILE = HERE / "watchlist_prices.csv"  # 관심종목별 최초가/전일기준가/최근가 추적
 
 HOLD_COLUMNS = ["종목명", "종목코드", "섹터", "수량", "평단가", "현재가", "등락률", "업데이트시각"]
 TX_COLUMNS = ["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"]
@@ -323,6 +324,70 @@ def save_watchlist(names_codes: list[dict]) -> None:
     """names_codes: [{"종목명": ..., "종목코드": ...}, ...]. 섹터는 저장 안 함(캐시에서 매번 조회)."""
     pd.DataFrame(names_codes, columns=["종목명", "종목코드"]).drop_duplicates("종목명").to_csv(
         WATCHLIST_FILE, index=False)
+
+
+WATCHLIST_PRICE_COLUMNS = ["종목명", "종목코드", "최초가", "최초일시", "기준가", "기준일", "최근가", "최근조회일시"]
+
+
+def load_watchlist_prices() -> pd.DataFrame:
+    if WATCHLIST_PRICES_FILE.exists():
+        df = pd.read_csv(WATCHLIST_PRICES_FILE, dtype=str, keep_default_na=False)
+        for col in WATCHLIST_PRICE_COLUMNS:
+            if col not in df.columns:
+                df[col] = ""
+        return df[WATCHLIST_PRICE_COLUMNS]
+    return pd.DataFrame(columns=WATCHLIST_PRICE_COLUMNS)
+
+
+def save_watchlist_prices(df: pd.DataFrame) -> None:
+    df.to_csv(WATCHLIST_PRICES_FILE, index=False)
+
+
+def refresh_watchlist_prices(watchlist: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """"Fishing" 새로고침 버튼 로직. 관심종목별로 최초가(설치 후 딱 한 번, 영구 보존)/
+    기준가(전 영업일 마지막으로 관측된 가격 — "영업일 기준 하루 전" 비교의 기준)/최근가
+    (이번 조회 가격)를 관리한다.
+
+    "전일 종가"를 별도 API로 가져오는 대신, 캘린더 날짜가 바뀐 뒤 첫 새로고침 때 그 직전까지
+    저장돼있던 최근가를 그대로 기준가로 승격시키는 방식을 쓴다 — 즉 "어제 마지막으로 확인한
+    가격"이 오늘의 비교 기준이 된다. 주말/공휴일도 별도 처리 없이 자연스럽게 맞아떨어진다
+    (금요일 마지막 조회가가 월요일 첫 조회 때 기준가가 됨). 사용자가 15:30(장마감) 이후에
+    들어와서 누르면 그게 그날의 최종 기준가가 되고, 그 전에 누르면 그다음에 누를 때 다시
+    갱신되는 식 — 정확한 장마감가를 보장하진 않지만 실제 사용 패턴(하루에 한두 번 확인)에서는
+    충분한 근사치다."""
+    codes = [c for c in watchlist["종목코드"].tolist() if c]
+    quotes, quote_errors = fetch_quotes(codes)
+
+    prev = load_watchlist_prices().set_index("종목명")
+    today = today_kst_str()
+    now = now_kst_str()
+
+    rows = []
+    for _, r in watchlist.iterrows():
+        name, code = r["종목명"], r["종목코드"]
+        q = quotes.get(code)
+        if q is None:
+            if name in prev.index:
+                rows.append(prev.loc[name].to_dict())
+            continue
+        price = q["price"]
+
+        if name not in prev.index:
+            rows.append({"종목명": name, "종목코드": code, "최초가": price, "최초일시": now,
+                         "기준가": price, "기준일": today, "최근가": price, "최근조회일시": now})
+            continue
+
+        p = prev.loc[name]
+        origin_price, origin_at = float(p["최초가"]), p["최초일시"]
+        ref_price, ref_date = float(p["기준가"]), p["기준일"]
+        if ref_date != today:
+            ref_price, ref_date = float(p["최근가"]), today
+        rows.append({"종목명": name, "종목코드": code, "최초가": origin_price, "최초일시": origin_at,
+                     "기준가": ref_price, "기준일": ref_date, "최근가": price, "최근조회일시": now})
+
+    result = pd.DataFrame(rows, columns=WATCHLIST_PRICE_COLUMNS)
+    save_watchlist_prices(result)
+    return result, quote_errors
 
 
 def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
