@@ -281,8 +281,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             if prices_df.empty:
                 st.caption(f"총 {len(watchlist)}개 종목 등록됨. 새로고침을 누르면 추적을 시작합니다.")
             else:
-                FISHING_THRESHOLD = 3.0
-                flagged = []
+                all_rows = []
                 for _, r in prices_df.iterrows():
                     try:
                         origin, ref, last = float(r["최초가"]), float(r["기준가"]), float(r["최근가"])
@@ -291,12 +290,13 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     if not ref:
                         continue
                     pct_ref = (last - ref) / ref * 100
-                    if abs(pct_ref) < FISHING_THRESHOLD:
-                        continue
                     pct_origin = (last - origin) / origin * 100 if origin else 0.0
-                    flagged.append({"종목명": r["종목명"], "현재가": last, "pct_ref": pct_ref, "pct_origin": pct_origin})
+                    all_rows.append({"종목명": r["종목명"], "현재가": last, "pct_ref": pct_ref, "pct_origin": pct_origin})
 
                 last_checked = prices_df["최근조회일시"].max() if "최근조회일시" in prices_df else ""
+
+                FISHING_THRESHOLD = 3.0
+                flagged = [f for f in all_rows if abs(f["pct_ref"]) >= FISHING_THRESHOLD]
                 if last_checked:
                     st.caption(f"마지막 조회: {last_checked} · 기준일 대비 ±{FISHING_THRESHOLD:.0f}% 이상만 표시")
 
@@ -313,6 +313,25 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         for f in flagged
                     )
                     st.markdown(rows_html, unsafe_allow_html=True)
+
+                # ---- 오늘의 순위: 전일 대비 하락 TOP 20 (부가 정보라 기본은 접혀있음) ----
+                is_rank_open = st.session_state.get("fishing_rank_open", False)
+                if st.button("오늘의 순위" + (" ▾" if is_rank_open else " ▸"),
+                             key="fishing_rank_toggle", use_container_width=True):
+                    st.session_state["fishing_rank_open"] = not is_rank_open
+                    st.rerun()
+                if is_rank_open:
+                    top20 = sorted(all_rows, key=lambda x: x["pct_ref"])[:20]
+                    if not top20:
+                        st.caption("표시할 종목이 없습니다.")
+                    else:
+                        rank_html = "".join(
+                            f'<div class="updown-row"><span class="name">{i}. {f["종목명"]}</span>'
+                            f'<span class="pct" style="color:{UP_COLOR if f["pct_ref"] >= 0 else DOWN_COLOR}">'
+                            f'{"+" if f["pct_ref"] >= 0 else ""}{f["pct_ref"]:.1f}%</span></div>'
+                            for i, f in enumerate(top20, 1)
+                        )
+                        st.markdown(rank_html, unsafe_allow_html=True)
 
             st.divider()
 
