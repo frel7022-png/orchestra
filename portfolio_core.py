@@ -354,7 +354,19 @@ def refresh_watchlist_prices(watchlist: pd.DataFrame) -> tuple[pd.DataFrame, lis
     역산한다: 최초가 = 최근가 / (1 + change_pct/100) — 즉 이 종목을 처음 관측한 "그 시점
     기준 전일 종가"가 영구 기준점이 된다(장중 아무 때 눌러도 정확함, 장마감 이후에 눌러야
     하는 제약이 없어짐 — 이전 버전의 "마지막 클릭가 롤오버" 방식보다 정확해서 교체함,
-    2026-08-18)."""
+    2026-08-18).
+
+    이전 스키마(기준가/기준일 방식)로 저장된 낡은 기록이 남아있을 수 있어서(예: 구버전 코드가
+    떠있던 동안 실제로 눌러서 생긴 파일), 저장된 값에 최초가/전일대비가 없거나 숫자로 못
+    읽으면 "처음 보는 종목"처럼 취급해서 새로 잡는다 — 낡은 값을 무조건 승계하지 않음."""
+    def _valid_prev(row) -> bool:
+        try:
+            float(row.get("최초가", ""))
+            float(row.get("전일대비", ""))
+            return True
+        except (TypeError, ValueError):
+            return False
+
     codes = [c for c in watchlist["종목코드"].tolist() if c]
     quotes, quote_errors = fetch_quotes(codes)
 
@@ -364,14 +376,15 @@ def refresh_watchlist_prices(watchlist: pd.DataFrame) -> tuple[pd.DataFrame, lis
     rows = []
     for _, r in watchlist.iterrows():
         name, code = r["종목명"], r["종목코드"]
+        has_valid_prev = name in prev.index and _valid_prev(prev.loc[name])
         q = quotes.get(code)
         if q is None:
-            if name in prev.index:
+            if has_valid_prev:
                 rows.append(prev.loc[name].to_dict())
             continue
         price, change_pct = q["price"], q["change_pct"]
 
-        if name not in prev.index:
+        if not has_valid_prev:
             prev_close = price / (1 + change_pct / 100) if change_pct != -100 else price
             rows.append({"종목명": name, "종목코드": code, "최초가": prev_close, "최초일시": now,
                          "최근가": price, "최근조회일시": now, "전일대비": change_pct})
