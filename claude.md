@@ -77,23 +77,26 @@ GitHub 레포와 동기화되어 Streamlit Cloud 재배포에도 데이터가 �
 
 ---
 
-## 2. 권장 파일 구조 (모듈 분리)
+## 2. 실제 파일 구조 (2026-08-18 리팩터로 적용됨)
 
-이전 버전은 `app.py` 단일 파일 1,600줄+ 로 모든 게 섞여 있었다. 새로 시작할 때는 아래처럼 나눌 것:
+`app.py`가 919줄에 함수 2개뿐인 절차형 스크립트였던 걸 아래처럼 분리했다 — 이제 실제로
+이렇게 되어있다 (예전엔 이 섹션이 "권장안"이었는데, 지금은 실제 구조):
 
 ```
-app.py                 # 진입점. 페이지 설정, 탭 조립만. 로직 없음.
-constants.py            # 섹터 그룹 매핑, 목표 비중, 색상 팔레트, 종목명→섹터 기본 매핑
-storage.py               # 로컬 CSV 로드/저장 + GitHub 동기화 (커밋/fetch), secrets 읽기
-market_data.py            # 네이버 종목코드 검색, 시세 조회(청크 배치), 종목코드 캐시
-portfolio.py               # apply_transaction, rebuild_portfolio_from_transactions, compute_metrics
-csv_import.py                # 증권사 매매일지 파싱 + "같은 날짜 교체" 임포트 로직
-ui_portfolio_tab.py            # 포트폴리오 탭 화면 (요약, 섹터비중, 종목현황, Up/Down)
-ui_transactions_tab.py          # 거래기록 탭 화면 (CSV 업로드, 재계산, 섹터수정, 캘린더)
+app.py                 # 진입점. 페이지 설정, CSS, 로그인, 데이터 로드, 새로고침 핸들러, 탭 조립만.
+constants.py            # 색상/팔레트/섹터 목표비중/테마 — 순수 데이터, 로직 없음.
+portfolio_core.py        # 데이터 계층 전체(로드/저장/replay/시세조회/CSV파싱/지표계산).
+                          #   ingest_daily.py와 공유해서 쓰므로 일부러 안 쪼갬 — 이미 함수 단위로
+                          #   잘 분리돼 있고, storage/market_data/portfolio/csv_import로 더
+                          #   쪼개는 건 이 파일 규모(약 670줄)에 비해 실익이 적다고 판단함.
+ui_portfolio_tab.py       # render_portfolio_tab() — 요약카드/섹터비중/Up-Down/종목현황.
+ui_transactions_tab.py     # render_transactions_tab() — 실현손익 그래프/거래 캘린더.
+ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-2 참고).
 ```
 
-각 파일은 단일 책임을 갖고, `storage.py`의 load/save 함수들이 GitHub 동기화를 내부적으로
-처리하므로 다른 모듈은 그냥 `save_holdings(df)`처럼 호출만 하면 된다.
+`portfolio.py`/`storage.py`/`market_data.py`/`csv_import.py`로의 추가 분리는 하지 않기로
+했음 — `portfolio_core.py` 하나로 충분히 관리 가능하다고 판단(2026-08-18). 앞으로 이 파일이
+많이 커지면 그때 다시 고려.
 
 ---
 
@@ -146,11 +149,21 @@ ui_transactions_tab.py          # 거래기록 탭 화면 (CSV 업로드, 재계
 
 ### 6-1. 이 저장소는 GitHub과 수동으로 동기화된다 (자동 아님)
 - 위 1-5 / 2번 섹션은 "이상적으로는 storage.py가 앱 안에서 자동으로 GitHub API 커밋"을 권장하지만,
-  **실제 구현은 이렇게 되어있지 않다.** `.streamlit/secrets.toml`도 없고, 앱 코드(`app.py`,
-  `portfolio_core.py`) 어디에도 GitHub 연동 로직이 없다.
+  **실제 구현은 이렇게 되어있지 않다.** 앱 코드(`app.py`, `portfolio_core.py`, `ui_*.py`) 어디에도
+  GitHub 연동 로직이 없다.
 - 실제로는 **세션(어시스턴트)이 데이터 파일을 바꿀 때마다 직접 `git add/commit/push`**를 실행해서
   origin(`https://github.com/frel7022-png/orchestra.git`, main 브랜치)에 반영해왔다.
   "GitHub에 올려줘"는 앱이 아니라 세션이 매번 수행해야 하는 수동 단계.
+
+### 6-1-1. 로컬에서 `streamlit run app.py`를 돌리려면 빈 secrets.toml이 필요함
+- `check_password()`가 `"app_password" not in st.secrets`를 검사하는데, **secrets.toml 파일
+  자체가 아예 없으면** Streamlit이 빈 걸로 처리하지 않고 `StreamlitSecretNotFoundError`를 던져서
+  로컬 실행이 통째로 안 된다 (배포 환경인 Streamlit Cloud에는 비밀번호용 secrets가 이미 설정돼
+  있어서 이 문제가 없었고, 로컬에서 한 번도 제대로 안 돌려봤던 걸로 보임 — 2026-08-18 리팩터
+  검증 중 발견).
+- 해결: `.streamlit/secrets.toml`을 로컬에 빈 파일(또는 주석만)로 만들어두면 로그인 게이트가
+  자동 통과된다. 이 파일은 `.gitignore`에 등록돼 있어 git에는 안 올라감 — 실수로 비밀번호나
+  GitHub 토큰이 든 진짜 secrets.toml을 커밋할 위험도 같이 막아줌.
 
 ### 6-2. 일일 매매일지 반영 흐름 (todaytrans/)
 - `todaytrans/` 폴더는 로컬 전용 스테이징 폴더 (`.gitignore`에 등록, git에는 안 올라감).
