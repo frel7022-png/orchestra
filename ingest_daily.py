@@ -52,8 +52,10 @@ def main():
         sys.exit(0)
 
     state = core.load_state()
+    prior_holdings = core.load_holdings()
     holdings2, state2, tx2 = core.rebuild_portfolio_from_transactions(
-        tx2, state.get("initial", 10_000_000.0), state.get("fee_rate", 0.0))
+        tx2, state.get("initial", 10_000_000.0), state.get("fee_rate", 0.0),
+        prior_holdings=prior_holdings)
 
     core.save_transactions(tx2)
     core.save_holdings(holdings2)
