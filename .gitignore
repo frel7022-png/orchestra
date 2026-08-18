@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 todaytrans/
 files/
+.streamlit/secrets.toml
