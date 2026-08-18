@@ -656,11 +656,13 @@ with tab_port:
             with idx_col:
                 st.markdown(f"""
                 <div style="background:{T['card']}; border:1px solid {T['border']}; border-radius:8px;
-                            padding:5px 10px; margin-bottom:8px; display:flex; align-items:baseline;
+                            padding:5px 10px; margin-bottom:8px; display:flex; align-items:center;
                             justify-content:space-between; gap:6px;">
                     <span style="font-size:11px; color:{T['muted']}; flex-shrink:0;">{label}</span>
                     <span style="font-size:13px; font-weight:700; color:{T['text']};">{d['price']:,.2f}</span>
-                    <span style="font-size:10.5px; color:{ic}; white-space:nowrap;">{isign}{d['change']:,.1f} ({isign}{d['change_pct']:.2f}%)</span>
+                    <span style="font-size:10px; color:{ic}; line-height:1.25; text-align:right; flex-shrink:0;">
+                        {isign}{d['change']:,.1f}<br>{isign}{d['change_pct']:.2f}%
+                    </span>
                 </div>
                 """, unsafe_allow_html=True)
 
