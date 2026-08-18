@@ -572,7 +572,7 @@ with tab_port:
                             yaxis=dict(range=[0, 40], showgrid=True, gridcolor=T["border"],
                                        tickfont=dict(size=9, color=T["muted"])),
                         )
-                        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+                        st.plotly_chart(fig2, width="stretch", config={"displayModeBar": False})
                     else:
                         st.info("시세 새로고침 또는 거래 기록을 하면 그날의 섹터 비중이 저장되어 추이가 쌓입니다.")
 
@@ -806,7 +806,7 @@ with tab_tx:
             hovermode="x unified",
             dragmode=False,
         )
-        st.plotly_chart(fig, use_container_width=True, config={
+        st.plotly_chart(fig, width="stretch", config={
             "displayModeBar": False,
             "scrollZoom": False,
             "doubleClick": False,
