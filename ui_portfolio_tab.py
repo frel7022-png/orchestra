@@ -257,9 +257,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 st.markdown(rows_html, unsafe_allow_html=True)
 
     # ---- Fishing: 관심종목 리스트 (보유/거래와 무관, 순수 관찰용) ----
-    # 전일(=마지막으로 새로고침 누른 영업일) 대비 ±3% 이상 움직인 종목만 걸러서 보여준다.
-    # 최초가는 이 종목이 처음 관측된 시점 가격으로 영구 보존(다시 안 바뀜), 기준가는 캘린더
-    # 날짜가 바뀔 때마다 그 직전 최근가로 롤오버됨 — 자세한 건 refresh_watchlist_prices 참고.
+    # 최초가(처음 관측된 시점의 전일 종가, 영구 보존)/전일대비(네이버가 주는 정식 전일 종가
+    # 대비 등락률)를 기준으로 ±3% 이상 움직인 종목만 걸러서 보여준다 — 자세한 건
+    # refresh_watchlist_prices 참고.
     with st.expander("Fishing", expanded=False):
         watchlist = load_watchlist()
         if watchlist.empty:
@@ -284,26 +284,35 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 all_rows = []
                 for _, r in prices_df.iterrows():
                     try:
-                        origin, ref, last = float(r["최초가"]), float(r["기준가"]), float(r["최근가"])
+                        origin, last, pct_ref = float(r["최초가"]), float(r["최근가"]), float(r["전일대비"])
                     except (TypeError, ValueError):
                         continue
-                    if not ref:
-                        continue
-                    pct_ref = (last - ref) / ref * 100
                     pct_origin = (last - origin) / origin * 100 if origin else 0.0
                     all_rows.append({"종목명": r["종목명"], "현재가": last, "pct_ref": pct_ref, "pct_origin": pct_origin})
 
                 last_checked = prices_df["최근조회일시"].max() if "최근조회일시" in prices_df else ""
+                if last_checked:
+                    st.caption(f"마지막 조회: {last_checked}")
+
+                fc1, fc2 = st.columns(2)
+                with fc1:
+                    fishing_basis = st.radio("기준", ["누적", "전일"], horizontal=True,
+                                              label_visibility="collapsed", key="fishing_basis")
+                with fc2:
+                    fishing_dir = st.radio("방향", ["DOWN", "UP"], horizontal=True,
+                                            label_visibility="collapsed", key="fishing_dir")
 
                 FISHING_THRESHOLD = 3.0
-                flagged = [f for f in all_rows if abs(f["pct_ref"]) >= FISHING_THRESHOLD]
-                if last_checked:
-                    st.caption(f"마지막 조회: {last_checked} · 기준일 대비 ±{FISHING_THRESHOLD:.0f}% 이상만 표시")
+                basis_key = "pct_origin" if fishing_basis == "누적" else "pct_ref"
+                if fishing_dir == "DOWN":
+                    flagged = [f for f in all_rows if f[basis_key] <= -FISHING_THRESHOLD]
+                else:
+                    flagged = [f for f in all_rows if f[basis_key] >= FISHING_THRESHOLD]
+                flagged.sort(key=lambda x: abs(x[basis_key]), reverse=True)
 
                 if not flagged:
-                    st.caption("전일 대비 ±3% 이상 움직인 종목이 없습니다.")
+                    st.caption(f"{fishing_basis} 기준 {fishing_dir} ±{FISHING_THRESHOLD:.0f}% 이상 종목이 없습니다.")
                 else:
-                    flagged.sort(key=lambda x: abs(x["pct_ref"]), reverse=True)
                     rows_html = "".join(
                         f'<div class="updown-row"><span class="name">{f["종목명"]}</span>'
                         f'<span class="pct" style="color:{UP_COLOR if f["pct_origin"] >= 0 else DOWN_COLOR}">'
@@ -313,25 +322,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         for f in flagged
                     )
                     st.markdown(rows_html, unsafe_allow_html=True)
-
-                # ---- 오늘의 순위: 전일 대비 하락 TOP 20 (부가 정보라 기본은 접혀있음) ----
-                is_rank_open = st.session_state.get("fishing_rank_open", False)
-                if st.button("오늘의 순위" + (" ▾" if is_rank_open else " ▸"),
-                             key="fishing_rank_toggle", use_container_width=True):
-                    st.session_state["fishing_rank_open"] = not is_rank_open
-                    st.rerun()
-                if is_rank_open:
-                    top20 = sorted(all_rows, key=lambda x: x["pct_ref"])[:20]
-                    if not top20:
-                        st.caption("표시할 종목이 없습니다.")
-                    else:
-                        rank_html = "".join(
-                            f'<div class="updown-row"><span class="name">{i}. {f["종목명"]}</span>'
-                            f'<span class="pct" style="color:{UP_COLOR if f["pct_ref"] >= 0 else DOWN_COLOR}">'
-                            f'{"+" if f["pct_ref"] >= 0 else ""}{f["pct_ref"]:.1f}%</span></div>'
-                            for i, f in enumerate(top20, 1)
-                        )
-                        st.markdown(rank_html, unsafe_allow_html=True)
 
             st.divider()
 

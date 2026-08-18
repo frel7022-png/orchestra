@@ -327,7 +327,7 @@ def save_watchlist(names_codes: list[dict]) -> None:
         WATCHLIST_FILE, index=False)
 
 
-WATCHLIST_PRICE_COLUMNS = ["종목명", "종목코드", "최초가", "최초일시", "기준가", "기준일", "최근가", "최근조회일시"]
+WATCHLIST_PRICE_COLUMNS = ["종목명", "종목코드", "최초가", "최초일시", "최근가", "최근조회일시", "전일대비"]
 
 
 def load_watchlist_prices() -> pd.DataFrame:
@@ -345,22 +345,20 @@ def save_watchlist_prices(df: pd.DataFrame) -> None:
 
 
 def refresh_watchlist_prices(watchlist: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-    """"Fishing" 새로고침 버튼 로직. 관심종목별로 최초가(설치 후 딱 한 번, 영구 보존)/
-    기준가(전 영업일 마지막으로 관측된 가격 — "영업일 기준 하루 전" 비교의 기준)/최근가
-    (이번 조회 가격)를 관리한다.
+    """"Fishing" 새로고침 버튼 로직. 관심종목별로 최초가(설치 후 딱 한 번 관측된 시점의
+    "전일 종가" — 영구 보존)/최근가(이번 조회 가격)/전일대비(네이버가 이미 계산해서 주는
+    전일 종가 대비 등락률)를 관리한다.
 
-    "전일 종가"를 별도 API로 가져오는 대신, 캘린더 날짜가 바뀐 뒤 첫 새로고침 때 그 직전까지
-    저장돼있던 최근가를 그대로 기준가로 승격시키는 방식을 쓴다 — 즉 "어제 마지막으로 확인한
-    가격"이 오늘의 비교 기준이 된다. 주말/공휴일도 별도 처리 없이 자연스럽게 맞아떨어진다
-    (금요일 마지막 조회가가 월요일 첫 조회 때 기준가가 됨). 사용자가 15:30(장마감) 이후에
-    들어와서 누르면 그게 그날의 최종 기준가가 되고, 그 전에 누르면 그다음에 누를 때 다시
-    갱신되는 식 — 정확한 장마감가를 보장하진 않지만 실제 사용 패턴(하루에 한두 번 확인)에서는
-    충분한 근사치다."""
+    "전일 종가"를 직접 추적/근사하는 대신, 네이버 실시간 시세 API가 매번 응답에 같이 주는
+    `change_pct`(등락률 — 정식 전일 종가 대비 %)를 그대로 신뢰한다. 최초가도 이 값으로
+    역산한다: 최초가 = 최근가 / (1 + change_pct/100) — 즉 이 종목을 처음 관측한 "그 시점
+    기준 전일 종가"가 영구 기준점이 된다(장중 아무 때 눌러도 정확함, 장마감 이후에 눌러야
+    하는 제약이 없어짐 — 이전 버전의 "마지막 클릭가 롤오버" 방식보다 정확해서 교체함,
+    2026-08-18)."""
     codes = [c for c in watchlist["종목코드"].tolist() if c]
     quotes, quote_errors = fetch_quotes(codes)
 
     prev = load_watchlist_prices().set_index("종목명")
-    today = today_kst_str()
     now = now_kst_str()
 
     rows = []
@@ -371,20 +369,17 @@ def refresh_watchlist_prices(watchlist: pd.DataFrame) -> tuple[pd.DataFrame, lis
             if name in prev.index:
                 rows.append(prev.loc[name].to_dict())
             continue
-        price = q["price"]
+        price, change_pct = q["price"], q["change_pct"]
 
         if name not in prev.index:
-            rows.append({"종목명": name, "종목코드": code, "최초가": price, "최초일시": now,
-                         "기준가": price, "기준일": today, "최근가": price, "최근조회일시": now})
+            prev_close = price / (1 + change_pct / 100) if change_pct != -100 else price
+            rows.append({"종목명": name, "종목코드": code, "최초가": prev_close, "최초일시": now,
+                         "최근가": price, "최근조회일시": now, "전일대비": change_pct})
             continue
 
         p = prev.loc[name]
-        origin_price, origin_at = float(p["최초가"]), p["최초일시"]
-        ref_price, ref_date = float(p["기준가"]), p["기준일"]
-        if ref_date != today:
-            ref_price, ref_date = float(p["최근가"]), today
-        rows.append({"종목명": name, "종목코드": code, "최초가": origin_price, "최초일시": origin_at,
-                     "기준가": ref_price, "기준일": ref_date, "최근가": price, "최근조회일시": now})
+        rows.append({"종목명": name, "종목코드": code, "최초가": float(p["최초가"]), "최초일시": p["최초일시"],
+                     "최근가": price, "최근조회일시": now, "전일대비": change_pct})
 
     result = pd.DataFrame(rows, columns=WATCHLIST_PRICE_COLUMNS)
     save_watchlist_prices(result)
