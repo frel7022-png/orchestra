@@ -491,6 +491,7 @@ with tab_port:
 
         # ---- 섹터별 현재 비중 막대 (주식 총자산 대비, 예수금 제외) + 목표 비중 ----
         if stock_weight_rank:
+            sec_stocks = df_grp.groupby("섹터그룹")["종목명"].apply(lambda s: ", ".join(s)).to_dict()
             sec_hist = load_sector_history()
             prev_weights = {}
             if not sec_hist.empty:
@@ -544,31 +545,39 @@ with tab_port:
                     )
 
                 if is_open:
+                    st.markdown(
+                        f'<div class="sector-stock-names">{sec_stocks.get(name, "")}</div>',
+                        unsafe_allow_html=True,
+                    )
                     if not sec_hist.empty and name in sec_hist["섹터그룹"].unique():
                         series = sec_hist[sec_hist["섹터그룹"] == name].sort_values("날짜")
                         dates = series["날짜"].tolist()
                         vals = series["비중"].tolist()
 
-                        fig2, ax2 = plt.subplots(figsize=(4.6, 2.2))
-                        fig2.patch.set_alpha(0)
-                        ax2.set_facecolor("none")
-                        x2 = list(range(len(dates)))
-                        ax2.plot(x2, vals, color=color, linewidth=2.0, marker="o", markersize=3)
-                        ax2.plot([x2[-1]], [vals[-1]], marker="o", markersize=7, color=color)
-                        for xi, yi in zip(x2, vals):
-                            ax2.annotate(f"{yi:.1f}%", (xi, yi), textcoords="offset points", xytext=(0, 7),
-                                         ha="center", fontsize=8, color=T["text"])
+                        fig2 = go.Figure()
+                        fig2.add_trace(go.Scatter(
+                            x=dates, y=vals, mode="lines+markers+text",
+                            line=dict(color=color, width=2.2), marker=dict(size=6, color=color),
+                            text=[f"{v:.1f}%" for v in vals], textposition="top center",
+                            textfont=dict(size=9, color=T["text"]),
+                            hovertemplate="%{x}<br>비중 %{y:.2f}%<extra></extra>",
+                        ))
                         if target is not None:
-                            ax2.axhline(target, color=T["muted2"], linewidth=1, linestyle="--")
-                        ax2.set_ylim(0, 40)
-                        ax2.set_xticks(x2)
-                        ax2.set_xticklabels([d[5:] for d in dates], fontsize=8, color=T["muted"])
-                        ax2.tick_params(axis="y", labelsize=8, colors=T["muted"])
-                        for spine in ax2.spines.values():
-                            spine.set_visible(False)
-                        ax2.grid(axis="y", color=T["border"], linewidth=0.6)
-                        st.pyplot(fig2, use_container_width=True)
-                        plt.close(fig2)
+                            fig2.add_hline(y=target, line_dash="dash", line_color=T["muted2"], line_width=1)
+                        fig2.update_layout(
+                            height=180,
+                            margin=dict(l=10, r=10, t=20, b=10),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font=dict(color=T["text"], size=10),
+                            showlegend=False,
+                            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                            yaxis=dict(range=[0, 40], showgrid=True, gridcolor=T["border"],
+                                       tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                        )
+                        st.plotly_chart(fig2, use_container_width=True, key=f"sector_trend_{name}", config={
+                            "displayModeBar": False, "scrollZoom": False, "doubleClick": False,
+                        })
                     else:
                         st.info("시세 새로고침 또는 거래 기록을 하면 그날의 섹터 비중이 저장되어 추이가 쌓입니다.")
 
