@@ -305,10 +305,10 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     flagged.sort(key=lambda x: abs(x["pct_ref"]), reverse=True)
                     rows_html = "".join(
                         f'<div class="updown-row"><span class="name">{f["종목명"]}</span>'
+                        f'<span class="pct" style="color:{UP_COLOR if f["pct_origin"] >= 0 else DOWN_COLOR}">'
+                        f'{"+" if f["pct_origin"] >= 0 else ""}{f["pct_origin"]:.1f}%</span>'
                         f'<span class="pct" style="color:{UP_COLOR if f["pct_ref"] >= 0 else DOWN_COLOR}">'
-                        f'{f["현재가"]:,.0f}</span>'
-                        f'<span class="detail">최초{"+" if f["pct_origin"] >= 0 else ""}{f["pct_origin"]:.1f}% '
-                        f'· 전일{"+" if f["pct_ref"] >= 0 else ""}{f["pct_ref"]:.1f}%</span></div>'
+                        f'{"+" if f["pct_ref"] >= 0 else ""}{f["pct_ref"]:.1f}%</span></div>'
                         for f in flagged
                     )
                     st.markdown(rows_html, unsafe_allow_html=True)
