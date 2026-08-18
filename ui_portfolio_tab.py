@@ -9,6 +9,7 @@ from portfolio_core import (
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
     compute_sector_weights, load_watchlist, load_watchlist_prices, refresh_watchlist_prices,
+    find_pattern_matches,
 )
 
 
@@ -312,6 +313,58 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         for f in flagged
                     )
                     st.markdown(rows_html, unsafe_allow_html=True)
+
+            st.divider()
+
+            # ---- 패턴 검색: "하락 후 횡보" 종목 찾기 (당일 스크리너와 별개, 가끔 탐색용) ----
+            st.markdown("###### 패턴 검색")
+            pc1, pc2 = st.columns(2)
+            with pc1:
+                decline_months = st.select_slider(
+                    "하락 기간", options=[1, 2, 3, 6], value=2,
+                    format_func=lambda m: f"{m}개월", key="pattern_decline_months")
+                decline_pct = st.slider("하락폭 기준", 10, 40, 15, step=1,
+                                         format="%d%%", key="pattern_decline_pct")
+            with pc2:
+                flat_weeks = st.select_slider(
+                    "최근 횡보 기간", options=[1, 2, 3, 4], value=2,
+                    format_func=lambda w: f"{w}주", key="pattern_flat_weeks")
+                flat_pct = st.slider("횡보 범위 기준", 2, 15, 5, step=1,
+                                      format="±%d%%", key="pattern_flat_pct")
+
+            if st.button("검색", key="pattern_search", use_container_width=True):
+                st.session_state["pattern_matches"] = find_pattern_matches(
+                    decline_months, decline_pct, flat_weeks, flat_pct)
+
+            matches = st.session_state.get("pattern_matches")
+            if matches is None:
+                st.caption("조건을 고르고 검색을 누르면 결과가 여기 표시됩니다 "
+                           "(가격 히스토리가 며칠 이상 쌓여야 의미 있는 결과가 나옵니다).")
+            elif not matches:
+                st.caption("조건에 맞는 종목이 없습니다.")
+            else:
+                for m in matches:
+                    series = m["series"]
+                    lo, hi = min(series), max(series)
+                    rng = hi - lo or 1
+                    pts = " ".join(
+                        f"{i / (len(series) - 1) * 100 if len(series) > 1 else 0:.1f},"
+                        f"{30 - (v - lo) / rng * 28:.1f}"
+                        for i, v in enumerate(series)
+                    )
+                    spark_color = DOWN_COLOR if series[-1] < series[0] else UP_COLOR
+                    st.markdown(
+                        f'<div class="updown-row" style="flex-direction:column;align-items:stretch;gap:2px;">'
+                        f'<div style="display:flex;justify-content:space-between;">'
+                        f'<span class="name">{m["종목명"]}</span>'
+                        f'<span class="detail">고점대비 {m["drawdown_pct"]:.1f}% · '
+                        f'최근{flat_weeks}주 ±{m["flat_range_pct"]:.1f}%</span></div>'
+                        f'<svg viewBox="0 0 100 30" preserveAspectRatio="none" '
+                        f'style="width:100%;height:32px;display:block;">'
+                        f'<polyline points="{pts}" fill="none" stroke="{spark_color}" '
+                        f'stroke-width="2" vector-effect="non-scaling-stroke" /></svg></div>',
+                        unsafe_allow_html=True,
+                    )
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",

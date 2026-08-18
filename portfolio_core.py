@@ -37,6 +37,7 @@ CODE_CACHE_FILE = HERE / "stock_code_cache.csv"
 SECTOR_CACHE_FILE = HERE / "stock_sector_cache.csv"
 WATCHLIST_FILE = HERE / "watchlist.csv"  # "Fishing" 관심종목 리스트 (보유/거래와 무관한 별도 목록)
 WATCHLIST_PRICES_FILE = HERE / "watchlist_prices.csv"  # 관심종목별 최초가/전일기준가/최근가 추적
+WATCHLIST_HISTORY_FILE = HERE / "watchlist_price_history.csv"  # 관심종목별 일별 가격 누적(패턴 검색용)
 
 HOLD_COLUMNS = ["종목명", "종목코드", "섹터", "수량", "평단가", "현재가", "등락률", "업데이트시각"]
 TX_COLUMNS = ["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"]
@@ -387,7 +388,79 @@ def refresh_watchlist_prices(watchlist: pd.DataFrame) -> tuple[pd.DataFrame, lis
 
     result = pd.DataFrame(rows, columns=WATCHLIST_PRICE_COLUMNS)
     save_watchlist_prices(result)
+    snapshot_watchlist_history(result)
     return result, quote_errors
+
+
+def load_watchlist_history() -> pd.DataFrame:
+    if WATCHLIST_HISTORY_FILE.exists():
+        return pd.read_csv(WATCHLIST_HISTORY_FILE, dtype={"종목코드": str})
+    return pd.DataFrame(columns=["날짜", "종목코드", "종목명", "종가"])
+
+
+def snapshot_watchlist_history(result: pd.DataFrame) -> None:
+    """"Fishing" 새로고침마다 오늘자 종가를 관심종목별로 한 줄씩 쌓는다(패턴 검색용 원자재).
+    같은 날 여러 번 눌러도 그날 마지막 값으로 덮어써진다(asset_history.csv 등과 동일한
+    스냅샷 패턴)."""
+    if result.empty:
+        return
+    hist = load_watchlist_history()
+    today = today_kst_str()
+    hist = hist[hist["날짜"] != today]
+    today_rows = pd.DataFrame({
+        "날짜": today,
+        "종목코드": result["종목코드"],
+        "종목명": result["종목명"],
+        "종가": result["최근가"],
+    })
+    hist = pd.concat([hist, today_rows], ignore_index=True)
+    hist.to_csv(WATCHLIST_HISTORY_FILE, index=False)
+
+
+def find_pattern_matches(decline_months: int, decline_pct: float,
+                          flat_weeks: int, flat_pct: float) -> list[dict]:
+    """"하락 후 횡보" 패턴 검색. 최근 decline_months개월 안에서 고점 대비 decline_pct% 이상
+    빠진 적이 있고, 최근 flat_weeks주간 가격 변동폭(최고-최저 대비 평균)이 flat_pct% 이내인
+    종목을 찾는다. 반환: [{"종목명", "drawdown_pct"(고점 대비 최대 하락률, 음수),
+    "flat_range_pct"(최근 구간 변동폭), "series"(스파크라인용 가격 리스트)}] — 하락폭 큰
+    순으로 정렬. 개월 수는 30일/주는 7일로 근사 계산(달력상 정확한 개월 계산 아님)."""
+    hist = load_watchlist_history()
+    if hist.empty:
+        return []
+    hist = hist.copy()
+    hist["날짜"] = pd.to_datetime(hist["날짜"])
+    last_date = hist["날짜"].max()
+    cutoff = last_date - pd.Timedelta(days=decline_months * 30)
+    flat_cutoff = last_date - pd.Timedelta(days=flat_weeks * 7)
+
+    matches = []
+    for name, g in hist.groupby("종목명"):
+        g = g[g["날짜"] >= cutoff].sort_values("날짜")
+        if len(g) < 3:
+            continue
+        prices = g["종가"].astype(float).tolist()
+
+        running_max = prices[0]
+        max_drawdown = 0.0
+        for p in prices:
+            running_max = max(running_max, p)
+            max_drawdown = min(max_drawdown, (p - running_max) / running_max * 100)
+        if max_drawdown > -decline_pct:
+            continue
+
+        flat_prices = g.loc[g["날짜"] >= flat_cutoff, "종가"].astype(float).tolist()
+        if len(flat_prices) < 2:
+            continue
+        flat_avg = sum(flat_prices) / len(flat_prices)
+        flat_range = (max(flat_prices) - min(flat_prices)) / flat_avg * 100 if flat_avg else 0.0
+        if flat_range > flat_pct:
+            continue
+
+        matches.append({"종목명": name, "drawdown_pct": max_drawdown,
+                         "flat_range_pct": flat_range, "series": prices})
+
+    matches.sort(key=lambda m: m["drawdown_pct"])
+    return matches
 
 
 def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
