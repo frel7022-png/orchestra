@@ -417,25 +417,24 @@ def snapshot_watchlist_history(result: pd.DataFrame) -> None:
     hist.to_csv(WATCHLIST_HISTORY_FILE, index=False)
 
 
-def find_pattern_matches(decline_months: int, decline_pct: float,
-                          flat_weeks: int, flat_pct: float) -> list[dict]:
-    """"하락 후 횡보" 패턴 검색. 최근 decline_months개월 안에서 고점 대비 decline_pct% 이상
-    빠진 적이 있고, 최근 flat_weeks주간 가격 변동폭(최고-최저 대비 평균)이 flat_pct% 이내인
-    종목을 찾는다. 반환: [{"종목명", "drawdown_pct"(고점 대비 최대 하락률, 음수),
+def find_pattern_matches(decline_days: int, decline_pct: float,
+                          flat_days: int, flat_pct: float) -> list[dict]:
+    """"하락 후 횡보" 패턴 검색. 최근 decline_days**영업일**(=Fishing 새로고침으로 쌓인
+    히스토리 행 수) 안에서 고점 대비 decline_pct% 이상 빠진 적이 있고, 그중 가장 최근
+    flat_days영업일간 가격 변동폭(최고-최저 대비 평균)이 flat_pct% 이내인 종목을 찾는다.
+    달력 날짜가 아니라 **행 개수로 세는 영업일 기준**이라 정확함(새로고침을 매 영업일
+    누른다는 전제). 반환: [{"종목명", "drawdown_pct"(고점 대비 최대 하락률, 음수),
     "flat_range_pct"(최근 구간 변동폭), "series"(스파크라인용 가격 리스트)}] — 하락폭 큰
-    순으로 정렬. 개월 수는 30일/주는 7일로 근사 계산(달력상 정확한 개월 계산 아님)."""
+    순으로 정렬."""
     hist = load_watchlist_history()
     if hist.empty:
         return []
     hist = hist.copy()
     hist["날짜"] = pd.to_datetime(hist["날짜"])
-    last_date = hist["날짜"].max()
-    cutoff = last_date - pd.Timedelta(days=decline_months * 30)
-    flat_cutoff = last_date - pd.Timedelta(days=flat_weeks * 7)
 
     matches = []
     for name, g in hist.groupby("종목명"):
-        g = g[g["날짜"] >= cutoff].sort_values("날짜")
+        g = g.sort_values("날짜").tail(decline_days)
         if len(g) < 3:
             continue
         prices = g["종가"].astype(float).tolist()
@@ -448,7 +447,7 @@ def find_pattern_matches(decline_months: int, decline_pct: float,
         if max_drawdown > -decline_pct:
             continue
 
-        flat_prices = g.loc[g["날짜"] >= flat_cutoff, "종가"].astype(float).tolist()
+        flat_prices = prices[-flat_days:]
         if len(flat_prices) < 2:
             continue
         flat_avg = sum(flat_prices) / len(flat_prices)
