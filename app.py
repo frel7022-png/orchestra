@@ -556,10 +556,8 @@ with tab_port:
 
                         fig2 = go.Figure()
                         fig2.add_trace(go.Scatter(
-                            x=dates, y=vals, mode="lines+markers+text",
+                            x=dates, y=vals, mode="lines+markers",
                             line=dict(color=color, width=2.2), marker=dict(size=6, color=color),
-                            text=[f"{v:.1f}%" for v in vals], textposition="top center",
-                            textfont=dict(size=9, color=T["text"]),
                             hovertemplate="%{x}<br>비중 %{y:.2f}%<extra></extra>",
                         ))
                         if target is not None:
@@ -570,14 +568,11 @@ with tab_port:
                             paper_bgcolor="rgba(0,0,0,0)",
                             plot_bgcolor="rgba(0,0,0,0)",
                             font=dict(color=T["text"], size=10),
-                            showlegend=False,
                             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
                             yaxis=dict(range=[0, 40], showgrid=True, gridcolor=T["border"],
-                                       tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                                       tickfont=dict(size=9, color=T["muted"])),
                         )
-                        st.plotly_chart(fig2, use_container_width=True, key=f"sector_trend_{name}", config={
-                            "displayModeBar": False, "scrollZoom": False, "doubleClick": False,
-                        })
+                        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
                     else:
                         st.info("시세 새로고침 또는 거래 기록을 하면 그날의 섹터 비중이 저장되어 추이가 쌓입니다.")
 
