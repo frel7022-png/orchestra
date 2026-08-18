@@ -557,7 +557,7 @@ with tab_port:
                         fig2 = go.Figure()
                         fig2.add_trace(go.Scatter(
                             x=dates, y=vals, mode="lines+markers",
-                            line=dict(color=color, width=2.2), marker=dict(size=6, color=color),
+                            line=dict(color="#FF0000", width=3), marker=dict(size=8, color="#FF0000"),
                             hovertemplate="%{x}<br>비중 %{y:.2f}%<extra></extra>",
                         ))
                         if target is not None:
@@ -565,8 +565,8 @@ with tab_port:
                         fig2.update_layout(
                             height=180,
                             margin=dict(l=10, r=10, t=20, b=10),
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            plot_bgcolor="rgba(0,0,0,0)",
+                            paper_bgcolor=T["card"],
+                            plot_bgcolor=T["card"],
                             font=dict(color=T["text"], size=10),
                             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
                             yaxis=dict(range=[0, 40], showgrid=True, gridcolor=T["border"],
