@@ -280,3 +280,57 @@ ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-
 - 한 번 만들었다가(전일 대비 하락 TOP20, 접었다 펴는 버튼) 2026-08-18에 §6-6 v2로 개편하면서
   사용자 요청으로 제거함 — "기준"(누적/전일) + "방향"(DOWN/UP) 라디오 조합으로 대체됐음.
   재도입하지 말 것.
+
+### 6-9. Supabase DB 파이프라인 + 필터 빌더 (2026-08-19 신설)
+- **동기**: §6-7의 `watchlist_price_history.csv`는 사람이 앱에서 "Fishing 새로고침"을 눌러야만
+  하루치가 쌓이는 구조였는데, 실제로 확인해보니 **한 번도 쌓인 적이 없었음**(파일 자체가
+  git에 커밋된 적도 없음, 2026-08-19 발견). "지난 3개월 하락 후 횡보, 2만원 이하" 같은 자유
+  조합 조건 검색을 하려면 사람 개입 없이 매일 자동으로 쌓이는 데이터가 필요하다고 판단해
+  Supabase(Postgres, 무료 티어)로 별도 파이프라인을 만듦.
+- **기존 CSV 파이프라인과는 완전히 별개**: `watchlist.csv`/`watchlist_prices.csv`/
+  `watchlist_price_history.csv`와 Fishing 새로고침 버튼, §6-7의 "패턴 검색"은 전부 그대로
+  남아있고 한 글자도 안 바뀜. 새 파이프라인은 이것들을 읽지도 쓰지도 않는, 나란히 돌아가는
+  별도 시스템. 나중에 검증되면 CSV 쪽을 걷어내는 것도 고려 가능하나 아직 안 함.
+- **실행 흐름**: `.github/workflows/daily-price-fetch.yml`이 **매 평일 16:00 KST**(장마감
+  30분 후)에 GitHub 자체 서버에서 자동 실행 → `db_fetch_daily_prices.py`가 Supabase
+  `watchlist` 테이블의 종목코드 전부(153개)를 `portfolio_core.fetch_quotes()`(기존 네이버
+  실시간 시세 함수 재사용)로 조회 → `price_history` 테이블에 upsert. 사람 개입도, 로컬 PC가
+  켜져있을 필요도 없음. `workflow_dispatch`로 수동 실행도 가능(GitHub Actions 탭에서
+  "Run workflow").
+- **DB 스키마** (Supabase 프로젝트: `frel7022-png's Project`, ID `ghpxaznihogafhvdqijw`,
+  Tokyo 리전, 무료 티어):
+  - `watchlist(id, user_id, stock_code, stock_name, sector, created_at)` — `user_id`는 항상
+    고정 placeholder UUID(`00000000-...`)로 채움. 나중에 회원 기능이 생길 걸 대비해 미리
+    넣어둔 컬럼(지금은 의미 없음). NULL로 두면 Postgres UNIQUE 제약이 무력화되는 버그가 있어서
+    placeholder 값으로 고침(중요 — 다시 NULL 허용으로 바꾸지 말 것).
+  - `price_history(id, stock_code, trade_date, close_price, change_pct, created_at)`,
+    `unique(stock_code, trade_date)`로 같은 날 재적재해도 안전(upsert).
+  - RLS 켜져 있고 지금은 "test_all_*" 정책으로 anon key가 읽기/쓰기 다 열려있는 **테스트
+    단계 상태**. 나중에 실사용 단계 가면 쓰기 권한을 cron 전용 키로 잠그는 걸 고려할 것 —
+    지금 이 anon key를 가진 사람은 누구나 이 두 테이블을 읽고 쓸 수 있음.
+  - 접속 정보(URL/anon key)는 `.streamlit/secrets.toml`의 `[supabase]` 섹션(로컬 전용,
+    git에 안 올라감)과, GitHub Actions용으로 레포 Settings → Secrets에
+    `SUPABASE_URL`/`SUPABASE_ANON_KEY`로 등록돼 있음.
+- **필터 빌더 UI** (`ui_portfolio_tab.py`, Fishing expander 안, "패턴 검색" 밑): 조건 행을
+  "조건 추가"로 자유롭게 추가/삭제하며 여러 개를 AND로 조합(§6-7의 패턴 검색은 하락/횡보
+  조건이 슬라이더 4개로 고정된 구조였는데, 이건 그 제약이 없음). 조건 종류 4개
+  (`portfolio_core.FILTER_CONDITION_TYPES`): 하락률(기간+임계값), 횡보(기간+임계값),
+  가격(이하/이상+값), 등락률(이하/이상+값, 가장 최근 거래일 기준). 핵심 로직은
+  `portfolio_core.run_filter_builder()` — `load_watchlist_history_db()`로 Supabase
+  전체를 pandas DataFrame으로 끌어와서(153종목 규모라 클라이언트 사이드 필터링이 SQL
+  작성보다 간단하고 확장하기 쉬움, §6-7 `find_pattern_matches`와 같은 접근) 조건을
+  순차 평가한다.
+- **portfolio_core.py는 Streamlit에 안 물리게 유지**: 위 두 함수는 `supabase_url`/
+  `supabase_key`를 인자로 받고, `st.secrets`는 UI 쪽(`ui_portfolio_tab.py`)에서만 읽는다 —
+  파일 상단 docstring의 "Streamlit에 의존하지 않는 순수 로직" 원칙을 안 깨려고 일부러 이렇게
+  나눔.
+- **알려진 한계**: 2026-08-19 기준 하루치 데이터뿐이라 하락률/횡보 조건은 아직 의미 있는
+  결과가 안 나옴(며칠~몇 주 쌓여야 함). "하락률"/"횡보"의 "N영업일"은 §6-7과 마찬가지로
+  **달력 날짜가 아니라 DB에 실제로 쌓인 행 개수** 기준 — 다만 이제 사람이 안 눌러도 매 평일
+  자동으로 쌓이므로 §6-7이 갖고 있던 "새로고침을 자주 안 누르면 실제 기간보다 넓게 보는" 문제는
+  없어짐(주말/공휴일에는 애초에 cron이 평일에만 돎, `cron: "0 7 * * 1-5"`; 다만 평일 공휴일에는
+  그날도 그냥 실행되어 전일과 같은 종가가 한 번 더 찍힘 — 특별히 걸러내는 로직 없음, 사소한
+  한계로 남겨둠).
+- **작업 사본**: `Desktop/DBtest`에서 먼저 검증(스키마/이관/적재 왕복 테스트)한 뒤 `new1`으로
+  이식함. `DBtest`는 `new1`과 origin이 동일한 저장소를 물고 있어서(폴더 통째 복사 때 `.git`도
+  같이 옴) **거기서 직접 git push하면 안 됨** — 이후 실험 사본을 또 만들 때도 이 점 주의.
