@@ -1,0 +1,25 @@
+name: Daily watchlist price fetch
+
+on:
+  schedule:
+    # 매 평일 16:00 KST(=07:00 UTC, 장마감 30분 후) 실행
+    - cron: "0 7 * * 1-5"
+  workflow_dispatch: {}  # 수동 실행 버튼(테스트용)
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Fetch watchlist prices into Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: python db_fetch_daily_prices.py
