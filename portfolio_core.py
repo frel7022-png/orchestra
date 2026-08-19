@@ -470,6 +470,143 @@ def find_pattern_matches(decline_days: int, decline_pct: float,
     return matches
 
 
+# ------------------------------------------------------------------ #
+# 필터 빌더 — Supabase DB 기반 (2026-08-19 신설)
+# GitHub Actions가 매일 평일 16:00 KST에 관심종목 153개 종가를 Supabase
+# price_history 테이블에 자동 적재한다(db_fetch_daily_prices.py 참고). 이 DB
+# 데이터는 watchlist_price_history.csv(사람이 Fishing 새로고침을 눌러야만
+# 쌓이는 기존 파이프라인)와는 완전히 별개 — 서로 읽지도 쓰지도 않는다.
+# 접속 정보(url/key)는 Streamlit secrets에서 관리하므로, 이 모듈을 순수하게
+# 유지하기 위해 인자로 받는다(직접 st.secrets를 읽지 않음).
+# ------------------------------------------------------------------ #
+FILTER_CONDITION_TYPES = {
+    "하락률": "고점 대비 최근 N영업일 내 최대 하락률",
+    "횡보": "최근 N영업일 변동폭(고저 대비 평균, 이내)",
+    "가격": "가장 최근 종가",
+    "등락률": "가장 최근 거래일 등락률",
+}
+
+
+def load_watchlist_history_db(supabase_url: str, supabase_key: str) -> pd.DataFrame:
+    """Supabase price_history + watchlist를 조인해서 하나의 DataFrame으로.
+    반환 컬럼: 종목코드, 종목명, 섹터, 날짜, 종가, 등락률. 접속 실패/데이터 없음이면 빈 DataFrame."""
+    empty = pd.DataFrame(columns=["종목코드", "종목명", "섹터", "날짜", "종가", "등락률"])
+    if not supabase_url or not supabase_key:
+        return empty
+
+    headers = {"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"}
+    try:
+        wl_resp = requests.get(f"{supabase_url}/rest/v1/watchlist?select=stock_code,stock_name,sector",
+                                headers=headers, timeout=15)
+        wl_resp.raise_for_status()
+        wl = {r["stock_code"]: r for r in wl_resp.json()}
+
+        rows, offset, page = [], 0, 1000
+        while True:
+            r = requests.get(
+                f"{supabase_url}/rest/v1/price_history?select=stock_code,trade_date,close_price,change_pct"
+                f"&order=trade_date&limit={page}&offset={offset}",
+                headers=headers, timeout=20)
+            r.raise_for_status()
+            batch = r.json()
+            rows.extend(batch)
+            if len(batch) < page:
+                break
+            offset += page
+    except Exception:
+        return empty
+
+    if not rows:
+        return empty
+
+    df = pd.DataFrame(rows)
+    df["종목명"] = df["stock_code"].map(lambda c: wl.get(c, {}).get("stock_name", c))
+    df["섹터"] = df["stock_code"].map(lambda c: wl.get(c, {}).get("sector") or "미분류")
+    df = df.rename(columns={"stock_code": "종목코드", "trade_date": "날짜",
+                             "close_price": "종가", "change_pct": "등락률"})
+    return df[["종목코드", "종목명", "섹터", "날짜", "종가", "등락률"]]
+
+
+def run_filter_builder(supabase_url: str, supabase_key: str, conditions: list[dict]) -> list[dict]:
+    """conditions의 모든 조건을 만족(AND)하는 종목을 찾는다.
+    conditions 항목: {"type": "하락률"|"횡보"|"가격"|"등락률", ...type별 파라미터}
+    - 하락률: lookback_days(기간), threshold_pct(이 % 이상 하락)
+    - 횡보: recent_days(기간), threshold_pct(이 % 이내 변동)
+    - 가격/등락률: op("이하"|"이상"), value(비교값)
+    반환: [{"종목명","종목코드","섹터","현재가","series"(스파크라인용 종가 리스트),
+            "detail"(조건별 계산값 dict)}, ...] — 하락률 조건이 있으면 그 값 기준 정렬."""
+    hist = load_watchlist_history_db(supabase_url, supabase_key)
+    if hist.empty:
+        return []
+    hist = hist.copy()
+    hist["날짜"] = pd.to_datetime(hist["날짜"])
+
+    results = []
+    for code, g in hist.groupby("종목코드"):
+        g = g.sort_values("날짜")
+        prices = g["종가"].astype(float).tolist()
+        if not prices:
+            continue
+        name = g["종목명"].iloc[-1]
+        sector = g["섹터"].iloc[-1]
+        latest_price = prices[-1]
+        latest_change_raw = g["등락률"].iloc[-1]
+        latest_change = float(latest_change_raw) if pd.notna(latest_change_raw) else 0.0
+
+        detail = {}
+        ok = True
+        for cond in conditions:
+            ctype = cond["type"]
+            if ctype == "하락률":
+                window = prices[-int(cond["lookback_days"]):]
+                if len(window) < 2:
+                    ok = False
+                    break
+                running_max = window[0]
+                max_dd = 0.0
+                for p in window:
+                    running_max = max(running_max, p)
+                    max_dd = min(max_dd, (p - running_max) / running_max * 100)
+                detail["하락률"] = max_dd
+                if max_dd > -float(cond["threshold_pct"]):
+                    ok = False
+                    break
+            elif ctype == "횡보":
+                window = prices[-int(cond["recent_days"]):]
+                if len(window) < 2:
+                    ok = False
+                    break
+                avg = sum(window) / len(window)
+                rng = (max(window) - min(window)) / avg * 100 if avg else 0.0
+                detail["횡보"] = rng
+                if rng > float(cond["threshold_pct"]):
+                    ok = False
+                    break
+            elif ctype == "가격":
+                detail["현재가"] = latest_price
+                if cond["op"] == "이하" and not (latest_price <= float(cond["value"])):
+                    ok = False
+                    break
+                if cond["op"] == "이상" and not (latest_price >= float(cond["value"])):
+                    ok = False
+                    break
+            elif ctype == "등락률":
+                detail["등락률"] = latest_change
+                if cond["op"] == "이하" and not (latest_change <= float(cond["value"])):
+                    ok = False
+                    break
+                if cond["op"] == "이상" and not (latest_change >= float(cond["value"])):
+                    ok = False
+                    break
+        if ok:
+            results.append({"종목명": name, "종목코드": code, "섹터": sector,
+                             "현재가": latest_price, "series": prices, "detail": detail})
+
+    if any(c["type"] == "하락률" for c in conditions):
+        results.sort(key=lambda r: r["detail"].get("하락률", 0))
+    return results
+
+
 def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
     """네이버 실시간 시세 API는 한 번에 너무 많은 종목코드를 요청하면 일부만 응답하는
     경우가 있어(대략 20개 안팎에서 잘림), 20개씩 나눠서 요청한 뒤 결과를 합친다.
