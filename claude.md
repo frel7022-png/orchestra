@@ -271,12 +271,17 @@ ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-
 - **당일 ±3% 스크리너(§6-6)와는 완전히 별개**: `watchlist.csv`/`watchlist_prices.csv`와
   Fishing 새로고침 버튼은 그대로 남아있고 안 바뀜. 새 파이프라인은 이것들을 읽지도 쓰지도
   않는, 나란히 돌아가는 별도 시스템(§6-7의 옛 "패턴 검색"만 이걸로 완전히 대체되어 제거됨).
-- **실행 흐름**: `.github/workflows/daily-price-fetch.yml`이 **매 평일 16:00 KST**(장마감
+- **실행 흐름**: `.github/workflows/daily-price-fetch.yml`이 **매 평일 16:13 KST**(장마감
   30분 후)에 GitHub 자체 서버에서 자동 실행 → `db_fetch_daily_prices.py`가 Supabase
   `watchlist` 테이블의 종목코드 전부(153개)를 `portfolio_core.fetch_quotes()`(기존 네이버
   실시간 시세 함수 재사용)로 조회 → `price_history` 테이블에 upsert. 사람 개입도, 로컬 PC가
   켜져있을 필요도 없음. `workflow_dispatch`로 수동 실행도 가능(GitHub Actions 탭에서
   "Run workflow").
+  - **cron 시각이 07:00 UTC(정각)이 아니라 07:13인 이유**: 원래 정각으로 만들었는데,
+    2026-08-19에 예정(16:00 KST)보다 **2시간 3분 지연**(실제 18:03 KST 실행)되는 걸 겪음 —
+    GitHub 공식 문서에 "정각에 몰린 예약 워크플로우는 특히 지연이 심하다"고 명시돼있는
+    문제라서, 애매한 분(13분)으로 옮겨서 회피함(2026-08-20). **앞으로 이 워크플로우의
+    cron 시각을 다시 정각으로 되돌리지 말 것.**
 - **DB 스키마** (Supabase 프로젝트: `frel7022-png's Project`, ID `ghpxaznihogafhvdqijw`,
   Tokyo 리전, 무료 티어):
   - `watchlist(id, user_id, stock_code, stock_name, sector, created_at)` — `user_id`는 항상
