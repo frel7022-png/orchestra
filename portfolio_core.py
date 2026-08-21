@@ -660,6 +660,39 @@ def get_closed_out_last_sells(holdings_df: pd.DataFrame, tx_df: pd.DataFrame) ->
 
 
 # ------------------------------------------------------------------ #
+# 종목별 보유현황 카드 클릭 시 상세(매수/매도 내역 + "물타기 적정성" 그래프, 2026-08-21 신설)
+# ------------------------------------------------------------------ #
+def get_holding_trade_summary(tx: pd.DataFrame, name: str) -> dict:
+    """그 종목의 매수/매도 건수·누적금액·실현손익 합계. 평단가는 여기서 다루지 않음 —
+    이미 holdings(portfolio_data.csv)에 정확히 계산돼있는 값을 그대로 쓸 것(매도가 껴있어도
+    apply_transaction이 순서대로 재생하며 정확히 계산하므로, 여기서 매수 총액/총수량으로
+    단순 재평균하면 틀림 — 예: 2주@1000원 매수 후 1주 매도, 다시 1주@900원 매수하면 평단가는
+    950원이지, (2000+900)/3=966원이 아님)."""
+    t = tx[tx["종목명"] == name].copy()
+    t["수량"] = pd.to_numeric(t["수량"], errors="coerce").fillna(0)
+    t["단가"] = pd.to_numeric(t["단가"], errors="coerce").fillna(0)
+    buys = t[t["구분"] == "매수"]
+    sells = t[t["구분"] == "매도"]
+    return {
+        "buy_count": int(len(buys)),
+        "buy_amount": float((buys["수량"] * buys["단가"]).sum()),
+        "sell_count": int(len(sells)),
+        "sell_amount": float((sells["수량"] * sells["단가"]).sum()),
+        "realized_pnl": float(pd.to_numeric(sells["실현손익"], errors="coerce").fillna(0).sum()),
+    }
+
+
+def get_holding_trade_points(tx: pd.DataFrame, name: str) -> pd.DataFrame:
+    """그 종목의 매수/매도 거래를 날짜순으로. 반환 컬럼: 날짜, 구분, 단가, 수량.
+    "물타기 적정성" 그래프에서 매수/매도 시점을 점으로 찍는 데 씀."""
+    t = tx[tx["종목명"] == name].copy()
+    t["단가"] = pd.to_numeric(t["단가"], errors="coerce")
+    t["수량"] = pd.to_numeric(t["수량"], errors="coerce")
+    t = t.sort_values(["날짜"])
+    return t[["날짜", "구분", "단가", "수량"]].reset_index(drop=True)
+
+
+# ------------------------------------------------------------------ #
 # 지표 계산
 # ------------------------------------------------------------------ #
 def compute_metrics(df: pd.DataFrame, cash: float):

@@ -2,6 +2,7 @@
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from constants import UP_COLOR, DOWN_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_TARGETS
@@ -10,7 +11,96 @@ from portfolio_core import (
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
     compute_sector_weights, load_watchlist, refresh_watchlist_prices,
     FILTER_CONDITION_TYPES, FILTER_DIRECTIONS, run_filter_builder,
+    get_holding_trade_summary, get_holding_trade_points,
 )
+
+
+def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
+    """보유종목 카드를 눌렀을 때 펼쳐지는 상세 — 매수/매도 요약 + "물타기 적정성" 그래프.
+    그래프에 연속된 일별 시세선은 없음(보유종목엔 그런 히스토리가 없음 — Fishing 관심종목만
+    Supabase에 매일 쌓이는 중, 2026-08-21 기준 나흘치뿐이라 아직 못 씀. 장기적으로 여기도
+    DB 시세로 연결할 수 있음). 대신 최초매입일→오늘 두 점을 직선으로 잇고, 그 위에 실제
+    매수/매도 시점을 점으로 찍어서 "내가 얼마나 현재가를 따라 물을 탔는지"를 보여준다."""
+    name = r["종목명"]
+    trades = get_holding_trade_points(tx, name)
+    buys = trades[trades["구분"] == "매수"]
+    if buys.empty:
+        st.caption("매수 기록을 찾을 수 없습니다.")
+        return
+
+    summary = get_holding_trade_summary(tx, name)
+    realized_color = UP_COLOR if summary["realized_pnl"] >= 0 else DOWN_COLOR
+    s1, s2 = st.columns(2)
+    with s1:
+        st.markdown(f"매수 **{summary['buy_count']}건** · {summary['buy_amount']:,.0f}원")
+    with s2:
+        st.markdown(
+            f"매도 **{summary['sell_count']}건** · {summary['sell_amount']:,.0f}원 "
+            f"(실현손익 <span style='color:{realized_color}'>{summary['realized_pnl']:,.0f}원</span>)",
+            unsafe_allow_html=True)
+
+    entry_date = buys.iloc[0]["날짜"]
+    entry_price = float(buys.iloc[0]["단가"])
+    current_price = float(r["현재가"])
+    avg_price = float(r["평단가"])
+    today = today_kst_str()
+    sells = trades[trades["구분"] == "매도"]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=[entry_date, today], y=[entry_price, current_price], mode="lines+markers",
+        name="현재가", line=dict(color=T["muted"], width=2, dash="dot"),
+        marker=dict(size=6, color=T["muted"]),
+        hovertemplate="%{x}<br>%{y:,.0f}원<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=buys["날짜"], y=buys["단가"], mode="markers", name="매수",
+        marker=dict(size=11, color=DOWN_COLOR, symbol="triangle-up"),
+        customdata=buys["수량"],
+        hovertemplate="%{x}<br>매수 %{y:,.0f}원 · %{customdata:.0f}주<extra></extra>",
+    ))
+    if not sells.empty:
+        fig.add_trace(go.Scatter(
+            x=sells["날짜"], y=sells["단가"], mode="markers", name="매도",
+            marker=dict(size=11, color=UP_COLOR, symbol="triangle-down"),
+            customdata=sells["수량"],
+            hovertemplate="%{x}<br>매도 %{y:,.0f}원 · %{customdata:.0f}주<extra></extra>",
+        ))
+    fig.add_hline(y=entry_price, line_dash="dash", line_color=T["muted2"], line_width=1,
+                  annotation_text="최초진입가", annotation_font_size=10,
+                  annotation_font_color=T["muted2"])
+    fig.add_hline(y=avg_price, line_dash="dash", line_color=DOWN_COLOR, line_width=1,
+                  annotation_text="평단가", annotation_font_size=10,
+                  annotation_font_color=DOWN_COLOR)
+    fig.update_layout(
+        height=260,
+        margin=dict(l=10, r=10, t=20, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=T["text"], size=11),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5,
+                    bgcolor="rgba(0,0,0,0)"),
+        xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+        yaxis=dict(showgrid=True, gridcolor=T["border"], tickfont=dict(size=9, color=T["muted"]),
+                   tickformat=",.0f", fixedrange=True),
+        hovermode="closest",
+        dragmode=False,
+    )
+    st.plotly_chart(fig, width="stretch", config={
+        "displayModeBar": False, "scrollZoom": False, "doubleClick": False,
+    }, key=f"holding_chart_{r['종목코드']}")
+
+    pct_current = (current_price - entry_price) / entry_price * 100 if entry_price else 0.0
+    pct_avg = (avg_price - entry_price) / entry_price * 100 if entry_price else 0.0
+    cur_c = UP_COLOR if pct_current >= 0 else DOWN_COLOR
+    avg_c = UP_COLOR if pct_avg >= 0 else DOWN_COLOR
+    st.markdown(
+        f"<div style='font-size:12px;color:{T['muted']};display:flex;justify-content:space-between;"
+        f"margin-bottom:12px;'>"
+        f"<span>현재가는 최초진입가 대비 <span style='color:{cur_c}'>{pct_current:+.1f}%</span></span>"
+        f"<span>내 평단가는 최초진입가 대비 <span style='color:{avg_c}'>{pct_avg:+.1f}%</span></span>"
+        f"</div>", unsafe_allow_html=True)
 
 
 def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets, unrealized_loss, T):
@@ -515,7 +605,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     if not rows:
         st.info("보유 종목이 없습니다. '거래 기록' 탭에서 매수를 기록해보세요.")
     else:
-        card_parts = []
+        if "holding_detail_open" not in st.session_state:
+            st.session_state.holding_detail_open = None
+
         for r in rows:
             pc = UP_COLOR if r["손익"] >= 0 else DOWN_COLOR
             psign = "+" if r["손익"] >= 0 else ""
@@ -523,7 +615,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             csign = "+" if r["등락률"] >= 0 else ""
             sc = sector_tag_color(r["섹터"])
 
-            card_parts.append(f"""
+            st.markdown(f"""
             <div class="stock-card">
                 <div class="stock-top">
                     <span><span class="stock-name">{r['종목명']}</span>
@@ -540,5 +632,13 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     </div>
                 </div>
             </div>
-            """)
-        st.markdown("".join(card_parts), unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+
+            code = r["종목코드"]
+            is_open = st.session_state.holding_detail_open == code
+            if st.button("▲ 접기" if is_open else "▼ 매수/매도 내역 · 물타기 그래프",
+                         key=f"holding_toggle_{code}", use_container_width=True):
+                st.session_state.holding_detail_open = None if is_open else code
+                st.rerun()
+            if is_open:
+                _render_holding_detail(r, tx, T)
