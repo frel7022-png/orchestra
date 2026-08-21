@@ -36,7 +36,6 @@ SECTOR_HISTORY_FILE = HERE / "sector_history.csv"
 CODE_CACHE_FILE = HERE / "stock_code_cache.csv"
 SECTOR_CACHE_FILE = HERE / "stock_sector_cache.csv"
 WATCHLIST_FILE = HERE / "watchlist.csv"  # "Fishing" 관심종목 리스트 (보유/거래와 무관한 별도 목록)
-WATCHLIST_PRICES_FILE = HERE / "watchlist_prices.csv"  # 관심종목별 최초가/전일기준가/최근가 추적
 
 HOLD_COLUMNS = ["종목명", "종목코드", "섹터", "수량", "평단가", "현재가", "등락률", "업데이트시각"]
 TX_COLUMNS = ["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"]
@@ -326,75 +325,54 @@ def save_watchlist(names_codes: list[dict]) -> None:
         WATCHLIST_FILE, index=False)
 
 
-WATCHLIST_PRICE_COLUMNS = ["종목명", "종목코드", "최초가", "최초일시", "최근가", "최근조회일시", "전일대비"]
+WATCHLIST_PRICE_COLUMNS = ["종목명", "종목코드", "최초가", "최근가", "최근조회일시", "전일대비"]
 
 
-def load_watchlist_prices() -> pd.DataFrame:
-    if WATCHLIST_PRICES_FILE.exists():
-        df = pd.read_csv(WATCHLIST_PRICES_FILE, dtype=str, keep_default_na=False)
-        for col in WATCHLIST_PRICE_COLUMNS:
-            if col not in df.columns:
-                df[col] = ""
-        return df[WATCHLIST_PRICE_COLUMNS]
-    return pd.DataFrame(columns=WATCHLIST_PRICE_COLUMNS)
+def get_first_day_prices_db(supabase_url: str, supabase_key: str) -> dict:
+    """Supabase price_history에서 종목코드별 최초 관측일(가장 이른 날짜) 종가를 가져온다.
+    반환: {종목코드: 최초가}. 접속 정보 없음/데이터 없음이면 빈 dict."""
+    hist = load_watchlist_history_db(supabase_url, supabase_key)
+    if hist.empty:
+        return {}
+    hist = hist.sort_values("날짜")
+    return hist.groupby("종목코드")["종가"].first().to_dict()
 
 
-def save_watchlist_prices(df: pd.DataFrame) -> None:
-    df.to_csv(WATCHLIST_PRICES_FILE, index=False)
+def refresh_watchlist_prices(watchlist: pd.DataFrame, supabase_url: str = "",
+                              supabase_key: str = "") -> tuple[pd.DataFrame, list[str]]:
+    """"Fishing" 새로고침 버튼 로직. 관심종목별로 최초가(누적 등락률의 기준점)/최근가(이번
+    조회 가격)/전일대비(네이버가 이미 계산해서 주는 전일 종가 대비 등락률)를 계산한다.
 
+    최초가는 Supabase price_history의 최초 관측일 종가에서 매번 새로 가져온다(로컬 파일에
+    저장/승계하지 않음). 예전엔 로컬 CSV(watchlist_prices.csv)에 최초가를 "영구 보존"하려고
+    했는데, 이 파일이 git에 한 번도 커밋된 적이 없어서 Streamlit Cloud가 재배포할 때마다
+    (=git push할 때마다) 통째로 사라지고, 그때마다 최초가가 그 시점의 "어제 종가"로 리셋되는
+    버그가 있었다(재배포가 잦을수록 심해짐 — 2026-08-21 발견). price_history는 앱 재배포와
+    무관하게 독립적으로 유지되는 DB라 이 문제가 구조적으로 없어짐 — 로컬 캐시 파일 자체가
+    필요 없어져서 아예 없앰.
 
-def refresh_watchlist_prices(watchlist: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-    """"Fishing" 새로고침 버튼 로직. 관심종목별로 최초가(설치 후 딱 한 번 관측된 시점의
-    "전일 종가" — 영구 보존)/최근가(이번 조회 가격)/전일대비(네이버가 이미 계산해서 주는
-    전일 종가 대비 등락률)를 관리한다.
-
-    "전일 종가"를 직접 추적/근사하는 대신, 네이버 실시간 시세 API가 매번 응답에 같이 주는
-    `change_pct`(등락률 — 정식 전일 종가 대비 %)를 그대로 신뢰한다. 최초가도 이 값으로
-    역산한다: 최초가 = 최근가 / (1 + change_pct/100) — 즉 이 종목을 처음 관측한 "그 시점
-    기준 전일 종가"가 영구 기준점이 된다(장중 아무 때 눌러도 정확함, 장마감 이후에 눌러야
-    하는 제약이 없어짐 — 이전 버전의 "마지막 클릭가 롤오버" 방식보다 정확해서 교체함,
-    2026-08-18).
-
-    이전 스키마(기준가/기준일 방식)로 저장된 낡은 기록이 남아있을 수 있어서(예: 구버전 코드가
-    떠있던 동안 실제로 눌러서 생긴 파일), 저장된 값에 최초가/전일대비가 없거나 숫자로 못
-    읽으면 "처음 보는 종목"처럼 취급해서 새로 잡는다 — 낡은 값을 무조건 승계하지 않음."""
-    def _valid_prev(row) -> bool:
-        try:
-            float(row.get("최초가", ""))
-            float(row.get("전일대비", ""))
-            return True
-        except (TypeError, ValueError):
-            return False
-
+    DB에 아직 이 종목 히스토리가 없으면(예: watchlist에 막 추가돼서 cron이 한 번도 못 돈
+    경우) 최근가와 전일대비로 역산한 "어제 종가"를 임시 최초가로 씀 — 내일부터 cron이
+    쌓아주면 자동으로 정확한 값으로 바뀐다."""
     codes = [c for c in watchlist["종목코드"].tolist() if c]
     quotes, quote_errors = fetch_quotes(codes)
-
-    prev = load_watchlist_prices().set_index("종목명")
+    origin_prices = get_first_day_prices_db(supabase_url, supabase_key)
     now = now_kst_str()
 
     rows = []
     for _, r in watchlist.iterrows():
         name, code = r["종목명"], r["종목코드"]
-        has_valid_prev = name in prev.index and _valid_prev(prev.loc[name])
         q = quotes.get(code)
         if q is None:
-            if has_valid_prev:
-                rows.append(prev.loc[name].to_dict())
             continue
         price, change_pct = q["price"], q["change_pct"]
-
-        if not has_valid_prev:
-            prev_close = price / (1 + change_pct / 100) if change_pct != -100 else price
-            rows.append({"종목명": name, "종목코드": code, "최초가": prev_close, "최초일시": now,
-                         "최근가": price, "최근조회일시": now, "전일대비": change_pct})
-            continue
-
-        p = prev.loc[name]
-        rows.append({"종목명": name, "종목코드": code, "최초가": float(p["최초가"]), "최초일시": p["최초일시"],
+        origin = origin_prices.get(code)
+        if origin is None:
+            origin = price / (1 + change_pct / 100) if change_pct != -100 else price
+        rows.append({"종목명": name, "종목코드": code, "최초가": origin,
                      "최근가": price, "최근조회일시": now, "전일대비": change_pct})
 
     result = pd.DataFrame(rows, columns=WATCHLIST_PRICE_COLUMNS)
-    save_watchlist_prices(result)
     return result, quote_errors
 
 

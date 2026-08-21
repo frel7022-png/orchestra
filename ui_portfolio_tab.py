@@ -8,7 +8,7 @@ from constants import UP_COLOR, DOWN_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_T
 from portfolio_core import (
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
-    compute_sector_weights, load_watchlist, load_watchlist_prices, refresh_watchlist_prices,
+    compute_sector_weights, load_watchlist, refresh_watchlist_prices,
     FILTER_CONDITION_TYPES, FILTER_DIRECTIONS, run_filter_builder,
 )
 
@@ -261,6 +261,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 대비 등락률)를 기준으로 ±3% 이상 움직인 종목만 걸러서 보여준다 — 자세한 건
     # refresh_watchlist_prices 참고.
     with st.expander("Fishing", expanded=False):
+        sb_secrets = st.secrets.get("supabase", {})
+        sb_url, sb_key = sb_secrets.get("url", ""), sb_secrets.get("anon_key", "")
+
         watchlist = load_watchlist()
         if watchlist.empty:
             st.caption("관심종목이 없습니다. temporary/ 폴더에 리스트 CSV를 넣고 "
@@ -268,15 +271,13 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         else:
             if st.button("새로고침", key="fishing_refresh", use_container_width=True):
                 with st.spinner("관심종목 시세 조회 중..."):
-                    prices_df, quote_errors = refresh_watchlist_prices(watchlist)
+                    prices_df, quote_errors = refresh_watchlist_prices(watchlist, sb_url, sb_key)
                 st.session_state["fishing_prices"] = prices_df
                 for err in quote_errors:
                     st.warning(err)
                 st.rerun()
 
-            prices_df = st.session_state.get("fishing_prices")
-            if prices_df is None:
-                prices_df = load_watchlist_prices()
+            prices_df = st.session_state.get("fishing_prices", pd.DataFrame())
 
             if prices_df.empty:
                 st.caption(f"총 {len(watchlist)}개 종목 등록됨. 새로고침을 누르면 추적을 시작합니다.")
@@ -335,8 +336,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             # 를 조건 두 개로 표현. GitHub Actions가 매일 자동으로 쌓아주는 데이터라 새로고침을
             # 안 눌러도 계속 쌓인다(portfolio_core.run_filter_builder 참고).
             st.markdown("###### 필터 빌더 (DB)")
-            sb_secrets = st.secrets.get("supabase", {})
-            sb_url, sb_key = sb_secrets.get("url", ""), sb_secrets.get("anon_key", "")
             if not sb_url or not sb_key:
                 st.caption("Supabase 연결 정보가 없습니다 (.streamlit/secrets.toml의 [supabase] 섹션 확인).")
             else:
