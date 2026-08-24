@@ -627,7 +627,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 st.markdown(f"""
                 <div class="stock-card">
                     <div class="stock-top">
-                        <span><span class="stock-name">{r['종목명']}</span>
+                        <span class="stock-title-group"><span class="stock-name">{r['종목명']}</span>
                             <span class="stock-weight-inline">비중 {r['비중']:.1f}%</span></span>
                         <span class="sector-tag" style="background:{sc}22;color:{sc}">{r['섹터']}</span>
                     </div>

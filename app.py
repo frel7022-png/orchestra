@@ -98,6 +98,10 @@ st.markdown(f"""
 
     .stock-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:12px; padding:10px 16px; margin-bottom:7px; }}
     .stock-top {{ display:flex; justify-content:space-between; align-items:baseline; }}
+    .stock-title-group {{
+        flex:1 1 auto; min-width:0; overflow:hidden; white-space:nowrap;
+        text-overflow:ellipsis; max-width:calc(100% - 195px);
+    }}
     .stock-name {{ font-size:15px; font-weight:700; color:{T['text']}; }}
     .stock-weight-inline {{ font-size:11px; color:{T['muted']}; margin-left:6px; }}
     .sector-tag {{ font-size:10.5px; padding:2px 7px; border-radius:5px; font-weight:600; flex-shrink:0; }}
@@ -124,12 +128,12 @@ st.markdown(f"""
         box-shadow:none !important;
     }}
     [class*="st-key-watering_"] button p {{
-        font-size:10.5px !important; font-weight:600 !important; line-height:1.4 !important;
+        font-size:10.5px !important; font-weight:400 !important; line-height:1.4 !important;
     }}
     [class*="st-key-watering_"] button[kind="secondary"] {{
-        background:{T['muted']}22 !important; color:{T['muted']} !important;
+        background:{T['muted']}22 !important; color:{T['text']} !important;
     }}
-    [class*="st-key-watering_"] button[kind="secondary"] p {{ color:{T['muted']} !important; }}
+    [class*="st-key-watering_"] button[kind="secondary"] p {{ color:{T['text']} !important; }}
     [class*="st-key-watering_"] button[kind="primary"] {{
         background:{T['muted']} !important; color:#fff !important;
     }}
