@@ -98,8 +98,8 @@ st.markdown(f"""
 
     .stock-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:12px; padding:10px 16px; margin-bottom:7px; }}
     .stock-top {{ display:flex; justify-content:space-between; align-items:baseline; }}
-    .stock-title-group {{ flex:1 1 auto; min-width:0; max-width:calc(100% - 195px); }}
-    .stock-name {{ font-size:15px; font-weight:700; color:{T['text']}; }}
+    .stock-title-group {{ flex:1 1 auto; min-width:0; max-width:calc(100% - 180px); }}
+    .stock-name {{ font-size:13px; font-weight:700; color:{T['text']}; white-space:nowrap; }}
     .sector-tag {{ font-size:10.5px; padding:2px 7px; border-radius:5px; font-weight:600; flex-shrink:0; }}
     .stock-grid {{ display:grid; grid-template-columns: 0.7fr 1.05fr 1.05fr 1.3fr; gap:6px; margin-top:7px; }}
     .cell .top {{ font-size:12.5px; font-weight:700; color:{T['text']}; }}
