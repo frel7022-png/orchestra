@@ -535,9 +535,25 @@ ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-
   걷어내지 말 것(cron이 깨지면 사람이 안 챙겨도 조용히 실패하는 채로 방치되기 쉬움).
   종목별 수급 조회는 153번 순차 요청(비공식 스크레이핑이라 한꺼번에 몰아치지 않으려고
   요청 사이 0.3초 지연을 둠).
-- **UI 배치 (예정)**: Fishing expander 밑에 "Volume", 그 밑에 "Foreigner" 섹션으로.
-- **검증**: `portfolio_core.py`의 새 함수 3개(`fetch_quotes`의 volume 파싱,
-  `fetch_investor_flow`, `fetch_market_flow`) 전부 실제 라이브 데이터로 검증함(2026-08-24).
-  `tests/test_portfolio_core.py`에 `fetch_investor_flow`/`fetch_market_flow` 파싱 로직에
-  대한 회귀 테스트도 추가(실제 페이지 구조를 고정 HTML fixture로 박아두고 `requests.get`을
-  monkeypatch — 네이버가 나중에 페이지 구조를 바꾸면 이 테스트가 먼저 잡아냄).
+- **UI**: Fishing expander 밑에 "Volume", 그 밑에 "Foreigner" 섹션(둘 다 `st.expander`,
+  Fishing과 같은 아코디언 패턴). 둘 다 새로고침 버튼 → `load_investor_flow_db`/
+  `load_market_flow_db`로 DB 조회 → `st.session_state["flow_hist"]`/`["market_hist"]`에
+  캐싱(Fishing과 동일 패턴, 매 rerun마다 DB 재조회 안 하려고).
+  - **Volume**: 상단에 코스피/코스닥 시장 전체 거래량 평균대비 %(캡션), 그 밑에
+    `compute_volume_flags()` 결과 상위 15개(종목명 + vs평균% + "오늘 거래량 · 어제대비%").
+  - **Foreigner**: 상단에 코스피/코스닥 시장 전체 외국인 순매수(오늘/평균, 억원) 캡션,
+    그 밑에 `compute_foreign_flags()` 결과 상위 15개(종목명 + vs평균%p + "보유율 ·
+    외국인순매수").
+  - `.updown-row`에 `.flow-row` 변형 클래스 추가(`app.py` CSS) — 디테일 텍스트가 기존
+    Up/Down·Fishing 것보다 길어서(`오늘 거래량 · 어제대비%` 등) `.detail` 폭을 118px→
+    150px로, `.pct` 폭을 62px→56px로 조정. Playwright로 실제 모바일 폭(390px)에서 안
+    넘치고 안 깨지는 것 확인함(2026-08-24).
+- **검증**: `portfolio_core.py`의 새 함수들(`fetch_quotes`의 volume 파싱,
+  `fetch_investor_flow`, `fetch_market_flow`, `load_investor_flow_db`,
+  `load_market_flow_db`, `compute_volume_flags`, `compute_foreign_flags`,
+  `compute_market_flow_baseline`) 전부 실제 라이브 데이터(153종목 백필분)로 검증함
+  (2026-08-24). `tests/test_portfolio_core.py`에 `fetch_investor_flow`/`fetch_market_flow`
+  파싱 로직에 대한 회귀 테스트도 추가(실제 페이지 구조를 고정 HTML fixture로 박아두고
+  `requests.get`을 monkeypatch — 네이버가 나중에 페이지 구조를 바꾸면 이 테스트가 먼저
+  잡아냄). UI는 Playwright(로컬 Chrome, [[project_playwright_visual_check]])로 실제
+  렌더링까지 확인 완료.
