@@ -13,7 +13,7 @@
 
 import streamlit as st
 
-from constants import THEMES
+from constants import THEMES, DOWN_COLOR
 from portfolio_core import (
     load_holdings, load_transactions, load_state,
     snapshot_history, snapshot_sector_history,
@@ -105,6 +105,28 @@ st.markdown(f"""
     .cell .top {{ font-size:12.5px; font-weight:700; color:{T['text']}; }}
     .cell .bottom {{ font-size:11px; color:{T['muted']}; margin-top:2px; }}
     .stock-foot {{ display:flex; justify-content:flex-end; margin-top:6px; font-size:10px; color:{T['muted2']}; }}
+
+    /* 보유종목 카드 우측상단 "WATERING" 칩(=매수/매도 내역·물타기 그래프 토글) —
+       카드 밑에 항상 펼쳐진 버튼 줄을 두던 걸 없애고, 카드 내부에 얹는 방식으로 바꿈
+       (2026-08-24). st.container(key=...)가 만들어주는 st-key-* 클래스로 CSS만으로
+       버튼을 카드 우측상단(섹터태그 왼쪽)에 절대위치시킨다 — 카드 HTML 자체는 그대로 두고
+       버튼만 그 위에 얹는 것이라, 카드 높이가 내용에 따라 달라져도 안 깨진다. */
+    [class*="st-key-holding_wrap_"] {{ position:relative; }}
+    [class*="st-key-watering_"] {{
+        position:absolute; top:11px; right:108px; z-index:5; width:auto !important;
+    }}
+    [class*="st-key-watering_"] button {{
+        font-size:10.5px !important; padding:2px 7px !important; min-height:0 !important;
+        height:auto !important; border-radius:5px !important; font-weight:700 !important;
+        line-height:1.4 !important; letter-spacing:0.3px; border:none !important;
+        box-shadow:none !important;
+    }}
+    [class*="st-key-watering_"] button[kind="secondary"] {{
+        background:{DOWN_COLOR}22 !important; color:{DOWN_COLOR} !important;
+    }}
+    [class*="st-key-watering_"] button[kind="primary"] {{
+        background:{DOWN_COLOR} !important; color:#fff !important;
+    }}
 
     .tx-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:10px; padding:10px 14px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }}
     .tx-left {{ font-size:13px; }}

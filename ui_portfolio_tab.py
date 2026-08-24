@@ -621,30 +621,32 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             csign = "+" if r["등락률"] >= 0 else ""
             sc = sector_tag_color(r["섹터"])
 
-            st.markdown(f"""
-            <div class="stock-card">
-                <div class="stock-top">
-                    <span><span class="stock-name">{r['종목명']}</span>
-                        <span class="stock-weight-inline">비중 {r['비중']:.1f}%</span></span>
-                    <span class="sector-tag" style="background:{sc}22;color:{sc}">{r['섹터']}</span>
-                </div>
-                <div class="stock-grid">
-                    <div class="cell"><div class="top">{r['수량']:.0f}주</div></div>
-                    <div class="cell"><div class="top">{r['현재가']:,.0f}</div><div class="bottom">{r['평단가']:,.0f}</div></div>
-                    <div class="cell"><div class="top">{r['평가금액']:,.0f}</div><div class="bottom">{r['매입금액']:,.0f}</div></div>
-                    <div class="cell">
-                        <div class="top" style="color:{pc}">{psign}{r['손익']:,.0f}</div>
-                        <div class="bottom"><span style="color:{pc}">{psign}{r['손익률']:.1f}%</span> <span style="color:{cc}">{csign}{r['등락률']:.1f}%</span></div>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
             code = r["종목코드"]
             is_open = st.session_state.holding_detail_open == code
-            if st.button("▲ 접기" if is_open else "▼ 매수/매도 내역 · 물타기 그래프",
-                         key=f"holding_toggle_{code}", use_container_width=True):
-                st.session_state.holding_detail_open = None if is_open else code
-                st.rerun()
+
+            with st.container(key=f"holding_wrap_{code}"):
+                st.markdown(f"""
+                <div class="stock-card">
+                    <div class="stock-top">
+                        <span><span class="stock-name">{r['종목명']}</span>
+                            <span class="stock-weight-inline">비중 {r['비중']:.1f}%</span></span>
+                        <span class="sector-tag" style="background:{sc}22;color:{sc}">{r['섹터']}</span>
+                    </div>
+                    <div class="stock-grid">
+                        <div class="cell"><div class="top">{r['수량']:.0f}주</div></div>
+                        <div class="cell"><div class="top">{r['현재가']:,.0f}</div><div class="bottom">{r['평단가']:,.0f}</div></div>
+                        <div class="cell"><div class="top">{r['평가금액']:,.0f}</div><div class="bottom">{r['매입금액']:,.0f}</div></div>
+                        <div class="cell">
+                            <div class="top" style="color:{pc}">{psign}{r['손익']:,.0f}</div>
+                            <div class="bottom"><span style="color:{pc}">{psign}{r['손익률']:.1f}%</span> <span style="color:{cc}">{csign}{r['등락률']:.1f}%</span></div>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                if st.button("WATERING", key=f"watering_{code}",
+                             type="primary" if is_open else "secondary"):
+                    st.session_state.holding_detail_open = None if is_open else code
+                    st.rerun()
             if is_open:
                 _render_holding_detail(r, tx, T)
