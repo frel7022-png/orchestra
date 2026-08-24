@@ -408,3 +408,41 @@ ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-
   `get_holding_trade_summary`, `get_holding_trade_points`, `get_holding_avg_price_path`) —
   `ui_portfolio_tab.py`에 `_render_holding_detail()` 추가 + 카드 루프에 버튼 삽입. 그 외
   파일/기능은 안 건드림.
+
+### 6-11. 자동화 테스트 도입 (2026-08-24 신설)
+- **왜 지금인가**: 2026-08-18에 "자동화 테스트 필요해지면 먼저 알려달라"는 요청을 받았었고,
+  §6-10 작업(사이클 필터링/계단식 평단가)을 검증하면서 실제 데이터로 즉석 스크립트를 짜서
+  수동으로 확인하는 데 시간을 꽤 쓴 뒤 — 이제 그 검증을 코드로 고정해둘 만한 시점이라고
+  판단해서 사용자에게 제안했고 동의를 받아 도입함. 지금까지의 검증 방식(세션마다 스크래치
+  스크립트 짜서 실제 데이터로 확인하고 버림)은 매번 다시 짜야 하고, 세션이 끝나면 그 검증
+  자체가 사라진다는 한계가 있었음.
+- **구조**:
+  - `conftest.py`(레포 루트) — pytest가 `portfolio_core` 등을 최상위 모듈로 import할 수 있게
+    레포 루트를 sys.path에 잡아주는 용도. 내용은 사실상 비어있음.
+  - `tests/test_portfolio_core.py` — `portfolio_core.py`는 Streamlit에 안 묶인 순수 로직이라
+    테스트하기 쉬움. CLAUDE.md 1번 섹션에 적힌 "실제로 겪은 버그"들(평단가 단순재평균 오류,
+    같은 날짜 CSV 델타로 취급하는 실수, 사이클 안 나누고 전체 이력 반영하는 문제, 컬럼명이
+    아니라 위치로 파싱해야 하는 것 등)을 그대로 회귀 테스트 케이스로 옮겨 담음 — 17개 중 15개.
+  - `tests/test_app_smoke.py` — `streamlit.testing.v1.AppTest`(Streamlit 공식 테스트 도구)로
+    `app.py`를 실제로 실행해서 예외 없이 뜨는지, WATERING 칩 클릭 시 세션 상태가 의도대로
+    열리고 닫히는지 확인. **한계: 진짜 브라우저가 아니라서 CSS/픽셀 정렬(예: WATERING 칩이
+    섹터태그랑 안 겹치는지)은 이 테스트로 검증 못 함** — 그런 건 여전히 사람이 화면으로
+    봐야 함. 실제 `transactions.csv`/`portfolio_data.csv` 데이터를 그대로 읽어서 실행되므로
+    보유종목이 아예 없는 상태가 되면 WATERING 클릭 테스트는 조용히 스킵됨(의도된 동작).
+  - `requirements-dev.txt` — `requirements.txt` + `pytest`. Streamlit Cloud 배포에는
+    `requirements.txt`만 쓰이므로 pytest가 배포 환경에 섞여 들어가지 않음.
+  - `.github/workflows/tests.yml` — `main`에 push될 때마다 자동으로 pytest 실행(§6-9의
+    daily-price-fetch.yml과 같은 패턴). `app.py`가 `check_password()`에서 `st.secrets`에
+    접근하기만 해도 `secrets.toml` 파일 자체가 없으면 즉시 에러가 나므로(§6-1-1), CI에서도
+    로컬 개발과 똑같이 빈 `.streamlit/secrets.toml`을 만들어주는 스텝이 필요함 — 이거 없으면
+    스모크 테스트가 전부 이 이유 하나로 실패한다.
+- **실행 방법**: `pip install -r requirements-dev.txt` 후 `pytest tests/ -v`. 로컬에서 도입
+  당시 17개 전부 통과 확인함.
+- **알려진 한계 (수정 안 함, 참고만)**: 테스트 실행 중 `apply_transaction`의 `pd.concat`
+  호출에서 pandas `FutureWarning`(빈/all-NA 항목과의 concat 관련)이 뜸 — 지금 당장 동작에
+  문제는 없고 이번 작업 범위 밖이라 손 안 댐. 나중에 pandas 버전을 올리다가 이게 실제 에러로
+  바뀌면 그때 고칠 것.
+- **다음 세션 참고**: `portfolio_core.py`에 새 함수를 추가하거나 기존 계산 로직(특히 거래
+  재생/평단가/사이클 관련)을 고칠 때는, 가능하면 `tests/test_portfolio_core.py`에 케이스를
+  같이 추가해서 이 안전망을 계속 키워나갈 것 — 스크래치 스크립트로 한 번 검증하고 버리는
+  방식으로 되돌아가지 말 것.

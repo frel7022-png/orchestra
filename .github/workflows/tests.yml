@@ -1,0 +1,27 @@
+name: Tests
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch: {}  # 수동 실행 버튼
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements-dev.txt
+
+      # app.py의 check_password()가 st.secrets 자체에 접근하기만 해도 파일이
+      # 아예 없으면 StreamlitSecretNotFoundError를 던진다(CLAUDE.md §6-1-1) —
+      # 로컬 개발과 동일하게 빈 secrets.toml을 만들어서 로그인 게이트를 통과시킨다.
+      - name: Create empty local secrets.toml (mirrors local dev setup)
+        run: mkdir -p .streamlit && touch .streamlit/secrets.toml
+
+      - name: Run tests
+        run: pytest tests/ -v
