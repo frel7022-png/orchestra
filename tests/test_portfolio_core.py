@@ -249,3 +249,90 @@ def test_parse_daily_trade_csv_rejects_truncated_format():
     raw = "c0,c1,c2\nx,y,z\n1,2,3\n".encode("cp949")
     with pytest.raises(ValueError):
         core.parse_daily_trade_csv(raw)
+
+
+# ------------------------------------------------------------------ #
+# fetch_investor_flow / fetch_market_flow — 네이버 HTML 스크레이핑 파서.
+# 실시간 시세 JSON API와 달리 화면용 HTML을 그대로 긁는 거라 더 깨지기 쉬움(2026-08-24
+# 도입 당시 CLAUDE.md에도 이렇게 적어둠) — 실제 페이지에서 뽑아낸 구조를 그대로 고정
+# fixture로 박아두고, 네이버가 나중에 페이지 구조를 바꾸면 이 테스트가 먼저 잡아내게 함.
+# requests.get을 monkeypatch해서 네트워크 없이 파싱 로직만 검증한다.
+# ------------------------------------------------------------------ #
+class _FakeResp:
+    def __init__(self, content):
+        self.content = content
+
+    def raise_for_status(self):
+        pass
+
+
+_INVESTOR_FLOW_HTML = """
+<table summary="외국인 기관 순매매 거래량에 관한표이며 날짜별로 정보를 제공합니다." width="680">
+<caption>외국인 기관 순매매 거래량</caption>
+<tr class="title1"><th>날짜</th><th>종가</th><th>전일비</th><th>등락률</th><th>거래량</th>
+<th>기관</th><th>외국인</th><th>보유주수</th><th>보유율</th></tr>
+<tr><td colspan="9" height="8"></td></tr>
+<tr>
+<td width="62" class="tc"><span class="tah p10 gray03">2026.08.21</span></td>
+<td width="67" class="num"><span class="tah p11">184,000</span></td>
+<td width="67" class="num"><em class="bu_p bu_pdn"><span class="blind">하락</span></em>
+<span class="tah p11 nv01">800</span></td>
+<td width="67" class="num"><span class="tah p11 nv01">-0.43%</span></td>
+<td width="67" class="num"><span class="tah p11">55,426</span></td>
+<td width="66" class="num"><span class="tah p11 red01">+17,169</span></td>
+<td width="80" class="num"><span class="tah p11 nv01">-19,294</span></td>
+<td width="76" class="num"><span class="tah p11">1,947,174</span></td>
+<td width="60" class="num"><span class="tah p11">12.93%</span></td>
+</tr>
+</table>
+""".encode("euc-kr")
+
+
+def test_fetch_investor_flow_parses_real_table_structure(monkeypatch):
+    monkeypatch.setattr(core.requests, "get",
+                         lambda url, headers=None, timeout=None: _FakeResp(_INVESTOR_FLOW_HTML))
+    rows = core.fetch_investor_flow("097950")
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["날짜"] == "2026-08-21"
+    assert r["거래량"] == 55426
+    assert r["기관순매수"] == 17169
+    assert r["외국인순매수"] == -19294
+    assert r["외국인보유율"] == 12.93
+
+
+def test_fetch_investor_flow_returns_empty_on_network_failure(monkeypatch):
+    def raise_err(*a, **k):
+        raise ConnectionError("boom")
+    monkeypatch.setattr(core.requests, "get", raise_err)
+    assert core.fetch_investor_flow("097950") == []
+
+
+_MARKET_VOLUME_HTML = """
+<table><tr>
+<td class="date">2026.08.24</td><td class="number_1">812.23</td><td class="rate_down">10.29</td>
+<td class="number_1">+1.28%</td><td class="number_1">478,302</td><td class="number_1">4,263,302</td>
+</tr></table>
+""".encode("euc-kr")
+
+_MARKET_FLOW_HTML = """
+<table><tr>
+<td class="date2">26.08.24</td><td class="rate_down3">-2,382</td><td class="rate_up3">2,161</td>
+<td class="rate_up3">292</td>
+</tr></table>
+""".encode("euc-kr")
+
+
+def test_fetch_market_flow_merges_volume_and_flow_pages(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        return _FakeResp(_MARKET_VOLUME_HTML if "sise_index_day" in url else _MARKET_FLOW_HTML)
+    monkeypatch.setattr(core.requests, "get", fake_get)
+
+    rows = core.fetch_market_flow("KOSDAQ")
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["날짜"] == "2026-08-24"
+    assert r["거래량"] == 478302
+    assert r["개인순매수"] == -2382
+    assert r["외국인순매수"] == 2161
+    assert r["기관순매수"] == 292

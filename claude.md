@@ -484,3 +484,60 @@ ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-
   재생/평단가/사이클 관련)을 고칠 때는, 가능하면 `tests/test_portfolio_core.py`에 케이스를
   같이 추가해서 이 안전망을 계속 키워나갈 것 — 스크래치 스크립트로 한 번 검증하고 버리는
   방식으로 되돌아가지 말 것.
+
+### 6-12. 거래량/외국인 수급 트래킹 (2026-08-24 신설)
+- **동기**: "오늘 이 종목 거래량이 평소보다 튀었나, 외국인이 평소보다 더 사고 있나"를
+  판단하려면 원시값을 매일 쌓아두고 나중에 평균/등락폭을 계산해야 함. §6-9 DB 파이프라인
+  (watchlist 153종목 전체 대상 — 51개 보유종목만이 아니라 신규 편입 후보 판단 근거로도
+  쓰려는 목적)에 얹어서 확장함.
+- **데이터 소스 (전부 비공식 HTML/JSON 스크레이핑, 공식 API 아님 — 네이버가 페이지/응답
+  구조를 바꾸면 조용히 깨질 수 있다는 전제로 설계)**:
+  - **거래량**: 이미 매일 부르고 있던 실시간 시세 API(`fetch_quotes`) 응답 안에
+    `accumulatedTradingVolume` 필드가 이미 들어있었음(직접 확인함) — 새 API 호출 없이
+    필드 하나만 더 파싱해서 추가.
+  - **종목별 외국인/기관 수급**: `portfolio_core.fetch_investor_flow(code)` — 네이버
+    개별종목 페이지(`/item/frgn.naver?code=XXX`)의 "외국인 기관 순매매 거래량" 표를
+    긁음(euc-kr 인코딩, BeautifulSoup + 표준 html.parser로 파싱, `beautifulsoup4`를
+    requirements.txt에 신규 추가). **한 번 호출로 최근 약 20영업일치가 한꺼번에 나와서**
+    도입 시점에 하루씩 쌓일 때까지 기다릴 필요 없이 바로 한 달 가까이 백필됨.
+  - **시장 전체(코스피/코스닥) 거래량+수급 베이스라인**: `portfolio_core.fetch_market_flow
+    (market)` — 두 페이지를 합쳐서 씀: 거래량은 `/sise/sise_index_day.naver?code=KOSPI|
+    KOSDAQ`(지수 일별시세), 수급(개인/외국인/기관 순매수, 억원 단위)은
+    `/sise/investorDealTrendDay.naver?sosok=&bizdate=...`(sosok 빈 값=코스피,
+    `02`=코스닥). **코스피/코스닥을 둘 다 저장하는 이유**: 보유종목엔 코스피/코스닥이
+    섞여있어서(예: CJ제일제당=코스피), 코스닥 종목을 코스피 평균과 비교하면 기준이
+    안 맞음 — 종목이 속한 시장에 맞는 베이스라인과만 비교해야 함.
+- **DB 스키마 변경** (§6-9 스키마에 추가, 2026-08-24 마이그레이션):
+  - `price_history`에 `volume`(bigint) 컬럼 추가.
+  - `investor_flow`(신규): `stock_code, trade_date, volume, institution_net, foreign_net,
+    foreign_pct` — `unique(stock_code, trade_date)`.
+  - `market_flow`(신규): `market('KOSPI'|'KOSDAQ'), trade_date, volume(천주),
+    individual_net, foreign_net, institution_net(전부 억원)` — `unique(market, trade_date)`.
+  - RLS는 기존 테이블들과 같은 "test_all_*" 정책(anon key로 읽기/쓰기 다 열림, §6-9의
+    "나중에 잠글 것" 메모 그대로 적용됨).
+- **"등락폭"은 화면 표시 시점에 계산, 별도 컬럼 저장 안 함**: 네이버가 거래량/외국인
+  등락률을 직접 안 주므로(가격의 등락률과 다름), DB엔 그날그날 원시값만 쌓고 "평균 대비",
+  "어제 대비" 같은 파생값은 화면에서 최근 N일치를 조회해 그때그때 계산 — 나중에 "최근
+  며칠 평균" 기준을 사용자가 직접 바꿀 수 있게 하려는 목적(§6-9 필터 빌더와 같은 설계
+  원칙). **외국인 쪽은 보유율(%)을 메인으로 쓰기로 함** — 외국인순매수(주식 수)는
+  마이너스로 갈 수 있어 "%변화"가 어색해지는데, 보유율은 원래 %라 "평균 대비 ±%"
+  패턴이 자연스러움. 다만 보유율은 하루 변동폭이 원래 작으므로(예: 12.93%→13.04%),
+  "어제 대비"는 상대변화율(%)이 아니라 **%p(퍼센트포인트) 차이**로 보여주는 게
+  직관적임 — 화면 만들 때 이 점 지킬 것. 그날의 외국인순매수(주식 수)는 참고용
+  숫자로 같이 보여주기로 함(이미 파싱해뒀으니 추가 비용 거의 없음).
+- **`db_fetch_daily_prices.py`의 방어적 구조 (중요)**: 이 스크립트는 매일 자동으로 도는
+  cron이라, 새로 추가한 4~7단계(수급/시장베이스라인)가 실패해도 **기존에 이미 잘 되던
+  1~3단계(시세/거래량 적재)는 절대 안 깨지게 각각 try/except로 감쌈** — 도입 당일
+  마이그레이션 SQL이 cron 실행 시각보다 늦게 반영될 위험이 있었어서(실제로는 제때
+  반영됐음) 이렇게 설계함. price_history upsert는 `volume` 컬럼이 아직 없으면(구체적으로
+  에러 메시지에 "volume"과 "does not exist"가 같이 있으면) `volume` 필드를 빼고
+  자동으로 재시도하는 fallback도 있음 — 나중에 이 파일 고칠 때 이 방어 구조를
+  걷어내지 말 것(cron이 깨지면 사람이 안 챙겨도 조용히 실패하는 채로 방치되기 쉬움).
+  종목별 수급 조회는 153번 순차 요청(비공식 스크레이핑이라 한꺼번에 몰아치지 않으려고
+  요청 사이 0.3초 지연을 둠).
+- **UI 배치 (예정)**: Fishing expander 밑에 "Volume", 그 밑에 "Foreigner" 섹션으로.
+- **검증**: `portfolio_core.py`의 새 함수 3개(`fetch_quotes`의 volume 파싱,
+  `fetch_investor_flow`, `fetch_market_flow`) 전부 실제 라이브 데이터로 검증함(2026-08-24).
+  `tests/test_portfolio_core.py`에 `fetch_investor_flow`/`fetch_market_flow` 파싱 로직에
+  대한 회귀 테스트도 추가(실제 페이지 구조를 고정 HTML fixture로 박아두고 `requests.get`을
+  monkeypatch — 네이버가 나중에 페이지 구조를 바꾸면 이 테스트가 먼저 잡아냄).
