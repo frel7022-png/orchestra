@@ -550,14 +550,23 @@ ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-
   `load_market_flow_db`로 DB 조회 → `st.session_state["flow_hist"]`/`["market_hist"]`에
   캐싱(Fishing과 동일 패턴, 매 rerun마다 DB 재조회 안 하려고).
   - **Volume**: 상단에 코스피/코스닥 시장 전체 거래량 평균대비 %(캡션), 그 밑에
-    `compute_volume_flags()` 결과 상위 15개(종목명 + vs평균% + "오늘 거래량 · 어제대비%").
+    `compute_volume_flags()` 결과 상위 15개(종목명 + vs평균% + "전일 ±% 주가 ±%").
   - **Foreigner**: 상단에 코스피/코스닥 시장 전체 외국인 순매수(오늘/평균, 억원) 캡션,
-    그 밑에 `compute_foreign_flags()` 결과 상위 15개(종목명 + vs평균%p + "보유율 ·
-    외국인순매수").
+    그 밑에 `compute_foreign_flags()` 결과 상위 15개(종목명 + vs평균%p + "전일 ±%p
+    주가 ±%").
+  - **원시 수량(거래량/외국인순매수 주식수)은 화면에 안 보여줌 (2026-08-24, 사용자
+    요청)** — DB엔 그대로 쌓지만(나중에 DB 필터로 검색할 때 쓸 것), 화면엔 "평균 대비
+    %(메인 pct)" → "전일 대비 %(p)" → "그날 실제 주가 등락률"만 보여줌. 수급 지표만
+    보고는 판단하기 어려워서, `compute_volume_flags`/`compute_foreign_flags`에
+    `price_hist`(선택 인자, `load_watchlist_history_db()` 결과) 넣어서 종목별 그날
+    등락률을 매칭해 붙여줌 — `_latest_change_pct_map()` 헬퍼.
   - `.updown-row`에 `.flow-row` 변형 클래스 추가(`app.py` CSS) — 디테일 텍스트가 기존
-    Up/Down·Fishing 것보다 길어서(`오늘 거래량 · 어제대비%` 등) `.detail` 폭을 118px→
-    150px로, `.pct` 폭을 62px→56px로 조정. Playwright로 실제 모바일 폭(390px)에서 안
-    넘치고 안 깨지는 것 확인함(2026-08-24).
+    Up/Down·Fishing 것보다 길어서 `.detail` 폭을 118px→150px로, `.pct` 폭을 62px→56px로
+    조정. 라벨은 "어제대비"가 아니라 "전일"로 축약(3자리 %일 때 줄바꿈되던 문제를
+    Playwright로 발견 후 고침). Playwright로 실제 모바일 폭(390px)에서 안 넘치고 안
+    깨지는 것 확인함(2026-08-24).
+  - **알려진 한계**: 단순평균이 이상치에 취약한 문제 — 위의 "'등락폭'은 화면 표시
+    시점에 계산" 항목 밑 "알려진 한계" 참고(위닉스 사례).
 - **검증**: `portfolio_core.py`의 새 함수들(`fetch_quotes`의 volume 파싱,
   `fetch_investor_flow`, `fetch_market_flow`, `load_investor_flow_db`,
   `load_market_flow_db`, `compute_volume_flags`, `compute_foreign_flags`,
