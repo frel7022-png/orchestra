@@ -30,14 +30,13 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
 
     summary = get_holding_trade_summary(tx, name)
     realized_color = UP_COLOR if summary["realized_pnl"] >= 0 else DOWN_COLOR
-    s1, s2 = st.columns(2)
-    with s1:
-        st.markdown(f"매수 **{summary['buy_count']}건** · {summary['buy_amount']:,.0f}원")
-    with s2:
-        st.markdown(
-            f"매도 **{summary['sell_count']}건** · {summary['sell_amount']:,.0f}원 "
-            f"(실현손익 <span style='color:{realized_color}'>{summary['realized_pnl']:,.0f}원</span>)",
-            unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="trade-summary">
+        <span>매수 <b>{summary['buy_count']}건</b> · {summary['buy_amount']:,.0f}원</span>
+        <span>매도 <b>{summary['sell_count']}건</b> · {summary['sell_amount']:,.0f}원
+            (실현손익 <span style="color:{realized_color}">{summary['realized_pnl']:,.0f}원</span>)</span>
+    </div>
+    """, unsafe_allow_html=True)
 
     entry_date = buys.iloc[0]["날짜"]
     entry_price = float(buys.iloc[0]["단가"])
