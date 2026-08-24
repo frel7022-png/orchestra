@@ -13,7 +13,7 @@
 
 import streamlit as st
 
-from constants import THEMES, DOWN_COLOR
+from constants import THEMES
 from portfolio_core import (
     load_holdings, load_transactions, load_state,
     snapshot_history, snapshot_sector_history,
@@ -116,17 +116,22 @@ st.markdown(f"""
         position:absolute; top:11px; right:108px; z-index:5; width:auto !important;
     }}
     [class*="st-key-watering_"] button {{
-        font-size:10.5px !important; padding:2px 7px !important; min-height:0 !important;
-        height:auto !important; border-radius:5px !important; font-weight:700 !important;
-        line-height:1.4 !important; letter-spacing:0.3px; border:none !important;
+        padding:2px 7px !important; min-height:0 !important;
+        height:auto !important; border-radius:5px !important;
+        line-height:1.4 !important; border:none !important;
         box-shadow:none !important;
     }}
+    [class*="st-key-watering_"] button p {{
+        font-size:10.5px !important; font-weight:600 !important; line-height:1.4 !important;
+    }}
     [class*="st-key-watering_"] button[kind="secondary"] {{
-        background:{DOWN_COLOR}22 !important; color:{DOWN_COLOR} !important;
+        background:{T['muted']}22 !important; color:{T['muted']} !important;
     }}
+    [class*="st-key-watering_"] button[kind="secondary"] p {{ color:{T['muted']} !important; }}
     [class*="st-key-watering_"] button[kind="primary"] {{
-        background:{DOWN_COLOR} !important; color:#fff !important;
+        background:{T['muted']} !important; color:#fff !important;
     }}
+    [class*="st-key-watering_"] button[kind="primary"] p {{ color:#fff !important; }}
 
     .tx-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:10px; padding:10px 14px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }}
     .tx-left {{ font-size:13px; }}
