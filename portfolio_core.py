@@ -503,11 +503,26 @@ def load_market_flow_db(supabase_url: str, supabase_key: str) -> pd.DataFrame:
     return df[cols]
 
 
-def compute_volume_flags(hist: pd.DataFrame) -> list[dict]:
+def _latest_change_pct_map(price_hist: pd.DataFrame | None) -> dict:
+    """load_watchlist_history_db()가 반환하는 형태(종목코드,...,날짜,종가,등락률)에서
+    종목별 가장 최근 등락률만 뽑아 {종목코드: 등락률} dict로. Volume/Foreigner 화면에
+    "그래서 오늘 이 종목 주가는 몇 % 움직였나"를 같이 보여주려는 용도(2026-08-24,
+    사용자 요청 — 수급 지표만 보여주고 실제 주가 움직임이 빠져있으면 판단하기 어려우므로)."""
+    if price_hist is None or price_hist.empty:
+        return {}
+    latest = price_hist.sort_values("날짜").groupby("종목코드").last()
+    return pd.to_numeric(latest["등락률"], errors="coerce").to_dict()
+
+
+def compute_volume_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = None) -> list[dict]:
     """종목별 오늘 거래량이 그동안 쌓인 평균/어제 대비 얼마나 튀었는지.
-    hist: load_investor_flow_db()가 반환하는 형태. 데이터가 하루뿐인 종목은
-    비교 대상이 없으므로 제외. 반환: |오늘 vs 평균 %| 큰 순으로 정렬된
-    [{"종목명","종목코드","섹터","오늘","평균","어제","vs평균pct","vs어제pct"}, ...]."""
+    hist: load_investor_flow_db()가 반환하는 형태. price_hist(선택): load_watchlist_
+    history_db()가 반환하는 형태 — 있으면 그날 실제 주가 등락률도 같이 붙여준다.
+    데이터가 하루뿐인 종목은 비교 대상이 없으므로 제외. 반환: |오늘 vs 평균 %| 큰 순으로
+    정렬된 [{"종목명","종목코드","섹터","오늘","평균","어제","vs평균pct","vs어제pct",
+    "오늘등락률"}, ...]. "오늘"(원시 거래량)은 DB 원자료용으로 남겨두지만, 화면에는
+    표시하지 않기로 함(2026-08-24, 사용자 요청) — 대신 vs어제pct/오늘등락률을 보여줌."""
+    price_map = _latest_change_pct_map(price_hist)
     results = []
     for code, g in hist.groupby("종목코드"):
         g = g.sort_values("날짜")
@@ -520,16 +535,21 @@ def compute_volume_flags(hist: pd.DataFrame) -> list[dict]:
             "오늘": int(today_vol), "평균": avg_vol, "어제": int(yday_vol),
             "vs평균pct": (today_vol - avg_vol) / avg_vol * 100,
             "vs어제pct": (today_vol - yday_vol) / yday_vol * 100 if yday_vol else None,
+            "오늘등락률": price_map.get(code),
         })
     results.sort(key=lambda r: -abs(r["vs평균pct"]))
     return results
 
 
-def compute_foreign_flags(hist: pd.DataFrame) -> list[dict]:
+def compute_foreign_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = None) -> list[dict]:
     """종목별 오늘 외국인보유율이 평균/어제 대비 얼마나 움직였는지(%p, 퍼센트포인트 차이 —
     보유율 자체가 이미 %라 상대변화율로 보면 하루 변동폭이 작아 헷갈리므로 %p로 비교).
+    price_hist(선택): compute_volume_flags와 동일 용도(그날 실제 주가 등락률).
     반환: |오늘 vs 평균 %p| 큰 순으로 정렬된 [{"종목명","종목코드","섹터","오늘보유율",
-    "평균보유율","어제보유율","vs평균pp","vs어제pp","오늘외국인순매수"}, ...]."""
+    "평균보유율","어제보유율","vs평균pp","vs어제pp","오늘외국인순매수","오늘등락률"}, ...].
+    "오늘외국인순매수"(원시 주식수)는 DB 원자료용으로 남겨두지만, 화면에는 표시하지
+    않기로 함(2026-08-24, 사용자 요청) — 대신 vs어제pp/오늘등락률을 보여줌."""
+    price_map = _latest_change_pct_map(price_hist)
     results = []
     for code, g in hist.groupby("종목코드"):
         g = g.sort_values("날짜")
@@ -543,6 +563,7 @@ def compute_foreign_flags(hist: pd.DataFrame) -> list[dict]:
             "오늘보유율": today_pct, "평균보유율": avg_pct, "어제보유율": yday_pct,
             "vs평균pp": today_pct - avg_pct, "vs어제pp": today_pct - yday_pct,
             "오늘외국인순매수": int(net.iloc[-1]) if not net.empty else None,
+            "오늘등락률": price_map.get(code),
         })
     results.sort(key=lambda r: -abs(r["vs평균pp"]))
     return results
