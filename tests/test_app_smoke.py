@@ -7,18 +7,26 @@ Streamlit 공식 테스트 도구(streamlit.testing.v1.AppTest)로 스크립트�
 있어야 하고, 실제 transactions.csv/portfolio_data.csv 데이터를 그대로 사용한다.
 """
 
+from pathlib import Path
+
 from streamlit.testing.v1 import AppTest
+
+# AppTest.from_file()의 상대경로는 "이 테스트 파일" 기준으로 풀린다(cwd 기준이 아님) —
+# 이 파일은 tests/ 안에 있으므로 그냥 "app.py"라고 쓰면 tests/app.py를 찾다가
+# FileNotFoundError가 난다(CI에서 실제로 겪음, 2026-08-24). 레포 루트의 app.py를
+# 명시적으로 가리킨다.
+APP_PATH = str(Path(__file__).resolve().parent.parent / "app.py")
 
 
 def test_app_loads_without_exception():
-    at = AppTest.from_file("app.py", default_timeout=30)
+    at = AppTest.from_file(APP_PATH, default_timeout=30)
     at.run()
     assert not at.exception
 
 
 def test_watering_button_opens_and_closes_holding_detail():
     """보유종목 카드의 WATERING 칩 → 물타기 그래프 토글이 예외 없이 열리고 닫히는지."""
-    at = AppTest.from_file("app.py", default_timeout=30)
+    at = AppTest.from_file(APP_PATH, default_timeout=30)
     at.run()
 
     watering_buttons = [b for b in at.button if b.key and b.key.startswith("watering_")]

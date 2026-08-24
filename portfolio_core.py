@@ -879,6 +879,11 @@ def rebuild_portfolio_from_transactions(tx: pd.DataFrame, initial_capital: float
                     holdings.loc[i, "업데이트시각"] = prior.loc[name, "업데이트시각"]
 
     tx = tx.copy()
+    # "실현손익" 컬럼은 매수 행은 빈 문자열, 매도 행은 숫자를 담아야 하는 혼합 타입 컬럼인데,
+    # pandas 3.0부터는 전부 빈 문자열인 컬럼을 Arrow 기반 문자열 dtype으로 추론해버려서
+    # 숫자를 대입하면 TypeError가 난다(CI에서 pandas 3.0.5로 처음 실제로 겪음, 2026-08-24).
+    # object dtype으로 미리 못박아서 문자열/숫자 혼용을 허용한다.
+    tx["실현손익"] = tx["실현손익"].astype(object)
     for tid, val in realized_map.items():
         tx.loc[tx["id"] == tid, "실현손익"] = val
 

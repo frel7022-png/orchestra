@@ -438,6 +438,27 @@ ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-
     스모크 테스트가 전부 이 이유 하나로 실패한다.
 - **실행 방법**: `pip install -r requirements-dev.txt` 후 `pytest tests/ -v`. 로컬에서 도입
   당시 17개 전부 통과 확인함.
+- **도입 첫 CI 실행에서 바로 실전 버그를 잡음 (2026-08-24)**: 로컬(pandas 2.3.3)에서는
+  17개 다 통과했는데, GitHub Actions(신선한 `pip install`이라 그 시점 최신 버전이 깔림)에서
+  돌리니 **막 나온 pandas 3.0.5**가 설치되면서 `rebuild_portfolio_from_transactions`가
+  `TypeError: Invalid value '800.0' for dtype 'str'`로 실패함 — pandas 3.0부터 전부 빈
+  문자열인 컬럼("실현손익", 매수 행은 ""·매도 행은 숫자)을 Arrow 기반 문자열 dtype으로
+  추론해버려서, 나중에 숫자를 대입하면 막힘. `tx["실현손익"] = tx["실현손익"].astype(object)`로
+  대입 직전에 object dtype으로 못박아서 고침(`portfolio_core.py`).
+  - **중요**: `requirements.txt`가 원래 `pandas>=2.0`으로 상한이 없었음 — 즉 이 버그는 CI뿐
+    아니라 **Streamlit Cloud가 의존성을 새로 설치하는 어느 시점에든 실제 운영 앱에서도 터질
+    수 있는 문제**였음(§1-5 원칙과 별개로, "의존성 버전"도 재배포 때마다 바뀔 수 있는
+    불확실성이라는 걸 보여준 사례). pandas 3.0은 문자열 dtype 기본 동작이 크게 바뀐 메이저
+    릴리스라 이 한 군데 말고 다른 곳에도 비슷한 문제가 숨어있을 수 있다고 보고,
+    `requirements.txt`의 pandas를 `>=2.0,<3.0`으로 상한을 걸어 예방함 — pandas 3.0 마이그레이션은
+    나중에 필요해지면 제대로 검증하고 별도로 진행할 것, 지금은 그냥 막아둔 상태.
+  - 테스트 도입 첫날 바로 이런 걸 잡아낸 게, 자동화 테스트를 하자고 한 판단이 맞았다는 근거.
+  - AppTest 관련 사소한 버그도 같이 발견: `AppTest.from_file("app.py")`의 상대경로는
+    **호출한 테스트 파일 기준**으로 풀림(cwd 기준 아님) — `tests/test_app_smoke.py`에서
+    그냥 `"app.py"`라고 쓰면 `tests/app.py`를 찾다가 `FileNotFoundError`. 로컬에서
+    `python -c "..."`로 즉석 검증할 때는 `<string>`이 호출 파일 취급되며 우연히 cwd 기준으로
+    풀려서 안 걸렸던 것 — 진짜 pytest 파일 안에서 처음 걸림. `Path(__file__).resolve().
+    parent.parent / "app.py"`로 절대경로를 명시해서 고침.
 - **알려진 한계 (수정 안 함, 참고만)**: 테스트 실행 중 `apply_transaction`의 `pd.concat`
   호출에서 pandas `FutureWarning`(빈/all-NA 항목과의 concat 관련)이 뜸 — 지금 당장 동작에
   문제는 없고 이번 작업 범위 밖이라 손 안 댐. 나중에 pandas 버전을 올리다가 이게 실제 에러로
