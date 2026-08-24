@@ -377,24 +377,18 @@ def refresh_watchlist_prices(watchlist: pd.DataFrame, supabase_url: str = "",
 
 
 # ------------------------------------------------------------------ #
-# 필터 빌더 — Supabase DB 기반 (2026-08-19 신설, 이후 CSV 기반 "패턴 검색" 대체)
-# GitHub Actions가 매일 평일 16:00 KST에 관심종목 153개 종가를 Supabase
-# price_history 테이블에 자동 적재한다(db_fetch_daily_prices.py 참고). watchlist.csv/
-# watchlist_prices.csv(±3% 당일 스크리너용)와는 별개 파이프라인 — 서로 안 건드림.
+# Supabase DB 히스토리 조회 — GitHub Actions가 매일 평일 16:00 KST에 관심종목 153개
+# 종가를 Supabase price_history 테이블에 자동 적재한다(db_fetch_daily_prices.py 참고).
+# watchlist.csv/watchlist_prices.csv(±3% 당일 스크리너용)와는 별개 파이프라인.
 # 접속 정보(url/key)는 Streamlit secrets에서 관리하므로, 이 모듈을 순수하게
 # 유지하기 위해 인자로 받는다(직접 st.secrets를 읽지 않음).
+# 원래 이 위로 "필터 빌더"(조건 검색 UI, 2026-08-19 신설)가 이 함수를 갖다 썼는데,
+# DB에 데이터가 몇 개월치 쌓이기 전까진 의미 있는 결과가 안 나오고 조건도 나중에
+# 다시 구상해서 짤 예정이라 2026-08-24에 UI+로직(run_filter_builder,
+# FILTER_CONDITION_TYPES, FILTER_DIRECTIONS)을 통째로 제거함 — 재도입 시 git log에서
+# 커밋 찾아서 참고할 것. 이 함수(load_watchlist_history_db)는 §6-6 "Fishing" 최초가
+# 조회(get_first_day_prices_db)가 여전히 쓰고 있어서 남겨둠.
 # ------------------------------------------------------------------ #
-FILTER_CONDITION_TYPES = {
-    "등락률": "기간(N영업일) 동안의 등락률 — 상승/하락/횡보 중 선택",
-    "가격": "가장 최근 종가",
-}
-FILTER_DIRECTIONS = {
-    "상승": "그 기간 동안 +N% 이상 오름",
-    "하락": "그 기간 동안 -N% 이상 빠짐",
-    "횡보": "그 기간 동안 등락률이 ±N% 이내",
-}
-
-
 def load_watchlist_history_db(supabase_url: str, supabase_key: str) -> pd.DataFrame:
     """Supabase price_history + watchlist를 조인해서 하나의 DataFrame으로.
     반환 컬럼: 종목코드, 종목명, 섹터, 날짜, 종가, 등락률. 접속 실패/데이터 없음이면 빈 DataFrame."""
@@ -433,77 +427,6 @@ def load_watchlist_history_db(supabase_url: str, supabase_key: str) -> pd.DataFr
     df = df.rename(columns={"stock_code": "종목코드", "trade_date": "날짜",
                              "close_price": "종가", "change_pct": "등락률"})
     return df[["종목코드", "종목명", "섹터", "날짜", "종가", "등락률"]]
-
-
-def run_filter_builder(supabase_url: str, supabase_key: str, conditions: list[dict]) -> list[dict]:
-    """conditions의 모든 조건을 만족(AND)하는 종목을 찾는다.
-    conditions 항목: {"type": "등락률"|"가격", ...type별 파라미터}
-    - 등락률: period(기간, N영업일), direction("상승"|"하락"|"횡보"), value(%, 항상 양수로 입력)
-      계산은 그 기간 시작 종가 대비 끝 종가의 변화율(고점 기준 최대낙폭이 아니라 구간 양끝
-      비교 — 단순하고 이해하기 쉬운 쪽을 택함, 2026-08-19 사용자 요청으로 하락률/횡보를
-      이 하나의 조건으로 통합). 상승=+value% 이상, 하락=-value% 이하, 횡보=|등락률|<=value%.
-    - 가격: op("이하"|"이상"), value(비교값)
-    반환: [{"종목명","종목코드","섹터","현재가","series"(스파크라인용 종가 리스트),
-            "detail"(조건별 계산값 dict, 라벨은 "N일등락률"/"현재가")}, ...] —
-    등락률 조건이 있으면 그중 첫 번째 값의 절댓값이 큰 순으로 정렬."""
-    hist = load_watchlist_history_db(supabase_url, supabase_key)
-    if hist.empty:
-        return []
-    hist = hist.copy()
-    hist["날짜"] = pd.to_datetime(hist["날짜"])
-
-    results = []
-    for code, g in hist.groupby("종목코드"):
-        g = g.sort_values("날짜")
-        prices = g["종가"].astype(float).tolist()
-        if not prices:
-            continue
-        name = g["종목명"].iloc[-1]
-        sector = g["섹터"].iloc[-1]
-        latest_price = prices[-1]
-
-        detail = {}
-        ok = True
-        for cond in conditions:
-            ctype = cond["type"]
-            if ctype == "등락률":
-                period = int(cond["period"])
-                window = prices[-period:]
-                if len(window) < 2:
-                    ok = False
-                    break
-                change_pct = (window[-1] - window[0]) / window[0] * 100 if window[0] else 0.0
-                key = f"{period}일등락률"
-                detail[key] = change_pct
-                direction = cond["direction"]
-                value = float(cond["value"])
-                if direction == "상승" and not (change_pct >= value):
-                    ok = False
-                    break
-                if direction == "하락" and not (change_pct <= -value):
-                    ok = False
-                    break
-                if direction == "횡보" and not (abs(change_pct) <= value):
-                    ok = False
-                    break
-            elif ctype == "가격":
-                detail["현재가"] = latest_price
-                if cond["op"] == "이하" and not (latest_price <= float(cond["value"])):
-                    ok = False
-                    break
-                if cond["op"] == "이상" and not (latest_price >= float(cond["value"])):
-                    ok = False
-                    break
-        if ok:
-            results.append({"종목명": name, "종목코드": code, "섹터": sector,
-                             "현재가": latest_price, "series": prices, "detail": detail})
-
-    change_keys = [k for c in conditions if c["type"] == "등락률"
-                   for k in [f"{int(c['period'])}일등락률"]]
-    if change_keys:
-        first_key = change_keys[0]
-        results.sort(key=lambda r: -abs(r["detail"].get(first_key, 0)))
-    return results
 
 
 def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:

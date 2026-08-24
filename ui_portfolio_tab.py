@@ -10,7 +10,6 @@ from portfolio_core import (
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
     compute_sector_weights, load_watchlist, refresh_watchlist_prices,
-    FILTER_CONDITION_TYPES, FILTER_DIRECTIONS, run_filter_builder,
     get_holding_trade_summary, get_holding_trade_summary_all_time,
     get_holding_trade_points, get_holding_avg_price_path,
 )
@@ -428,123 +427,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         for f in flagged
                     )
                     st.markdown(rows_html, unsafe_allow_html=True)
-
-            st.divider()
-
-            # ---- 필터 빌더: Supabase DB 기반 조건 검색 (2026-08-19 신설) ----
-            # CSV 기반 "패턴 검색"(하락률=고점대비 최대낙폭, 횡보=구간 변동폭 방식)을 대체함 —
-            # 그 CSV(watchlist_price_history.csv)가 실제로는 한 번도 쌓인 적이 없었다는 게
-            # 밝혀져서 제거하고, 이 DB 버전 하나로 통합(사용자 요청). 조건은 "등락률"
-            # 하나로 단순화 — 기간(N영업일) 동안 시작가 대비 끝가 변화율을 상승/하락/횡보 중
-            # 하나로 판정한다(고점 기준 최대낙폭이 아니라 구간 양끝 비교라 더 단순함).
-            # 예: "최근 2개월(약 40영업일) 20% 이상 하락" + "최근 3~4영업일 ±5% 이내 횡보"
-            # 를 조건 두 개로 표현. GitHub Actions가 매일 자동으로 쌓아주는 데이터라 새로고침을
-            # 안 눌러도 계속 쌓인다(portfolio_core.run_filter_builder 참고).
-            st.markdown("###### 필터 빌더 (DB)")
-            if not sb_url or not sb_key:
-                st.caption("Supabase 연결 정보가 없습니다 (.streamlit/secrets.toml의 [supabase] 섹션 확인).")
-            else:
-                if "filter_rows" not in st.session_state:
-                    st.session_state.filter_rows = [
-                        {"id": 0, "type": "등락률", "period": 40, "direction": "하락", "value": 20},
-                        {"id": 1, "type": "등락률", "period": 4, "direction": "횡보", "value": 5},
-                    ]
-                if "filter_row_seq" not in st.session_state:
-                    st.session_state.filter_row_seq = 2
-
-                FILTER_TYPE_OPTIONS = list(FILTER_CONDITION_TYPES.keys())
-                DIRECTION_OPTIONS = list(FILTER_DIRECTIONS.keys())
-                for row in st.session_state.filter_rows:
-                    rid = row["id"]
-                    rc1, rc2, rc3, rc4, rc5 = st.columns([1.1, 1, 0.9, 1, 0.4])
-                    with rc1:
-                        row["type"] = st.selectbox(
-                            "조건", FILTER_TYPE_OPTIONS,
-                            index=FILTER_TYPE_OPTIONS.index(row["type"]),
-                            key=f"fb_type_{rid}", label_visibility="collapsed")
-                    if row["type"] == "등락률":
-                        with rc2:
-                            row["period"] = st.number_input(
-                                "기간(영업일)", min_value=2, max_value=250,
-                                value=int(row.get("period", 40)),
-                                key=f"fb_a_{rid}", label_visibility="collapsed")
-                        with rc3:
-                            row["direction"] = st.selectbox(
-                                "방향", DIRECTION_OPTIONS,
-                                index=DIRECTION_OPTIONS.index(row.get("direction", "하락")),
-                                key=f"fb_b_{rid}", label_visibility="collapsed")
-                        with rc4:
-                            row["value"] = st.number_input(
-                                "%", min_value=1, max_value=90,
-                                value=int(row.get("value", 20)),
-                                key=f"fb_c_{rid}", label_visibility="collapsed")
-                    else:  # 가격
-                        with rc2:
-                            row["op"] = st.selectbox(
-                                "비교", ["이하", "이상"],
-                                index=["이하", "이상"].index(row.get("op", "이하")),
-                                key=f"fb_a_{rid}", label_visibility="collapsed")
-                        with rc3:
-                            row["value"] = st.number_input(
-                                "값", value=float(row.get("value", 20000)),
-                                key=f"fb_b_{rid}", label_visibility="collapsed")
-                    with rc5:
-                        if st.button("✕", key=f"fb_del_{rid}"):
-                            st.session_state.filter_rows = [
-                                r for r in st.session_state.filter_rows if r["id"] != rid]
-                            st.rerun()
-
-                bcol1, bcol2 = st.columns(2)
-                with bcol1:
-                    if st.button("조건 추가", key="fb_add", use_container_width=True):
-                        st.session_state.filter_rows.append(
-                            {"id": st.session_state.filter_row_seq, "type": "등락률",
-                             "period": 40, "direction": "하락", "value": 20})
-                        st.session_state.filter_row_seq += 1
-                        st.rerun()
-                with bcol2:
-                    run_clicked = st.button("검색", key="fb_run", type="primary", use_container_width=True)
-
-                if run_clicked:
-                    if not st.session_state.filter_rows:
-                        st.warning("조건을 하나 이상 추가해주세요.")
-                    else:
-                        with st.spinner("DB 조회 중..."):
-                            st.session_state["filter_results"] = run_filter_builder(
-                                sb_url, sb_key, st.session_state.filter_rows)
-
-                fb_results = st.session_state.get("filter_results")
-                if fb_results is None:
-                    st.caption("조건을 정하고 검색을 누르면 결과가 여기 표시됩니다 "
-                               "(자동 적재가 막 시작돼서 며칠~몇 주 쌓여야 의미 있는 결과가 나옵니다).")
-                elif not fb_results:
-                    st.caption("조건에 맞는 종목이 없습니다.")
-                else:
-                    for r in fb_results:
-                        series = r["series"]
-                        lo, hi = min(series), max(series)
-                        rng = hi - lo or 1
-                        pts = " ".join(
-                            f"{i / (len(series) - 1) * 100 if len(series) > 1 else 0:.1f},"
-                            f"{30 - (v - lo) / rng * 28:.1f}"
-                            for i, v in enumerate(series)
-                        )
-                        spark_color = DOWN_COLOR if series[-1] < series[0] else UP_COLOR
-                        detail_bits = [
-                            f"{k} {v:,.0f}원" if k == "현재가" else f"{k} {v:.1f}%"
-                            for k, v in r["detail"].items()
-                        ]
-                        st.markdown(
-                            f'<div class="updown-row" style="flex-direction:column;align-items:stretch;gap:2px;">'
-                            f'<div style="display:flex;justify-content:space-between;">'
-                            f'<span class="name">{r["종목명"]}</span>'
-                            f'<span class="detail">{" · ".join(detail_bits)}</span></div>'
-                            f'<svg viewBox="0 0 100 30" preserveAspectRatio="none" '
-                            f'style="width:100%;height:32px;display:block;">'
-                            f'<polyline points="{pts}" fill="none" stroke="{spark_color}" '
-                            f'stroke-width="2" vector-effect="non-scaling-stroke" /></svg></div>',
-                            unsafe_allow_html=True,
-                        )
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",
