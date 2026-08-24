@@ -11,7 +11,7 @@ from portfolio_core import (
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
     compute_sector_weights, load_watchlist, refresh_watchlist_prices,
     FILTER_CONDITION_TYPES, FILTER_DIRECTIONS, run_filter_builder,
-    get_holding_trade_summary, get_holding_trade_points,
+    get_holding_trade_summary, get_holding_trade_points, get_holding_avg_price_path,
 )
 
 
@@ -46,12 +46,21 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
     today = today_kst_str()
     sells = trades[trades["구분"] == "매도"]
 
+    avg_path = get_holding_avg_price_path(tx, name)
+    avg_x = list(avg_path["날짜"]) + [today]
+    avg_y = list(avg_path["평단가"]) + [avg_price]
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=[entry_date, today], y=[entry_price, current_price], mode="lines+markers",
         name="현재가", line=dict(color=T["muted"], width=2, dash="dot"),
         marker=dict(size=6, color=T["muted"]),
         hovertemplate="%{x}<br>%{y:,.0f}원<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=avg_x, y=avg_y, mode="lines", name="평단가",
+        line=dict(color=DOWN_COLOR, width=2, shape="hv"),
+        hovertemplate="%{x}<br>평단가 %{y:,.0f}원<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
         x=buys["날짜"], y=buys["단가"], mode="markers", name="매수",
@@ -69,9 +78,6 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
     fig.add_hline(y=entry_price, line_dash="dash", line_color=T["muted2"], line_width=1,
                   annotation_text="최초진입가", annotation_font_size=10,
                   annotation_font_color=T["muted2"])
-    fig.add_hline(y=avg_price, line_dash="dash", line_color=DOWN_COLOR, line_width=1,
-                  annotation_text="평단가", annotation_font_size=10,
-                  annotation_font_color=DOWN_COLOR)
     fig.update_layout(
         height=260,
         margin=dict(l=10, r=10, t=20, b=30),

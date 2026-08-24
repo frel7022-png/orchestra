@@ -662,14 +662,37 @@ def get_closed_out_last_sells(holdings_df: pd.DataFrame, tx_df: pd.DataFrame) ->
 # ------------------------------------------------------------------ #
 # 종목별 보유현황 카드 클릭 시 상세(매수/매도 내역 + "물타기 적정성" 그래프, 2026-08-21 신설)
 # ------------------------------------------------------------------ #
-def get_holding_trade_summary(tx: pd.DataFrame, name: str) -> dict:
-    """그 종목의 매수/매도 건수·누적금액·실현손익 합계. 평단가는 여기서 다루지 않음 —
-    이미 holdings(portfolio_data.csv)에 정확히 계산돼있는 값을 그대로 쓸 것(매도가 껴있어도
-    apply_transaction이 순서대로 재생하며 정확히 계산하므로, 여기서 매수 총액/총수량으로
-    단순 재평균하면 틀림 — 예: 2주@1000원 매수 후 1주 매도, 다시 1주@900원 매수하면 평단가는
-    950원이지, (2000+900)/3=966원이 아님)."""
+def _current_cycle_transactions(tx: pd.DataFrame, name: str) -> pd.DataFrame:
+    """그 종목의 거래 중 "현재 보유 사이클"(마지막으로 전량매도해서 보유수량이 0이 된
+    시점 이후 ~ 지금)에 해당하는 것만 남긴다. 예: 10000원에 사서 8500원까지 물타다 9000원에
+    전량매도(1번째 사이클 종료) 후, 나중에 5000원에 재진입한 상태라면 1번째 사이클 거래는
+    전부 제외하고 두 번째 사이클(5000원 매수 이후)만 반환 — 안 그러면 서로 다른 사이클의
+    평단가/진입가가 뒤섞여서 "지금 물타기가 적절한가"를 알 수 없게 된다(2026-08-24, 사용자
+    요청으로 도입).
+    정렬은 rebuild_portfolio_from_transactions와 동일하게 "날짜 → 같은 날짜 내 원래 입력순"
+    (입력순 = tx 안에서의 행 순서, 신규 거래는 항상 끝에 append되므로 이 순서가 곧 입력순)."""
     t = tx[tx["종목명"] == name].copy()
+    if t.empty:
+        return t
     t["수량"] = pd.to_numeric(t["수량"], errors="coerce").fillna(0)
+    t["_ord"] = t.index
+    t = t.sort_values(["날짜", "_ord"]).reset_index(drop=True)
+    signed_qty = t["수량"].where(t["구분"] == "매수", -t["수량"])
+    cum_qty = signed_qty.cumsum()
+    zero_points = cum_qty[cum_qty.abs() < 1e-6]
+    if not zero_points.empty:
+        t = t.iloc[zero_points.index[-1] + 1:]
+    return t.drop(columns="_ord").reset_index(drop=True)
+
+
+def get_holding_trade_summary(tx: pd.DataFrame, name: str) -> dict:
+    """현재 보유 사이클(전량매도 후 재진입했다면 그 이후만)의 매수/매도 건수·누적금액·
+    실현손익 합계. 평단가는 여기서 다루지 않음 — 이미 holdings(portfolio_data.csv)에
+    정확히 계산돼있는 값을 그대로 쓸 것(매도가 껴있어도 apply_transaction이 순서대로
+    재생하며 정확히 계산하므로, 여기서 매수 총액/총수량으로 단순 재평균하면 틀림 —
+    예: 2주@1000원 매수 후 1주 매도, 다시 1주@900원 매수하면 평단가는 950원이지,
+    (2000+900)/3=966원이 아님)."""
+    t = _current_cycle_transactions(tx, name)
     t["단가"] = pd.to_numeric(t["단가"], errors="coerce").fillna(0)
     buys = t[t["구분"] == "매수"]
     sells = t[t["구분"] == "매도"]
@@ -683,13 +706,36 @@ def get_holding_trade_summary(tx: pd.DataFrame, name: str) -> dict:
 
 
 def get_holding_trade_points(tx: pd.DataFrame, name: str) -> pd.DataFrame:
-    """그 종목의 매수/매도 거래를 날짜순으로. 반환 컬럼: 날짜, 구분, 단가, 수량.
-    "물타기 적정성" 그래프에서 매수/매도 시점을 점으로 찍는 데 씀."""
-    t = tx[tx["종목명"] == name].copy()
+    """현재 보유 사이클(전량매도 후 재진입했다면 그 이후만)의 매수/매도 거래를 날짜순으로.
+    반환 컬럼: 날짜, 구분, 단가, 수량. "물타기 적정성" 그래프에서 매수/매도 시점을 점으로
+    찍는 데 씀."""
+    t = _current_cycle_transactions(tx, name)
     t["단가"] = pd.to_numeric(t["단가"], errors="coerce")
-    t["수량"] = pd.to_numeric(t["수량"], errors="coerce")
-    t = t.sort_values(["날짜"])
     return t[["날짜", "구분", "단가", "수량"]].reset_index(drop=True)
+
+
+def get_holding_avg_price_path(tx: pd.DataFrame, name: str) -> pd.DataFrame:
+    """현재 보유 사이클에서 매수할 때마다 평단가가 어떻게 바뀌었는지(계단식) 반환.
+    반환 컬럼: 날짜, 평단가 — 매수 시점에만 값이 있음(apply_transaction과 동일하게 매도는
+    평단가에 영향을 주지 않으므로). 그래프에서 line_shape='hv'로 그리면 매수와 매수
+    사이 구간은 자동으로 평평하게 이어져서 "얼마에 사서 다음 매수 전까지 평단가가
+    유지되다가, 사면 계단처럼 바뀌는" 모양이 된다(2026-08-24 신설)."""
+    t = _current_cycle_transactions(tx, name)
+    if t.empty:
+        return pd.DataFrame(columns=["날짜", "평단가"])
+    t["단가"] = pd.to_numeric(t["단가"], errors="coerce").fillna(0)
+    qty = 0.0
+    avg = 0.0
+    points = []
+    for _, row in t.iterrows():
+        if row["구분"] == "매수":
+            new_qty = qty + row["수량"]
+            avg = (qty * avg + row["수량"] * row["단가"]) / new_qty if new_qty else 0.0
+            qty = new_qty
+            points.append((row["날짜"], avg))
+        else:
+            qty -= row["수량"]
+    return pd.DataFrame(points, columns=["날짜", "평단가"])
 
 
 # ------------------------------------------------------------------ #
