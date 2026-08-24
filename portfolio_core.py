@@ -430,6 +430,144 @@ def load_watchlist_history_db(supabase_url: str, supabase_key: str) -> pd.DataFr
     return df[["종목코드", "종목명", "섹터", "날짜", "종가", "등락률"]]
 
 
+# ------------------------------------------------------------------ #
+# 거래량/외국인 수급 트래킹 (2026-08-24 신설) — investor_flow(종목별)/market_flow(시장
+# 전체) 테이블을 조회해서 "평소보다 튀는지" 계산한다. §6-12 참고. DB엔 원시값만 쌓고
+# "평균 대비"/"어제 대비" 같은 파생값은 여기서 매번 계산 — 나중에 "최근 며칠 평균"
+# 기준을 사용자가 바꿀 수 있게 하려는 설계(§6-9 필터 빌더와 같은 원칙).
+# ------------------------------------------------------------------ #
+def load_investor_flow_db(supabase_url: str, supabase_key: str) -> pd.DataFrame:
+    """investor_flow + watchlist 조인. 반환 컬럼: 종목코드, 종목명, 섹터, 날짜, 거래량,
+    기관순매수, 외국인순매수, 외국인보유율. load_watchlist_history_db와 같은 패턴."""
+    cols = ["종목코드", "종목명", "섹터", "날짜", "거래량", "기관순매수", "외국인순매수", "외국인보유율"]
+    empty = pd.DataFrame(columns=cols)
+    if not supabase_url or not supabase_key:
+        return empty
+
+    headers = {"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"}
+    try:
+        wl_resp = requests.get(f"{supabase_url}/rest/v1/watchlist?select=stock_code,stock_name,sector",
+                                headers=headers, timeout=15)
+        wl_resp.raise_for_status()
+        wl = {r["stock_code"]: r for r in wl_resp.json()}
+
+        rows, offset, page = [], 0, 1000
+        while True:
+            r = requests.get(
+                f"{supabase_url}/rest/v1/investor_flow?select=stock_code,trade_date,volume,"
+                f"institution_net,foreign_net,foreign_pct&order=trade_date&limit={page}&offset={offset}",
+                headers=headers, timeout=20)
+            r.raise_for_status()
+            batch = r.json()
+            rows.extend(batch)
+            if len(batch) < page:
+                break
+            offset += page
+    except Exception:
+        return empty
+
+    if not rows:
+        return empty
+
+    df = pd.DataFrame(rows)
+    df["종목명"] = df["stock_code"].map(lambda c: wl.get(c, {}).get("stock_name", c))
+    df["섹터"] = df["stock_code"].map(lambda c: wl.get(c, {}).get("sector") or "미분류")
+    df = df.rename(columns={"stock_code": "종목코드", "trade_date": "날짜", "volume": "거래량",
+                             "institution_net": "기관순매수", "foreign_net": "외국인순매수",
+                             "foreign_pct": "외국인보유율"})
+    return df[cols]
+
+
+def load_market_flow_db(supabase_url: str, supabase_key: str) -> pd.DataFrame:
+    """market_flow 전체. 반환 컬럼: 시장, 날짜, 거래량, 개인순매수, 외국인순매수, 기관순매수."""
+    cols = ["시장", "날짜", "거래량", "개인순매수", "외국인순매수", "기관순매수"]
+    empty = pd.DataFrame(columns=cols)
+    if not supabase_url or not supabase_key:
+        return empty
+    headers = {"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"}
+    try:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/market_flow?select=market,trade_date,volume,"
+            f"individual_net,foreign_net,institution_net&order=trade_date",
+            headers=headers, timeout=15)
+        r.raise_for_status()
+        rows = r.json()
+    except Exception:
+        return empty
+    if not rows:
+        return empty
+    df = pd.DataFrame(rows)
+    df = df.rename(columns={"market": "시장", "trade_date": "날짜", "volume": "거래량",
+                             "individual_net": "개인순매수", "foreign_net": "외국인순매수",
+                             "institution_net": "기관순매수"})
+    return df[cols]
+
+
+def compute_volume_flags(hist: pd.DataFrame) -> list[dict]:
+    """종목별 오늘 거래량이 그동안 쌓인 평균/어제 대비 얼마나 튀었는지.
+    hist: load_investor_flow_db()가 반환하는 형태. 데이터가 하루뿐인 종목은
+    비교 대상이 없으므로 제외. 반환: |오늘 vs 평균 %| 큰 순으로 정렬된
+    [{"종목명","종목코드","섹터","오늘","평균","어제","vs평균pct","vs어제pct"}, ...]."""
+    results = []
+    for code, g in hist.groupby("종목코드"):
+        g = g.sort_values("날짜")
+        vols = pd.to_numeric(g["거래량"], errors="coerce").dropna()
+        if len(vols) < 2 or vols.mean() <= 0:
+            continue
+        today_vol, avg_vol, yday_vol = vols.iloc[-1], vols.mean(), vols.iloc[-2]
+        results.append({
+            "종목명": g["종목명"].iloc[-1], "종목코드": code, "섹터": g["섹터"].iloc[-1],
+            "오늘": int(today_vol), "평균": avg_vol, "어제": int(yday_vol),
+            "vs평균pct": (today_vol - avg_vol) / avg_vol * 100,
+            "vs어제pct": (today_vol - yday_vol) / yday_vol * 100 if yday_vol else None,
+        })
+    results.sort(key=lambda r: -abs(r["vs평균pct"]))
+    return results
+
+
+def compute_foreign_flags(hist: pd.DataFrame) -> list[dict]:
+    """종목별 오늘 외국인보유율이 평균/어제 대비 얼마나 움직였는지(%p, 퍼센트포인트 차이 —
+    보유율 자체가 이미 %라 상대변화율로 보면 하루 변동폭이 작아 헷갈리므로 %p로 비교).
+    반환: |오늘 vs 평균 %p| 큰 순으로 정렬된 [{"종목명","종목코드","섹터","오늘보유율",
+    "평균보유율","어제보유율","vs평균pp","vs어제pp","오늘외국인순매수"}, ...]."""
+    results = []
+    for code, g in hist.groupby("종목코드"):
+        g = g.sort_values("날짜")
+        pct = pd.to_numeric(g["외국인보유율"], errors="coerce").dropna()
+        if len(pct) < 2:
+            continue
+        today_pct, avg_pct, yday_pct = pct.iloc[-1], pct.mean(), pct.iloc[-2]
+        net = pd.to_numeric(g["외국인순매수"], errors="coerce").dropna()
+        results.append({
+            "종목명": g["종목명"].iloc[-1], "종목코드": code, "섹터": g["섹터"].iloc[-1],
+            "오늘보유율": today_pct, "평균보유율": avg_pct, "어제보유율": yday_pct,
+            "vs평균pp": today_pct - avg_pct, "vs어제pp": today_pct - yday_pct,
+            "오늘외국인순매수": int(net.iloc[-1]) if not net.empty else None,
+        })
+    results.sort(key=lambda r: -abs(r["vs평균pp"]))
+    return results
+
+
+def compute_market_flow_baseline(mkt_hist: pd.DataFrame) -> dict:
+    """코스피/코스닥 시장 전체의 오늘 거래량 vs 평균(%), 오늘 외국인순매수(참고용, 억원).
+    반환: {"KOSPI": {...}, "KOSDAQ": {...}} — 데이터가 하루뿐인 시장은 빠짐."""
+    result = {}
+    for market, g in mkt_hist.groupby("시장"):
+        g = g.sort_values("날짜")
+        vols = pd.to_numeric(g["거래량"], errors="coerce").dropna()
+        if len(vols) < 2 or vols.mean() <= 0:
+            continue
+        today_vol, avg_vol = vols.iloc[-1], vols.mean()
+        fnet = pd.to_numeric(g["외국인순매수"], errors="coerce").dropna()
+        result[market] = {
+            "오늘거래량": int(today_vol),
+            "거래량vs평균pct": (today_vol - avg_vol) / avg_vol * 100,
+            "오늘외국인순매수": int(fnet.iloc[-1]) if not fnet.empty else None,
+            "평균외국인순매수": round(fnet.mean(), 1) if not fnet.empty else None,
+        }
+    return result
+
+
 def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
     """네이버 실시간 시세 API는 한 번에 너무 많은 종목코드를 요청하면 일부만 응답하는
     경우가 있어(대략 20개 안팎에서 잘림), 20개씩 나눠서 요청한 뒤 결과를 합친다.

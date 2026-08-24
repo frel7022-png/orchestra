@@ -94,6 +94,8 @@ st.markdown(f"""
     .updown-row .name {{ font-weight:700; color:{T['text']}; flex:1; }}
     .updown-row .pct {{ font-weight:700; font-family: ui-monospace, monospace; width:62px; text-align:right; }}
     .updown-row .detail {{ font-size:11px; color:{T['muted']}; font-family: ui-monospace, monospace; width:118px; text-align:right; }}
+    .updown-row.flow-row .detail {{ width:150px; }}
+    .updown-row.flow-row .pct {{ width:56px; }}
 
 
     .stock-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:12px; padding:10px 16px; margin-bottom:7px; }}

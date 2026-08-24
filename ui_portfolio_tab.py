@@ -12,6 +12,8 @@ from portfolio_core import (
     compute_sector_weights, load_watchlist, refresh_watchlist_prices,
     get_holding_trade_summary, get_holding_trade_summary_all_time,
     get_holding_trade_points, get_holding_avg_price_path,
+    load_investor_flow_db, load_market_flow_db,
+    compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline,
 )
 
 
@@ -427,6 +429,77 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         for f in flagged
                     )
                     st.markdown(rows_html, unsafe_allow_html=True)
+
+    # ---- Volume / Foreigner: 거래량·외국인 수급이 평소보다 튀는 종목 (2026-08-24 신설) ----
+    # investor_flow(종목별)/market_flow(시장 전체) 테이블을 조회해서 compute_volume_flags/
+    # compute_foreign_flags로 "오늘 vs 그동안 쌓인 평균" 차이가 큰 순으로 보여준다.
+    # §6-12 참고 — 필터 빌더처럼 DB엔 원시값만 쌓고 등락폭은 화면에서 계산.
+    flow_hist = st.session_state.get("flow_hist")
+    market_hist = st.session_state.get("market_hist")
+
+    with st.expander("Volume", expanded=False):
+        if st.button("새로고침", key="volume_refresh", use_container_width=True):
+            with st.spinner("거래량 데이터 조회 중..."):
+                st.session_state["flow_hist"] = load_investor_flow_db(sb_url, sb_key)
+                st.session_state["market_hist"] = load_market_flow_db(sb_url, sb_key)
+            st.rerun()
+
+        if flow_hist is None:
+            st.caption("새로고침을 누르면 153개 종목의 거래량이 평소 대비 얼마나 튀었는지 보여줍니다.")
+        else:
+            baseline = compute_market_flow_baseline(market_hist)
+            if baseline:
+                bits = [f"{m} 거래량 평균대비 {'+' if b['거래량vs평균pct'] >= 0 else ''}{b['거래량vs평균pct']:.0f}%"
+                        for m, b in baseline.items()]
+                st.caption(" · ".join(bits))
+
+            vol_flags = compute_volume_flags(flow_hist)
+            if not vol_flags:
+                st.caption("비교할 데이터가 아직 부족합니다(최소 이틀치 필요).")
+            else:
+                rows_html = "".join(
+                    f'<div class="updown-row flow-row"><span class="name">{r["종목명"]}</span>'
+                    f'<span class="pct" style="color:{UP_COLOR if r["vs평균pct"] >= 0 else DOWN_COLOR}">'
+                    f'{"+" if r["vs평균pct"] >= 0 else ""}{r["vs평균pct"]:.0f}%</span>'
+                    f'<span class="detail">오늘 {r["오늘"]:,} · 어제대비 '
+                    f'{"+" if (r["vs어제pct"] or 0) >= 0 else ""}{r["vs어제pct"]:.0f}%</span></div>'
+                    for r in vol_flags[:15]
+                )
+                st.markdown(rows_html, unsafe_allow_html=True)
+                st.caption(f"평균 대비 변화가 큰 순 · 총 {len(vol_flags)}종목 중 상위 15개")
+
+    with st.expander("Foreigner", expanded=False):
+        if st.button("새로고침", key="foreigner_refresh", use_container_width=True):
+            with st.spinner("외국인 수급 데이터 조회 중..."):
+                st.session_state["flow_hist"] = load_investor_flow_db(sb_url, sb_key)
+                st.session_state["market_hist"] = load_market_flow_db(sb_url, sb_key)
+            st.rerun()
+
+        if flow_hist is None:
+            st.caption("새로고침을 누르면 153개 종목의 외국인 보유율이 평소 대비 얼마나 "
+                       "움직였는지 보여줍니다.")
+        else:
+            baseline = compute_market_flow_baseline(market_hist)
+            if baseline:
+                bits = [f"{m} 외국인 순매수 {b['오늘외국인순매수']:,}억원(평균 {b['평균외국인순매수']:,.0f}억원)"
+                        for m, b in baseline.items() if b["오늘외국인순매수"] is not None]
+                if bits:
+                    st.caption(" · ".join(bits))
+
+            fx_flags = compute_foreign_flags(flow_hist)
+            if not fx_flags:
+                st.caption("비교할 데이터가 아직 부족합니다(최소 이틀치 필요).")
+            else:
+                rows_html = "".join(
+                    f'<div class="updown-row flow-row"><span class="name">{r["종목명"]}</span>'
+                    f'<span class="pct" style="color:{UP_COLOR if r["vs평균pp"] >= 0 else DOWN_COLOR}">'
+                    f'{"+" if r["vs평균pp"] >= 0 else ""}{r["vs평균pp"]:.2f}%p</span>'
+                    f'<span class="detail">보유율 {r["오늘보유율"]:.1f}% · 순매수 '
+                    f'{r["오늘외국인순매수"]:,}주</span></div>'
+                    for r in fx_flags[:15]
+                )
+                st.markdown(rows_html, unsafe_allow_html=True)
+                st.caption(f"평균 대비 보유율 변화(%p)가 큰 순 · 총 {len(fx_flags)}종목 중 상위 15개")
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",
