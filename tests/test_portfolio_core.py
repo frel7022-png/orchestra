@@ -139,6 +139,18 @@ def test_get_holding_trade_summary_current_cycle_only():
     assert summary["realized_pnl"] == pytest.approx(0)  # 1차 사이클 실현손익은 제외돼야 함
 
 
+def test_get_holding_trade_summary_all_time_includes_closed_cycles():
+    """누적 요약(2026-08-24 신설)은 현재 사이클과 달리 과거에 청산된 1차 사이클의
+    매수/매도/실현손익까지 전부 포함해야 한다 — "이 종목으로 지금까지 총 얼마
+    벌고 잃었나"를 트래킹하려는 목적이므로."""
+    summary = core.get_holding_trade_summary_all_time(_two_cycle_tx(), "A")
+    assert summary["buy_count"] == 3   # 1차 사이클 매수 2건 + 2차 사이클 매수 1건
+    assert summary["sell_count"] == 1  # 1차 사이클 매도 1건
+    assert summary["buy_amount"] == pytest.approx(10000 + 8500 + 5000)
+    assert summary["sell_amount"] == pytest.approx(2 * 9500)
+    assert summary["realized_pnl"] == pytest.approx(1000)  # 1차 사이클 실현손익 포함돼야 함
+
+
 def test_get_holding_trade_points_current_cycle_only():
     points = core.get_holding_trade_points(_two_cycle_tx(), "A")
     assert len(points) == 1

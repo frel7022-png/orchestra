@@ -685,6 +685,26 @@ def _current_cycle_transactions(tx: pd.DataFrame, name: str) -> pd.DataFrame:
     return t.drop(columns="_ord").reset_index(drop=True)
 
 
+def get_holding_trade_summary_all_time(tx: pd.DataFrame, name: str) -> dict:
+    """그 종목의 전체 매매 이력(사이클 구분 없이, 과거에 완전히 청산했던 사이클까지 전부
+    포함한 누적) 매수/매도 건수·누적금액·실현손익 합계. 지금까지 이 종목으로 총 얼마
+    벌고 잃었는지 트래킹하려는 목적(2026-08-24, 사용자 요청) — get_holding_trade_summary는
+    "현재 사이클"만 보여줘서 이전에 청산했던 사이클의 실현손익이 안 보이므로, 이 함수를
+    별도로 둬서 "누적"과 "현재 사이클" 둘 다 화면에 같이 보여준다."""
+    t = tx[tx["종목명"] == name].copy()
+    t["수량"] = pd.to_numeric(t["수량"], errors="coerce").fillna(0)
+    t["단가"] = pd.to_numeric(t["단가"], errors="coerce").fillna(0)
+    buys = t[t["구분"] == "매수"]
+    sells = t[t["구분"] == "매도"]
+    return {
+        "buy_count": int(len(buys)),
+        "buy_amount": float((buys["수량"] * buys["단가"]).sum()),
+        "sell_count": int(len(sells)),
+        "sell_amount": float((sells["수량"] * sells["단가"]).sum()),
+        "realized_pnl": float(pd.to_numeric(sells["실현손익"], errors="coerce").fillna(0).sum()),
+    }
+
+
 def get_holding_trade_summary(tx: pd.DataFrame, name: str) -> dict:
     """현재 보유 사이클(전량매도 후 재진입했다면 그 이후만)의 매수/매도 건수·누적금액·
     실현손익 합계. 평단가는 여기서 다루지 않음 — 이미 holdings(portfolio_data.csv)에

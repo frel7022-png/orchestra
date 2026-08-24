@@ -106,7 +106,12 @@ st.markdown(f"""
     .cell .bottom {{ font-size:11px; color:{T['muted']}; margin-top:2px; }}
     .stock-foot {{ display:flex; justify-content:flex-end; margin-top:6px; font-size:10px; color:{T['muted2']}; }}
     .trade-summary {{ display:flex; flex-wrap:wrap; gap:3px 16px; font-size:11px; color:{T['muted']}; margin:10px 2px 6px; }}
+    .trade-summary + .trade-summary {{ margin-top:2px; }}
     .trade-summary b {{ color:{T['text']}; font-weight:700; }}
+    .trade-summary-label {{
+        font-size:10px; font-weight:700; color:{T['muted2']}; text-transform:uppercase;
+        letter-spacing:0.3px; flex-basis:100%;
+    }}
 
     /* 보유종목 카드 우측상단 "WATERING" 칩(=매수/매도 내역·물타기 그래프 토글) —
        카드 밑에 항상 펼쳐진 버튼 줄을 두던 걸 없애고, 카드 내부에 얹는 방식으로 바꿈

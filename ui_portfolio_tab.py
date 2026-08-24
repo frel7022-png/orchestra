@@ -11,7 +11,8 @@ from portfolio_core import (
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
     compute_sector_weights, load_watchlist, refresh_watchlist_prices,
     FILTER_CONDITION_TYPES, FILTER_DIRECTIONS, run_filter_builder,
-    get_holding_trade_summary, get_holding_trade_points, get_holding_avg_price_path,
+    get_holding_trade_summary, get_holding_trade_summary_all_time,
+    get_holding_trade_points, get_holding_avg_price_path,
 )
 
 
@@ -28,10 +29,19 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
         st.caption("매수 기록을 찾을 수 없습니다.")
         return
 
+    all_time = get_holding_trade_summary_all_time(tx, name)
+    all_time_color = UP_COLOR if all_time["realized_pnl"] >= 0 else DOWN_COLOR
     summary = get_holding_trade_summary(tx, name)
     realized_color = UP_COLOR if summary["realized_pnl"] >= 0 else DOWN_COLOR
     st.markdown(f"""
     <div class="trade-summary">
+        <span class="trade-summary-label">누적</span>
+        <span>매수 <b>{all_time['buy_count']}건</b> · {all_time['buy_amount']:,.0f}원</span>
+        <span>매도 <b>{all_time['sell_count']}건</b> · {all_time['sell_amount']:,.0f}원
+            (실현손익 <span style="color:{all_time_color}">{all_time['realized_pnl']:,.0f}원</span>)</span>
+    </div>
+    <div class="trade-summary">
+        <span class="trade-summary-label">이번 사이클</span>
         <span>매수 <b>{summary['buy_count']}건</b> · {summary['buy_amount']:,.0f}원</span>
         <span>매도 <b>{summary['sell_count']}건</b> · {summary['sell_amount']:,.0f}원
             (실현손익 <span style="color:{realized_color}">{summary['realized_pnl']:,.0f}원</span>)</span>
