@@ -94,6 +94,22 @@ def render_transactions_tab(state, tx, total_assets, unrealized_loss, T):
     st.divider()
 
     # ---- 거래 내역 (캘린더) ----
+    # 캘린더 위에 누적 매수/매도 총액 + 누적 실현손익 요약 한 줄 (2026-08-25, 사용자 요청) —
+    # 실현손익은 함수 맨 위에서 이미 계산해둔 total_realized 재사용(요약카드와 같은 숫자).
+    buy_tx = tx[tx["구분"] == "매수"]
+    sell_tx = tx[tx["구분"] == "매도"]
+    buy_total = (pd.to_numeric(buy_tx["수량"], errors="coerce")
+                 * pd.to_numeric(buy_tx["단가"], errors="coerce")).sum()
+    sell_total = (pd.to_numeric(sell_tx["수량"], errors="coerce")
+                  * pd.to_numeric(sell_tx["단가"], errors="coerce")).sum()
+    st.markdown(f"""
+    <div class="trade-summary" style="margin:0 2px 10px;">
+        <span>누적 매수 <b>{buy_total:,.0f}원</b></span>
+        <span>누적 매도 <b>{sell_total:,.0f}원</b></span>
+        <span>누적 실현손익 <b style="color:{rc}">{rs}{total_realized:,.0f}원</b></span>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown("##### 거래 내역")
 
     if "cal_year" not in st.session_state:
