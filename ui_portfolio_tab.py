@@ -172,7 +172,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             <div>일일손익<b style="color:{daily_color}">{daily_sign}{daily_pnl:,.0f}원</b></div>
             <div>보유종목<b>{len(df)}개</b></div>
         </div>
-        <div class="capital-line">최초 자본 10,000,000원 대비&nbsp;
+        <div class="capital-line">최초 자본 {state['initial']:,.0f}원 대비&nbsp;
             <b style="color:{cap_color}">{cap_sign}{capital_return:,.0f}원 ({cap_sign}{capital_return_pct:.2f}%)</b>
         </div>
         {daily_trade_html}

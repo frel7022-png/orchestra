@@ -22,7 +22,7 @@ def render_transactions_tab(state, tx, total_assets, unrealized_loss, T):
 
     st.markdown(f"""
     <div class="summary-box">
-        <div class="summary-label">최초 자본 10,000,000원 대비</div>
+        <div class="summary-label">최초 자본 {state['initial']:,.0f}원 대비</div>
         <span class="summary-main" style="color:{c3}">{s3}{cap_return:,.0f}원</span>
         <span class="summary-sub" style="color:{c3}">{s3}{cap_return_pct:.2f}%</span>
         <div class="summary-grid">
