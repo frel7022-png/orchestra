@@ -336,3 +336,112 @@ def test_fetch_market_flow_merges_volume_and_flow_pages(monkeypatch):
     assert r["개인순매수"] == -2382
     assert r["외국인순매수"] == 2161
     assert r["기관순매수"] == 292
+
+
+# ------------------------------------------------------------------ #
+# rebuild_portfolio_incremental — 체크포인트 재생 (2026-08-25 도입).
+# 핵심 불변식: 어떤 시나리오든 rebuild_portfolio_from_transactions(전체 재생)과
+# 최종 결과(holdings/현금)가 항상 같아야 한다. 체크포인트 파일은 실제 repo 파일을
+# 건드리면 안 되므로 tmp_path로 monkeypatch해서 격리한다.
+# ------------------------------------------------------------------ #
+def _isolate_checkpoint_files(monkeypatch, tmp_path):
+    monkeypatch.setattr(core, "CHECKPOINT_HOLDINGS_FILE", tmp_path / "checkpoint_holdings.csv")
+    monkeypatch.setattr(core, "CHECKPOINT_STATE_FILE", tmp_path / "checkpoint_state.csv")
+
+
+def _mixed_history_tx():
+    return pd.DataFrame([
+        _tx_row("1", "2026-01-02", "A", "매수", 10, 1000),
+        _tx_row("2", "2026-01-05", "A", "매도", 4, 1200),
+        _tx_row("3", "2026-01-10", "B", "매수", 3, 500),
+        _tx_row("4", "2026-01-20", "A", "매수", 5, 900),
+        _tx_row("5", "2026-01-25", "B", "매도", 1, 600),
+    ])
+
+
+def test_incremental_matches_full_replay_when_everything_is_old(monkeypatch, tmp_path):
+    """모든 거래가 safety_days보다 훨씬 과거라 전부 체크포인트로 접히는 경우."""
+    _isolate_checkpoint_files(monkeypatch, tmp_path)
+    tx = _mixed_history_tx()
+
+    exp_holdings, exp_state, _ = core.rebuild_portfolio_from_transactions(tx, initial_capital=1_000_000)
+    got_holdings, got_state, _ = core.rebuild_portfolio_incremental(
+        tx, initial_capital=1_000_000, safety_days=3, today="2026-06-01")
+
+    assert got_state["cash"] == pytest.approx(exp_state["cash"])
+    for name in ["A", "B"]:
+        exp_row = exp_holdings[exp_holdings["종목명"] == name]
+        got_row = got_holdings[got_holdings["종목명"] == name]
+        assert len(got_row) == len(exp_row)
+        if len(exp_row):
+            assert got_row.iloc[0]["수량"] == pytest.approx(exp_row.iloc[0]["수량"])
+            assert got_row.iloc[0]["평단가"] == pytest.approx(exp_row.iloc[0]["평단가"])
+
+
+def test_incremental_matches_full_replay_with_recent_tail(monkeypatch, tmp_path):
+    """일부 거래가 safety_days 이내(=아직 체크포인트로 안 접히는 "꼬리" 구간)인 경우."""
+    _isolate_checkpoint_files(monkeypatch, tmp_path)
+    tx = _mixed_history_tx()
+
+    exp_holdings, exp_state, _ = core.rebuild_portfolio_from_transactions(tx, initial_capital=1_000_000)
+    # today를 마지막 거래(01-25) 기준 safety_days=3 이내로 잡아서, 01-25 거래가 "꼬리"로 남게 함.
+    got_holdings, got_state, _ = core.rebuild_portfolio_incremental(
+        tx, initial_capital=1_000_000, safety_days=3, today="2026-01-26")
+
+    assert got_state["cash"] == pytest.approx(exp_state["cash"])
+    for name in ["A", "B"]:
+        exp_row = exp_holdings[exp_holdings["종목명"] == name]
+        got_row = got_holdings[got_holdings["종목명"] == name]
+        assert len(got_row) == len(exp_row)
+        if len(exp_row):
+            assert got_row.iloc[0]["수량"] == pytest.approx(exp_row.iloc[0]["수량"])
+            assert got_row.iloc[0]["평단가"] == pytest.approx(exp_row.iloc[0]["평단가"])
+
+
+def test_incremental_advances_and_reuses_checkpoint(monkeypatch, tmp_path):
+    """첫 호출이 체크포인트 파일을 만들고, 그 다음 호출(거래 추가)도 전체재생과 계속 일치해야 한다 —
+    체크포인트 위에 이어붙여 재생하는 경로가 실제로 타지는지 확인."""
+    _isolate_checkpoint_files(monkeypatch, tmp_path)
+    tx1 = _mixed_history_tx()
+
+    core.rebuild_portfolio_incremental(tx1, initial_capital=1_000_000, safety_days=3, today="2026-02-01")
+    assert core.CHECKPOINT_STATE_FILE.exists()
+    _, ckpt_state_1, ckpt_date_1 = core.load_checkpoint()
+    assert ckpt_date_1 == "2026-01-29"  # 2026-02-01 - 3일
+
+    tx2 = pd.concat([tx1, pd.DataFrame([
+        _tx_row("6", "2026-02-10", "A", "매도", 2, 1300),
+        _tx_row("7", "2026-02-15", "B", "매수", 2, 550),
+    ])], ignore_index=True)
+
+    exp_holdings, exp_state, _ = core.rebuild_portfolio_from_transactions(tx2, initial_capital=1_000_000)
+    got_holdings, got_state, _ = core.rebuild_portfolio_incremental(
+        tx2, initial_capital=1_000_000, safety_days=3, today="2026-02-20")
+
+    assert got_state["cash"] == pytest.approx(exp_state["cash"])
+    for name in ["A", "B"]:
+        exp_row = exp_holdings[exp_holdings["종목명"] == name]
+        got_row = got_holdings[got_holdings["종목명"] == name]
+        assert len(got_row) == len(exp_row)
+        if len(exp_row):
+            assert got_row.iloc[0]["수량"] == pytest.approx(exp_row.iloc[0]["수량"])
+            assert got_row.iloc[0]["평단가"] == pytest.approx(exp_row.iloc[0]["평단가"])
+
+    # 체크포인트가 앞으로 진행됐는지(과거 그대로 멈춰있지 않은지) 확인.
+    _, _, ckpt_date_2 = core.load_checkpoint()
+    assert ckpt_date_2 > ckpt_date_1
+
+
+def test_incremental_realized_pnl_stamped_same_as_full_replay(monkeypatch, tmp_path):
+    """체크포인트 경로도 매도 거래의 실현손익을 전체재생과 동일하게 tx에 채워야 한다."""
+    _isolate_checkpoint_files(monkeypatch, tmp_path)
+    tx = _mixed_history_tx()
+
+    _, _, exp_tx = core.rebuild_portfolio_from_transactions(tx, initial_capital=1_000_000)
+    _, _, got_tx = core.rebuild_portfolio_incremental(
+        tx, initial_capital=1_000_000, safety_days=3, today="2026-01-26")
+
+    exp_realized = exp_tx.set_index("id")["실현손익"]
+    got_realized = got_tx.set_index("id")["실현손익"]
+    for tid in ["2", "5"]:  # 매도 거래 id
+        assert float(got_realized[tid]) == pytest.approx(float(exp_realized[tid]))

@@ -18,7 +18,7 @@ app.py(웹 화면)와 ingest_daily.py(일일 매매일지 반영 스크립트)�
 import difflib
 import io
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -37,6 +37,8 @@ SECTOR_HISTORY_FILE = HERE / "sector_history.csv"
 CODE_CACHE_FILE = HERE / "stock_code_cache.csv"
 SECTOR_CACHE_FILE = HERE / "stock_sector_cache.csv"
 WATCHLIST_FILE = HERE / "watchlist.csv"  # "Fishing" 관심종목 리스트 (보유/거래와 무관한 별도 목록)
+CHECKPOINT_HOLDINGS_FILE = HERE / "checkpoint_holdings.csv"  # rebuild_portfolio_incremental 참고
+CHECKPOINT_STATE_FILE = HERE / "checkpoint_state.csv"
 
 HOLD_COLUMNS = ["종목명", "종목코드", "섹터", "수량", "평단가", "현재가", "등락률", "업데이트시각"]
 TX_COLUMNS = ["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"]
@@ -1070,33 +1072,23 @@ def apply_transaction(holdings: pd.DataFrame, state: dict, name: str, kind: str,
     return holdings, state, realized
 
 
-def rebuild_portfolio_from_transactions(tx: pd.DataFrame, initial_capital: float, fee_rate: float = 0.0,
-                                         prior_holdings: pd.DataFrame | None = None):
-    """transactions.csv 전체를 날짜순(같은 날짜 내에서는 원래 입력 순서대로) 처음부터
-    재생하여 holdings/state/실현손익을 다시 계산.
-    holdings는 이 함수(및 apply_transaction)를 통해서만 파생되는 결과물로 취급하고,
-    절대 손으로 고치지 않는다 — 다음 재계산 때 덮어써지기 때문.
-    fee_rate는 거래대금 대비 수수료+세금 추정 비율 — 매 거래마다 적용되며,
-    state["fee_rate"]에 담겨 반환되어 이후에도 계속 같은 비율로 재사용된다.
-
-    prior_holdings: replay 직전의 holdings 스냅샷(직전 시세 새로고침 결과). 현재가/등락률/
-    업데이트시각은 거래 기록만으로는 알 수 없는 정보라서, apply_transaction은 새로 만들어지는
-    각 종목 row의 현재가를 임시로 "그 종목의 첫 매수가"로 채운다. prior_holdings를 주면
-    종목명 기준으로 그 실시간 시세 값을 그대로 이어붙여서, 매매일지를 반영할 때마다 오늘
-    거래하지 않은 종목들의 손익률이 매수가 기준으로 리셋되는 걸 막는다."""
-    holdings = pd.DataFrame(columns=HOLD_COLUMNS)
-    state = {"cash": initial_capital, "initial": initial_capital, "fee_rate": fee_rate}
-
-    if tx.empty:
-        return holdings, state, tx
-
-    code_cache = load_code_cache()
-    sector_cache = load_sector_cache()
-
+def _sort_tx_for_replay(tx: pd.DataFrame) -> pd.DataFrame:
+    """"날짜 → 같은 날짜 내 원래 입력순"으로 정렬(§1-1). rebuild_portfolio_from_transactions와
+    rebuild_portfolio_incremental이 공유 — 정렬 기준이 두 곳에서 갈라지면 같은 거래가
+    함수에 따라 다른 순서로 재생돼서 평단가가 어긋나는 버그가 생길 수 있다."""
     tx_sorted = tx.copy().reset_index(drop=True)
     tx_sorted["_ord"] = range(len(tx_sorted))
-    tx_sorted = tx_sorted.sort_values(["날짜", "_ord"]).reset_index(drop=True)
+    return tx_sorted.sort_values(["날짜", "_ord"]).reset_index(drop=True)
 
+
+def _replay_transactions(holdings: pd.DataFrame, state: dict, tx_sorted: pd.DataFrame,
+                          code_cache: dict, sector_cache: dict, fee_rate: float):
+    """이미 정렬된(_sort_tx_for_replay) tx_sorted를 순서대로 하나씩 재생하며 holdings/state를
+    갱신하는 핵심 루프. rebuild_portfolio_from_transactions(전체 재생)와
+    rebuild_portfolio_incremental(체크포인트+최근분만 재생)이 이 함수 하나를 공유한다 —
+    "holdings/거래 관련 계산은 한 곳에만 둔다"는 파일 상단 원칙 그대로, 이 루프를 복제해서
+    따로 구현하지 말 것(두 벌이 되면 계산이 서로 어긋나는 버그가 생기기 쉬움).
+    반환: (holdings, state, {매도 거래 id: 실현손익})."""
     realized_map = {}
     for _, row in tx_sorted.iterrows():
         name = row["종목명"]
@@ -1107,18 +1099,31 @@ def rebuild_portfolio_from_transactions(tx: pd.DataFrame, initial_capital: float
                                                         code_cache, sector_cache, fee_rate)
         if kind == "매도":
             realized_map[row["id"]] = realized if realized is not None else 0.0
+    return holdings, state, realized_map
 
-    if prior_holdings is not None and not prior_holdings.empty:
-        prior = prior_holdings.drop_duplicates("종목명").set_index("종목명")
-        for i, row in holdings.iterrows():
-            name = row["종목명"]
-            if name in prior.index:
-                prev_price = float(prior.loc[name, "현재가"])
-                if prev_price > 0:
-                    holdings.loc[i, "현재가"] = prev_price
-                    holdings.loc[i, "등락률"] = prior.loc[name, "등락률"]
-                    holdings.loc[i, "업데이트시각"] = prior.loc[name, "업데이트시각"]
 
+def _apply_prior_prices(holdings: pd.DataFrame, prior_holdings: pd.DataFrame | None) -> pd.DataFrame:
+    """prior_holdings(replay 직전의 실시간 시세 스냅샷)의 현재가/등락률/업데이트시각을
+    이름 기준으로 이어붙인다 — 거래 기록만으로는 알 수 없는 정보라서 매매일지를 반영할
+    때마다 오늘 거래하지 않은 종목들의 손익률이 매수가 기준으로 리셋되는 걸 막는다."""
+    if prior_holdings is None or prior_holdings.empty:
+        return holdings
+    prior = prior_holdings.drop_duplicates("종목명").set_index("종목명")
+    for i, row in holdings.iterrows():
+        name = row["종목명"]
+        if name in prior.index:
+            prev_price = float(prior.loc[name, "현재가"])
+            if prev_price > 0:
+                holdings.loc[i, "현재가"] = prev_price
+                holdings.loc[i, "등락률"] = prior.loc[name, "등락률"]
+                holdings.loc[i, "업데이트시각"] = prior.loc[name, "업데이트시각"]
+    return holdings
+
+
+def _stamp_realized(tx: pd.DataFrame, realized_map: dict) -> pd.DataFrame:
+    """realized_map({거래id: 실현손익})을 tx 사본의 "실현손익" 컬럼에 채워 넣는다.
+    이 함수를 거치지 않은(이번에 재생 안 된) 행은 그대로 둔다 — rebuild_portfolio_incremental이
+    체크포인트 이전 구간의 이미 정확히 저장돼있던 실현손익 값을 안 건드리기 위해 이렇게 분리함."""
     tx = tx.copy()
     # "실현손익" 컬럼은 매수 행은 빈 문자열, 매도 행은 숫자를 담아야 하는 혼합 타입 컬럼인데,
     # pandas 3.0부터는 전부 빈 문자열인 컬럼을 Arrow 기반 문자열 dtype으로 추론해버려서
@@ -1127,8 +1132,134 @@ def rebuild_portfolio_from_transactions(tx: pd.DataFrame, initial_capital: float
     tx["실현손익"] = tx["실현손익"].astype(object)
     for tid, val in realized_map.items():
         tx.loc[tx["id"] == tid, "실현손익"] = val
+    return tx
+
+
+def rebuild_portfolio_from_transactions(tx: pd.DataFrame, initial_capital: float, fee_rate: float = 0.0,
+                                         prior_holdings: pd.DataFrame | None = None):
+    """transactions.csv 전체를 날짜순(같은 날짜 내에서는 원래 입력순)으로 처음부터 재생하여
+    holdings/state/실현손익을 다시 계산 — "정답"을 계산하는 기준(ground truth) 함수.
+    holdings는 이 함수(및 apply_transaction)를 통해서만 파생되는 결과물로 취급하고,
+    절대 손으로 고치지 않는다 — 다음 재계산 때 덮어써지기 때문.
+    fee_rate는 거래대금 대비 수수료+세금 추정 비율 — 매 거래마다 적용되며,
+    state["fee_rate"]에 담겨 반환되어 이후에도 계속 같은 비율로 재사용된다.
+
+    실제 반영에는 매번 처음부터 전체를 재생하지 않는 rebuild_portfolio_incremental()을 쓴다
+    (ingest_daily.py 참고) — 이 함수는 그 결과가 항상 맞는지 비교할 기준으로, 그리고
+    테스트에서 계속 쓰인다."""
+    holdings = pd.DataFrame(columns=HOLD_COLUMNS)
+    state = {"cash": initial_capital, "initial": initial_capital, "fee_rate": fee_rate}
+
+    if tx.empty:
+        return holdings, state, tx
+
+    code_cache = load_code_cache()
+    sector_cache = load_sector_cache()
+    tx_sorted = _sort_tx_for_replay(tx)
+
+    holdings, state, realized_map = _replay_transactions(
+        holdings, state, tx_sorted, code_cache, sector_cache, fee_rate)
+    holdings = _apply_prior_prices(holdings, prior_holdings)
+    tx = _stamp_realized(tx, realized_map)
 
     return holdings, state, tx
+
+
+def load_checkpoint() -> tuple[pd.DataFrame, dict | None, str | None]:
+    """저장된 체크포인트(holdings, state, 그 시점 날짜)를 불러온다. 없으면
+    (빈 holdings, None, None) — rebuild_portfolio_incremental이 "처음 실행"으로 처리한다."""
+    if not CHECKPOINT_STATE_FILE.exists():
+        return pd.DataFrame(columns=HOLD_COLUMNS), None, None
+    state_df = pd.read_csv(CHECKPOINT_STATE_FILE)
+    if state_df.empty:
+        return pd.DataFrame(columns=HOLD_COLUMNS), None, None
+    row = state_df.iloc[0]
+    state = {"cash": float(row["예수금"]), "initial": float(row["초기자본"]),
+              "fee_rate": float(row["fee_rate"])}
+    ckpt_date = str(row["체크포인트날짜"])
+    if CHECKPOINT_HOLDINGS_FILE.exists():
+        holdings = pd.read_csv(CHECKPOINT_HOLDINGS_FILE, dtype={"종목코드": str},
+                                keep_default_na=False, na_values=[""])
+    else:
+        holdings = pd.DataFrame(columns=HOLD_COLUMNS)
+    return holdings, state, ckpt_date
+
+
+def save_checkpoint(holdings: pd.DataFrame, state: dict, ckpt_date: str) -> None:
+    holdings.to_csv(CHECKPOINT_HOLDINGS_FILE, index=False)
+    pd.DataFrame([{
+        "체크포인트날짜": ckpt_date, "예수금": state["cash"],
+        "초기자본": state["initial"], "fee_rate": state.get("fee_rate", 0.0),
+    }]).to_csv(CHECKPOINT_STATE_FILE, index=False)
+
+
+def rebuild_portfolio_incremental(tx: pd.DataFrame, initial_capital: float, fee_rate: float = 0.0,
+                                   prior_holdings: pd.DataFrame | None = None,
+                                   safety_days: int = 3, today: str | None = None):
+    """rebuild_portfolio_from_transactions과 최종 결과가 항상 같아야 하지만(불변식 —
+    tests/test_portfolio_core.py에서 둘을 직접 비교해서 검증함), 매번 transactions.csv
+    전체를 처음부터 재생하지 않는다. 대신 "체크포인트"(오늘로부터 safety_days일보다 오래돼서
+    다시 안 바뀔 게 확실한 구간까지의 holdings/현금 계산 결과)를 파일로 저장해뒀다가,
+    다음 반영부터는 체크포인트 이후 거래만 재생한다.
+
+    **왜 safety_days만큼은 체크포인트로 확정 안 하는가**: §1-2 원칙(증권사 CSV는 그날 하루
+    전체 누적이라, 같은 날짜를 나중에 다시 반영하면 그날 거래가 통째로 교체됨) 때문에,
+    최근 며칠은 아직 재업로드로 바뀔 수 있다. 그래서 "확실히 다시 안 바뀔 구간"까지만
+    체크포인트로 확정하고, 최근 safety_days일치는 매번 처음부터(체크포인트 위에서) 다시
+    재생한다 — 이 구간은 거래 건수가 며칠 치뿐이라 매번 재생해도 비용이 작다.
+
+    지금(거래 몇백 건)은 이렇게 해도 체감 성능 이득이 없지만, 거래가 몇 년 치 쌓여
+    수천~수만 건이 되면 "매번 처음부터 전체 재생"은 반영할 때마다 점점 느려지는 구조라
+    (db_fetch_daily_prices.py의 append-only 패턴과 대조적으로, 지금까지는 holdings를
+    매번 새로 계산했음). 거래가 적은 지금부터 이 경로로만 반영하게 해서, 나중에 거래가
+    많이 쌓였을 때 "처음 실행되는 낯선 코드"가 아니라 "이미 매일 검증되고 있던 코드"가
+    되게 하려는 의도(2026-08-25, 사용자 요청 — 체감 이득이 없어도 부담이 안 되면 지금부터
+    실제 경로로 써서 다듬어가자는 방향)."""
+    holdings = pd.DataFrame(columns=HOLD_COLUMNS)
+    state = {"cash": initial_capital, "initial": initial_capital, "fee_rate": fee_rate}
+
+    if tx.empty:
+        return holdings, state, tx
+
+    today = today or today_kst_str()
+    cutoff = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=safety_days)).strftime("%Y-%m-%d")
+
+    code_cache = load_code_cache()
+    sector_cache = load_sector_cache()
+    tx_sorted = _sort_tx_for_replay(tx)
+
+    ckpt_holdings, ckpt_state, ckpt_date = load_checkpoint()
+    if ckpt_state is None:
+        ckpt_state = {"cash": initial_capital, "initial": initial_capital, "fee_rate": fee_rate}
+    # 체크포인트가 저장된 시점 이후로 initial_capital/fee_rate 자체가 바뀌었을 가능성에
+    # 대비해, 이번 호출의 값으로 덮어써서 항상 최신 기준을 따르게 함.
+    ckpt_state["initial"] = initial_capital
+    ckpt_state["fee_rate"] = fee_rate
+
+    if ckpt_date is None:
+        fold_mask = tx_sorted["날짜"] <= cutoff
+    else:
+        fold_mask = (tx_sorted["날짜"] > ckpt_date) & (tx_sorted["날짜"] <= cutoff)
+    to_fold = tx_sorted[fold_mask]
+    tail = tx_sorted[tx_sorted["날짜"] > cutoff]
+
+    realized_map = {}
+    cur_holdings, cur_state = ckpt_holdings.copy(), dict(ckpt_state)
+
+    if not to_fold.empty:
+        cur_holdings, cur_state, fold_realized = _replay_transactions(
+            cur_holdings, cur_state, to_fold, code_cache, sector_cache, fee_rate)
+        realized_map.update(fold_realized)
+        save_checkpoint(cur_holdings, cur_state, cutoff)
+
+    final_holdings, final_state, tail_realized = _replay_transactions(
+        cur_holdings.copy(), dict(cur_state), tail, code_cache, sector_cache, fee_rate)
+    realized_map.update(tail_realized)
+
+    final_holdings = _apply_prior_prices(final_holdings, prior_holdings)
+    tx = _stamp_realized(tx, realized_map)
+
+    return final_holdings, final_state, tx
 
 
 # ------------------------------------------------------------------ #

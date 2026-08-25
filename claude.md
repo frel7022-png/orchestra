@@ -102,7 +102,7 @@ portfolio_core.py        # 데이터 계층 전체(로드/저장/replay/시세�
                           #   쪼개는 건 이 파일 규모(약 670줄)에 비해 실익이 적다고 판단함.
 ui_portfolio_tab.py       # render_portfolio_tab() — 요약카드/섹터비중/Up-Down/종목현황/Volume/Foreigner.
 ui_transactions_tab.py     # render_transactions_tab() — 실현손익 그래프/거래 캘린더/누적요약.
-ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-2 참고).
+ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-2 참고, 내부적으로 rebuild_portfolio_incremental 사용 — §6-14).
 db_fetch_daily_prices.py       # watchlist 153종목 시세/거래량/수급을 매일 Supabase에 적재하는 cron 스크립트 (§6-9, §6-12 참고).
 tests/                            # pytest 회귀 테스트 (§6-11 참고).
 ```
@@ -126,6 +126,8 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
 | `stock_sector_cache.csv` | 섹터 영구 캐시 (수동 지정 포함) | 종목명, 섹터 |
 | `import_log.csv` | CSV 업로드 중복 방지 로그 | hash, 날짜, 처리시각 |
 | `watchlist.csv` | Fishing 관심종목 리스트(§6-6) | 종목명, 종목코드 |
+| `checkpoint_holdings.csv` | transactions 재생 체크포인트 — 보유종목 스냅샷(§6-14) | portfolio_data.csv와 동일 컬럼 |
+| `checkpoint_state.csv` | transactions 재생 체크포인트 — 현금/자본 스냅샷(§6-14) | 체크포인트날짜, 예수금, 초기자본, fee_rate |
 
 **Supabase(DB) 스키마는 §6-9/§6-12에 별도로 있음** — 로컬 CSV가 아니라 클라우드 DB라 여기 표에는 안 넣음.
 
@@ -454,3 +456,27 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   매수총액 대비 %) 두 줄 요약 (`ui_transactions_tab.py`, `.tx-cum-summary` 클래스 — 실현손익
   그래프 범례와 글자 크기를 맞춤, 13px). "일평균"은 금액 평균이 아니라 **건수 평균**(누적건수 /
   전체 거래일수, 소수점 버림)이니 헷갈리지 말 것.
+
+### 6-14. transactions 재생 체크포인트 (2026-08-25 도입)
+- **왜**: `ingest_daily.py`가 매번 `transactions.csv` 전체를 처음부터 재생(replay)해서
+  holdings를 다시 계산하는 구조였는데(§1-1), 거래가 지금(몇백 건)은 문제없어도 몇 년 치
+  쌓여 수천~수만 건이 되면 반영할 때마다 점점 느려지는 구조라 미리 체크포인트를 도입함.
+- **동작**: `portfolio_core.rebuild_portfolio_incremental()`이 `ingest_daily.py`가 실제로
+  쓰는 유일한 경로(§6-2)다. `rebuild_portfolio_from_transactions()`(전체 재생)는 지우지
+  않고 "정답 기준"으로 남겨뒀고, `tests/test_portfolio_core.py`가 두 함수의 결과가 항상
+  같아야 한다는 걸 계속 검증한다. 내부적으로 두 함수 다 `_replay_transactions()`(재생 루프
+  하나만 존재 — 복제 금지)를 공유한다.
+  - **최근 safety_days일(기본 3일)치는 절대 체크포인트로 확정하지 않고 매번 다시 재생**한다.
+    이유(§1-2): 증권사 CSV는 "그날 하루 전체 누적"이라 최근 며칠은 재업로드로 통째로 바뀔 수
+    있음 — 그 구간까지 체크포인트로 굳혀버리면 재업로드 시 옛날 값이 안 지워지고 남는 버그가
+    생김.
+  - 그보다 오래된(=이제 안 바뀔 게 확실한) 구간만 `checkpoint_holdings.csv` /
+    `checkpoint_state.csv`에 저장해두고, 다음 반영부터는 그 이후 거래만 이어서 재생한다.
+- **처음부터 유일한 경로로 씀**: "거래 많아지면 그때 켜는 대비책"이 아니라, 지금 거래가 적어
+  체감 이득이 없어도 매일 실제로 이 경로를 타게 해서 Fishing v2→v3(§6-6)나 WATERING 칩처럼
+  실사용을 통해 다듬어지게 하려는 의도(사용자 판단, 2026-08-25) — 별도 폴백 경로를 만들지
+  말 것.
+- **파일**: `checkpoint_holdings.csv`(§3 HOLD_COLUMNS와 동일 스키마), `checkpoint_state.csv`
+  (체크포인트날짜, 예수금, 초기자본, fee_rate) — 둘 다 `portfolio_data.csv`류와 같은 로컬
+  CSV라 §1-5 원칙대로 세션이 git commit/push해야 유지된다(현재는 다른 데이터 파일과 함께
+  `ingest_daily.py` 실행 후 커밋하는 루틴에 자연히 포함됨 — 별도 스텝 아님).

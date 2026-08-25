@@ -9,8 +9,10 @@
     2. transactions.csv에서 같은 날짜에 이미 이 방식으로 반영된 거래가 있으면
        지우고, 이번 내용으로 교체한다 (증권사 CSV는 "그날 하루 전체 누적"이라
        두 번 올려도 중복되지 않게 하기 위함).
-    3. transactions.csv 전체를 처음부터 재생(replay)해서 holdings/현금/실현손익을
-       다시 계산하고, portfolio_data.csv / transactions.csv / account_state.csv에 저장한다.
+    3. transactions.csv를 재생(replay)해서 holdings/현금/실현손익을 다시 계산하고,
+       portfolio_data.csv / transactions.csv / account_state.csv에 저장한다 — 매번 전체를
+       처음부터 재생하지 않고, 체크포인트(checkpoint_holdings.csv / checkpoint_state.csv) 이후
+       구간만 재생한다(rebuild_portfolio_incremental, portfolio_core.py 참고).
     4. 자산/섹터 스냅샷을 그 날짜 기준으로 남긴다 (거래 캘린더/자산추이 그래프용).
     5. 결과 요약(보유종목 수, 총자산, 현금 등)을 출력한다 — 이 값을 실제
        메리츠 앱 화면과 대조해서 반영이 정확한지 확인할 것.
@@ -53,7 +55,7 @@ def main():
 
     state = core.load_state()
     prior_holdings = core.load_holdings()
-    holdings2, state2, tx2 = core.rebuild_portfolio_from_transactions(
+    holdings2, state2, tx2 = core.rebuild_portfolio_incremental(
         tx2, state.get("initial", 10_000_000.0), state.get("fee_rate", 0.0),
         prior_holdings=prior_holdings)
 
