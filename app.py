@@ -115,6 +115,13 @@ st.markdown(f"""
         letter-spacing:0.3px; flex-basis:100%;
     }}
 
+    /* 거래 기록 탭 캘린더 위 누적 매수/매도/실현손익 요약 — 실현손익 그래프 범례
+       ("실현손익(누적)"/"미실현손실")랑 글자 크기를 맞춰달라는 요청(2026-08-25)으로
+       .trade-summary(11px)보다 살짝 키운 별도 클래스. */
+    .tx-cum-summary {{ display:flex; flex-wrap:wrap; gap:3px 16px; font-size:13px; color:{T['muted']}; margin:2px 2px 10px; }}
+    .tx-cum-summary + .tx-cum-summary {{ margin-top:2px; }}
+    .tx-cum-summary b {{ color:{T['text']}; font-weight:700; }}
+
     /* 보유종목 카드 우측상단 "WATERING" 칩(=매수/매도 내역·물타기 그래프 토글) —
        카드 밑에 항상 펼쳐진 버튼 줄을 두던 걸 없애고, 카드 내부에 얹는 방식으로 바꿈
        (2026-08-24). st.container(key=...)가 만들어주는 st-key-* 클래스로 CSS만으로
