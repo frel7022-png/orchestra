@@ -7,7 +7,7 @@ import streamlit as st
 
 from constants import UP_COLOR, DOWN_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_TARGETS
 from portfolio_core import (
-    group_sector, today_kst_str, now_kst_str, load_history,
+    group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
     compute_sector_weights, load_watchlist, refresh_watchlist_prices,
     get_holding_trade_summary, get_holding_trade_summary_all_time,
@@ -178,57 +178,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         {daily_trade_html}
     </div>
     """, unsafe_allow_html=True)
-
-    # ---- Shadow Asset: "미실현손실을 손절 안 하고 물타기로 회복시킨다"는 전제의 가상 자산
-    # (2026-08-25 신설) = 총자산 + 미실현손실. asset_history.csv의 "조정자산" 컬럼이 이미
-    # snapshot_history() 호출 시 total_assets + unrealized_loss로 매일 저장되고 있던 값이라
-    # (원래는 실현손익 그래프에서 미실현손실 계산용으로만 쓰였음) 새 계산 없이 그대로 재사용.
-    shadow_asset = total_assets + unrealized_loss
-    shadow_color = UP_COLOR if shadow_asset >= state["initial"] else DOWN_COLOR
-
-    st.markdown(f"""
-    <div class="summary-box">
-        <div class="summary-label">Shadow Asset (미실현손실을 물타기로 회복한다고 가정)</div>
-        <span class="summary-main" style="color:{shadow_color}">{shadow_asset:,.0f}원</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-    hist = load_history()
-    if not hist.empty:
-        hist_sorted = hist.sort_values("날짜")
-        fig_shadow = go.Figure()
-        fig_shadow.add_trace(go.Scatter(
-            x=hist_sorted["날짜"], y=hist_sorted["총자산"], mode="lines+markers", name="총자산",
-            line=dict(color=DOWN_COLOR, width=2), marker=dict(size=4),
-            hovertemplate="%{x}<br>총자산 %{y:,.0f}원<extra></extra>",
-        ))
-        fig_shadow.add_trace(go.Scatter(
-            x=hist_sorted["날짜"], y=hist_sorted["조정자산"], mode="lines+markers", name="Shadow Asset",
-            line=dict(color=UP_COLOR, width=2), marker=dict(size=4),
-            hovertemplate="%{x}<br>Shadow Asset %{y:,.0f}원<extra></extra>",
-        ))
-        fig_shadow.add_hline(y=state["initial"], line_dash="dash", line_color=T["muted2"], line_width=1,
-                              annotation_text="원금", annotation_font_size=10,
-                              annotation_font_color=T["muted2"])
-        fig_shadow.update_layout(
-            height=220,
-            margin=dict(l=10, r=10, t=10, b=35),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=T["text"], size=11),
-            legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5,
-                        bgcolor="rgba(0,0,0,0)"),
-            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-            yaxis=dict(showgrid=True, gridcolor=T["border"], tickfont=dict(size=9, color=T["muted"]),
-                       tickformat=",.0f", fixedrange=True),
-            hovermode="x unified",
-            dragmode=False,
-        )
-        st.plotly_chart(fig_shadow, width="stretch", config={
-            "displayModeBar": False, "scrollZoom": False, "doubleClick": False,
-        })
-        st.caption("두 선의 격차 = 미실현손실. 원금 아래에서 격차가 벌어질수록, "
-                   "미실현손실이 지금까지의 누적 실현손익보다 크다는 뜻")
 
     # ---- 섹터별 색상: 파이차트/막대/종목카드 태그가 전부 같은 배정을 쓰도록 여기서 한 번만 계산 ----
     # (주식 총자산 대비 비중 기준 순위로 고정 배정 — 예전에는 이 매핑이 두 벌 따로 있어서
