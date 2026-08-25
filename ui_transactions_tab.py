@@ -105,12 +105,15 @@ def render_transactions_tab(state, tx, total_assets, unrealized_loss, T):
     sell_total = (pd.to_numeric(sell_tx["수량"], errors="coerce")
                   * pd.to_numeric(sell_tx["단가"], errors="coerce")).sum()
     realized_pct = (total_realized / buy_total * 100) if buy_total else 0.0
-    buy_avg = buy_total / len(buy_tx) if len(buy_tx) else 0.0
-    sell_avg = sell_total / len(sell_tx) if len(sell_tx) else 0.0
+    # "평균"은 금액이 아니라 횟수 — 누적건수 / 총 거래일(전체 거래 기록에 등장하는 날짜 수),
+    # 소수점 버림(2026-08-25, 사용자가 금액 평균으로 오해한 걸 정정).
+    total_trade_days = tx["날짜"].nunique() if not tx.empty else 0
+    buy_avg = int(len(buy_tx) / total_trade_days) if total_trade_days else 0
+    sell_avg = int(len(sell_tx) / total_trade_days) if total_trade_days else 0
     st.markdown(f"""
     <div class="tx-cum-summary">
-        <span>누적 매수 <b>{len(buy_tx)}건</b>(평균 {buy_avg:,.0f}원) · {buy_total:,.0f}원</span>
-        <span>누적 매도 <b>{len(sell_tx)}건</b>(평균 {sell_avg:,.0f}원) · {sell_total:,.0f}원</span>
+        <span>누적 매수 <b>{len(buy_tx)}건</b>(일평균 {buy_avg}건) · {buy_total:,.0f}원</span>
+        <span>누적 매도 <b>{len(sell_tx)}건</b>(일평균 {sell_avg}건) · {sell_total:,.0f}원</span>
     </div>
     <div class="tx-cum-summary">
         <span>누적 실현손익 <b style="color:{rc}">{rs}{total_realized:,.0f}원 ({rs}{realized_pct:.2f}%)</b></span>
