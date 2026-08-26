@@ -94,7 +94,7 @@ def render_transactions_tab(state, tx, total_assets, unrealized_loss, T):
     st.divider()
 
     # ---- 거래 내역 (캘린더) ----
-    # 캘린더 위에 누적 매수/매도(건수+금액) + 누적 실현손익(금액+매수 대비 %) 요약
+    # 캘린더 위에 누적 매수/매도(건수+금액) + 누적 실현손익(금액+원금 대비 %) 요약
     # (2026-08-25, 사용자 요청 — 한 줄엔 안 들어가서 두 줄로: 매수/매도 줄, 그 아래 실현손익 줄.
     # 글자 크기는 실현손익 그래프 범례랑 맞춤). 실현손익은 함수 맨 위에서 이미 계산해둔
     # total_realized 재사용(요약카드와 같은 숫자).
@@ -104,7 +104,10 @@ def render_transactions_tab(state, tx, total_assets, unrealized_loss, T):
                  * pd.to_numeric(buy_tx["단가"], errors="coerce")).sum()
     sell_total = (pd.to_numeric(sell_tx["수량"], errors="coerce")
                   * pd.to_numeric(sell_tx["단가"], errors="coerce")).sum()
-    realized_pct = (total_realized / buy_total * 100) if buy_total else 0.0
+    # 실현손익 %는 매수총액이 아니라 원금(초기자본) 대비로 계산 (2026-08-26, 사용자 요청 —
+    # 매수총액 기준이면 물타기로 매수총액 자체가 계속 불어나서 같은 실현손익이라도 %가
+    # 작아 보이는 문제가 있었음).
+    realized_pct = (total_realized / state["initial"] * 100) if state["initial"] else 0.0
     # "평균"은 금액이 아니라 횟수 — 누적건수 / 총 거래일(전체 거래 기록에 등장하는 날짜 수),
     # 소수점 버림(2026-08-25, 사용자가 금액 평균으로 오해한 걸 정정).
     total_trade_days = tx["날짜"].nunique() if not tx.empty else 0
