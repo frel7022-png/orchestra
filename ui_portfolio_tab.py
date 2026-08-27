@@ -130,12 +130,18 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     today_str = today_kst_str()
     today_tx = tx[tx["날짜"].astype(str) == today_str]
 
-    # 오늘 처음 매수해서 신규 진입한 종목(전체 이력상 최초매수일이 오늘인 것) — 카드 정렬 최상단 +
-    # 초록색 강조에 씀. 날짜 비교로만 판단해서 다음날이 되면 자동으로 일반 종목과 동일하게 취급됨
+    # 오늘 신규 진입한 종목(현재 보유 사이클의 첫 매수일이 오늘인 것) — 카드 정렬 최상단 +
+    # 초록색 강조에 씀. 전량매도 후 오늘 재진입한 경우도 "오늘 처음 들어온 것"으로 취급한다
+    # (하루 단타 관점에서는 재진입도 신규 진입과 동일 — 2026-08-27 사용자 요청). 그래서
+    # 전체 이력상 최초매수일이 아니라 _current_cycle_transactions 기준(WATERING 상세와 동일
+    # 사이클 정의, §6-10)으로 판단 — 날짜 비교라 다음날이 되면 자동으로 일반 종목과 동일해짐
     # (별도 상태 저장 없음).
-    buy_tx_all = tx[tx["구분"] == "매수"]
-    first_buy_date = buy_tx_all.groupby("종목명")["날짜"].min()
-    new_today_names = set(first_buy_date[first_buy_date.astype(str) == today_str].index)
+    new_today_names = set()
+    for name in df["종목명"].unique():
+        cycle_buys = get_holding_trade_points(tx, name)
+        cycle_buys = cycle_buys[cycle_buys["구분"] == "매수"]
+        if not cycle_buys.empty and str(cycle_buys.iloc[0]["날짜"]) == today_str:
+            new_today_names.add(name)
     daily_pnl = pd.to_numeric(
         today_tx.loc[today_tx["구분"] == "매도", "실현손익"], errors="coerce"
     ).sum()
