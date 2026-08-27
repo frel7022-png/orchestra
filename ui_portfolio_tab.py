@@ -130,18 +130,17 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     today_str = today_kst_str()
     today_tx = tx[tx["날짜"].astype(str) == today_str]
 
-    # 오늘 신규 진입한 종목(현재 보유 사이클의 첫 매수일이 오늘인 것) — 카드 정렬 최상단 +
-    # 초록색 강조에 씀. 전량매도 후 오늘 재진입한 경우도 "오늘 처음 들어온 것"으로 취급한다
-    # (하루 단타 관점에서는 재진입도 신규 진입과 동일 — 2026-08-27 사용자 요청). 그래서
-    # 전체 이력상 최초매수일이 아니라 _current_cycle_transactions 기준(WATERING 상세와 동일
-    # 사이클 정의, §6-10)으로 판단 — 날짜 비교라 다음날이 되면 자동으로 일반 종목과 동일해짐
-    # (별도 상태 저장 없음).
-    new_today_names = set()
-    for name in df["종목명"].unique():
-        cycle_buys = get_holding_trade_points(tx, name)
-        cycle_buys = cycle_buys[cycle_buys["구분"] == "매수"]
-        if not cycle_buys.empty and str(cycle_buys.iloc[0]["날짜"]) == today_str:
-            new_today_names.add(name)
+    # 오늘 신규 진입한 종목(전체 이력상 최초 거래일이 오늘인 것, 즉 이 종목을 생전 처음
+    # 산 날) — 카드 정렬 최상단 + 초록색 강조에 씀.
+    # "전량매도 후 재진입도 신규로 치자"는 사이클 기준(_current_cycle_transactions)으로
+    # 한 번 바꿔봤는데, 삼성전자/NAVER/두산에너빌리티처럼 거의 매일 당일 매수-당일매도를
+    # 반복하는 단타 종목은 매일 포지션이 0으로 돌아갔다가 다시 시작되므로 그 기준으로는
+    # "매일" 신규로 잡히는 버그가 있었음(2026-08-27, 사용자가 실제 사례로 발견). 사용자가
+    # 실제로 구분하려는 건 "이 종목을 생전 처음 사봤다"(예: ESR켄달스퀘어리츠/앱클론)이지
+    # "오늘 마침 포지션이 열려있다"가 아니므로, 전체 이력 기준 최초 거래일로 되돌림 —
+    # 날짜 비교라 다음날이 되면 자동으로 일반 종목과 동일해짐(별도 상태 저장 없음).
+    first_ever_date = tx.groupby("종목명")["날짜"].min()
+    new_today_names = set(first_ever_date[first_ever_date.astype(str) == today_str].index)
     daily_pnl = pd.to_numeric(
         today_tx.loc[today_tx["구분"] == "매도", "실현손익"], errors="coerce"
     ).sum()
