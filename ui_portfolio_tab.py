@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from constants import UP_COLOR, DOWN_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_TARGETS
+from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_TARGETS
 from portfolio_core import (
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
@@ -129,6 +129,13 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
 
     today_str = today_kst_str()
     today_tx = tx[tx["날짜"].astype(str) == today_str]
+
+    # 오늘 처음 매수해서 신규 진입한 종목(전체 이력상 최초매수일이 오늘인 것) — 카드 정렬 최상단 +
+    # 초록색 강조에 씀. 날짜 비교로만 판단해서 다음날이 되면 자동으로 일반 종목과 동일하게 취급됨
+    # (별도 상태 저장 없음).
+    buy_tx_all = tx[tx["구분"] == "매수"]
+    first_buy_date = buy_tx_all.groupby("종목명")["날짜"].min()
+    new_today_names = set(first_buy_date[first_buy_date.astype(str) == today_str].index)
     daily_pnl = pd.to_numeric(
         today_tx.loc[today_tx["구분"] == "매도", "실현손익"], errors="coerce"
     ).sum()
@@ -580,6 +587,11 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     else:
         df_sorted = df.sort_values("비중", ascending=False)
 
+    # 오늘 신규 진입 종목을 맨 위로 (그룹 내부 정렬 순서는 유지 — 안정적인 그룹 분리)
+    if new_today_names:
+        is_new = df_sorted["종목명"].isin(new_today_names)
+        df_sorted = pd.concat([df_sorted[is_new], df_sorted[~is_new]])
+
     rows = df_sorted.to_dict("records")
 
     if not rows:
@@ -594,6 +606,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             cc = UP_COLOR if r["등락률"] >= 0 else DOWN_COLOR
             csign = "+" if r["등락률"] >= 0 else ""
             sc = sector_tag_color(r["섹터"])
+            name_style = f"color:{NEW_COLOR}" if r["종목명"] in new_today_names else ""
 
             code = r["종목코드"]
             is_open = st.session_state.holding_detail_open == code
@@ -602,7 +615,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 st.markdown(f"""
                 <div class="stock-card">
                     <div class="stock-top">
-                        <span class="stock-title-group"><span class="stock-name">{r['종목명']}</span></span>
+                        <span class="stock-title-group"><span class="stock-name" style="{name_style}">{r['종목명']}</span></span>
                         <span class="sector-tag" style="background:{sc}22;color:{sc}">{r['섹터']}</span>
                     </div>
                     <div class="stock-grid">
