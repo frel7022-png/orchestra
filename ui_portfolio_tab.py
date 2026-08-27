@@ -130,17 +130,20 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     today_str = today_kst_str()
     today_tx = tx[tx["날짜"].astype(str) == today_str]
 
-    # 오늘 신규 진입한 종목(전체 이력상 최초 거래일이 오늘인 것, 즉 이 종목을 생전 처음
-    # 산 날) — 카드 정렬 최상단 + 초록색 강조에 씀.
-    # "전량매도 후 재진입도 신규로 치자"는 사이클 기준(_current_cycle_transactions)으로
-    # 한 번 바꿔봤는데, 삼성전자/NAVER/두산에너빌리티처럼 거의 매일 당일 매수-당일매도를
-    # 반복하는 단타 종목은 매일 포지션이 0으로 돌아갔다가 다시 시작되므로 그 기준으로는
-    # "매일" 신규로 잡히는 버그가 있었음(2026-08-27, 사용자가 실제 사례로 발견). 사용자가
-    # 실제로 구분하려는 건 "이 종목을 생전 처음 사봤다"(예: ESR켄달스퀘어리츠/앱클론)이지
-    # "오늘 마침 포지션이 열려있다"가 아니므로, 전체 이력 기준 최초 거래일로 되돌림 —
-    # 날짜 비교라 다음날이 되면 자동으로 일반 종목과 동일해짐(별도 상태 저장 없음).
-    first_ever_date = tx.groupby("종목명")["날짜"].min()
-    new_today_names = set(first_ever_date[first_ever_date.astype(str) == today_str].index)
+    # 오늘 신규 진입한 종목("어제 종가 기준 보유수량이 0이었던 종목") — 카드 정렬 최상단 +
+    # 초록색 강조에 씀. 처음 사보는 건지(ESR켄달스퀘어리츠/앱클론) 예전에 샀다가 전량매도한
+    # 뒤 오늘 다시 산 건지(삼성전자/NAVER/두산에너빌리티 같은 단타 종목)는 구분하지 않는다 —
+    # 관건은 "어제는 안 갖고 있었는데 오늘 갖게 됐냐"뿐(2026-08-27 사용자가 명확히 함).
+    # 어제까지의 전체 거래(날짜 < 오늘)를 합산해서 순보유수량을 구하고, 그게 0 이하인
+    # 종목만 "어제 미보유"로 판정 — 매수/매도 순서는 최종 순수량엔 영향 없으므로 재생 없이
+    # 합산만으로 충분하다. 오늘 팔지 않고 남아있으면, 내일은 "어제(=오늘) 보유"로 잡혀
+    # 자동으로 일반 종목과 동일해짐(별도 상태 저장 없음).
+    prior_tx = tx[tx["날짜"].astype(str) < today_str].copy()
+    prior_tx["수량"] = pd.to_numeric(prior_tx["수량"], errors="coerce").fillna(0)
+    signed_qty = prior_tx["수량"].where(prior_tx["구분"] == "매수", -prior_tx["수량"])
+    net_qty_yesterday = signed_qty.groupby(prior_tx["종목명"]).sum()
+    held_yesterday = set(net_qty_yesterday[net_qty_yesterday > 1e-6].index)
+    new_today_names = set(df["종목명"]) - held_yesterday
     daily_pnl = pd.to_numeric(
         today_tx.loc[today_tx["구분"] == "매도", "실현손익"], errors="coerce"
     ).sum()
