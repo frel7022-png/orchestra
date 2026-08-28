@@ -1,5 +1,5 @@
 """
-한국 주식 포트폴리오 트래커 (Streamlit) — Meritz Orchestra
+한국 주식 포트폴리오 트래커 (Streamlit) — Orchestra
 ------------------------------------------------------------------
     streamlit run app.py
 
@@ -31,7 +31,7 @@ def theme() -> dict:
 # ------------------------------------------------------------------ #
 # 페이지 설정
 # ------------------------------------------------------------------ #
-st.set_page_config(page_title="Meritz Orchestra", page_icon="◆", layout="centered")
+st.set_page_config(page_title="Orchestra", page_icon="◆", layout="centered")
 
 if "theme" not in st.session_state:
     st.session_state["theme"] = "light"
@@ -365,7 +365,7 @@ def check_password() -> bool:
         return True
     if st.session_state.get("authed"):
         return True
-    st.markdown('<div class="brand">Meritz Orchestra</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand">Orchestra</div>', unsafe_allow_html=True)
     pw = st.text_input("비밀번호를 입력하세요", type="password")
     if pw:
         if pw == st.secrets["app_password"]:
@@ -381,7 +381,7 @@ if not check_password():
 
 col_title, col_label, col_theme = st.columns([2.2, 1, 0.9])
 with col_title:
-    st.markdown('<div class="brand">Meritz Orchestra</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand">Orchestra</div>', unsafe_allow_html=True)
 with col_label:
     st.markdown(
         f"<div style='text-align:right;font-size:11px;color:{T['muted']};padding-top:12px;'>화면</div>",
