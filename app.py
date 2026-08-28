@@ -13,7 +13,7 @@
 
 import streamlit as st
 
-from constants import THEMES
+from constants import THEMES, UP_COLOR
 from portfolio_core import (
     load_holdings, load_transactions, load_state,
     snapshot_history, snapshot_sector_history,
@@ -149,22 +149,33 @@ st.markdown(f"""
     }}
     [class*="st-key-watering_"] button[kind="primary"] p {{ color:#fff !important; }}
 
-    /* "종목별 보유현황" 타이틀 옆 "등락률순" 버튼 — 아래 정렬 라디오(div[role="radiogroup"])
-       알약과 같은 크기/스타일로 맞춤(2026-08-28 사용자 요청: 디자인이 튀지 않게). */
+    /* "종목별 보유현황" 타이틀 옆 등락률순 토글 — 텍스트 라벨을 넣으면 타이틀이 한 줄로
+       안 들어가서(2026-08-28), 라벨 없이 동그라미 점 하나만 표시하는 아이콘 버튼으로 바꿈.
+       안 눌림=옅은 회색, 눌림=빨강(국내 관례 상승/강조색)만으로 상태를 표현. */
     [class*="st-key-change_sort_toggle"] {{ width:auto !important; }}
     [class*="st-key-change_sort_toggle"] button {{
-        background-color:{T['card2']} !important; border:1px solid {T['border']} !important;
-        border-radius:7px !important; padding:2px 6px !important; min-height:0 !important;
-        height:auto !important; line-height:1.3 !important; box-shadow:none !important;
+        background:transparent !important; border:none !important; box-shadow:none !important;
+        padding:2px 4px !important; min-height:0 !important; height:auto !important;
+        line-height:1 !important;
     }}
     [class*="st-key-change_sort_toggle"] button p {{
-        font-size:11px !important; font-weight:400 !important; color:{T['text']} !important;
-        white-space:nowrap;
+        font-size:15px !important; line-height:1 !important;
     }}
-    [class*="st-key-change_sort_toggle"] button[kind="primary"] {{
-        background-color:{T['card2']} !important; border:1.5px solid {T['muted2']} !important;
+    [class*="st-key-change_sort_toggle"] button[kind="secondary"] p {{ color:{T['muted2']} !important; }}
+    [class*="st-key-change_sort_toggle"] button[kind="primary"] p {{ color:{UP_COLOR} !important; }}
+
+    /* "종목별 보유현황" 타이틀 줄 3칸(타이틀/등락률순 점/업데이트시각)만 전역 등폭 규칙
+       (위 stColumn flex:1 1 0)을 덮어써서 원하는 비율로 — 타이틀에 훨씬 넓게 줘야
+       "종목별 보유현황"이 한 줄로 안 잘림(2026-08-28, 등폭 강제가 원인이었음을 확인). */
+    [class*="st-key-holdings_title_row"] div[data-testid="stColumn"]:nth-of-type(1) {{
+        flex: 6 1 0 !important;
     }}
-    [class*="st-key-change_sort_toggle"] button[kind="primary"] p {{ font-weight:700 !important; }}
+    [class*="st-key-holdings_title_row"] div[data-testid="stColumn"]:nth-of-type(2) {{
+        flex: 1 1 0 !important;
+    }}
+    [class*="st-key-holdings_title_row"] div[data-testid="stColumn"]:nth-of-type(3) {{
+        flex: 3 1 0 !important;
+    }}
 
     .tx-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:10px; padding:10px 14px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }}
     .tx-left {{ font-size:13px; }}

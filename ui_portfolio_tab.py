@@ -549,26 +549,32 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     if updated_vals:
         last_updated = max(updated_vals)
 
-    col_title2, col_change_toggle, col_updated = st.columns([1.6, 0.85, 1.15])
-    with col_title2:
-        st.markdown("##### 종목별 보유현황")
-    with col_change_toggle:
-        # 매일 가장 먼저 확인하는 기준이라 아래 "정렬 기준" 라디오까지 안 내려가도 타이틀
-        # 옆에서 바로 토글할 수 있게 함(2026-08-28 사용자 요청). 아래 라디오와는 독립된
-        # 별도 상태(change_sort_active)로 두고, 눌려있는 동안만 등락률순이 라디오 선택을
-        # 덮어씀 — 라디오 옵션 목록에는 "등락률"을 안 넣음(중복 노출 안 되게, 같은 요청).
-        # CSS(app.py [class*="st-key-change_sort_toggle"])로 아래 정렬 라디오 알약과
-        # 같은 크기/스타일로 맞춤.
-        is_change_sort = st.session_state.change_sort_active
-        if st.button("등락률순", key="change_sort_toggle",
-                     type="primary" if is_change_sort else "secondary"):
-            st.session_state.change_sort_active = not is_change_sort
-            st.rerun()
-    with col_updated:
-        st.markdown(
-            f"<div style='text-align:right;font-size:11px;color:{T['muted2']};padding-top:10px;'>{last_updated}</div>",
-            unsafe_allow_html=True,
-        )
+    # 전역 CSS(app.py의 `div[data-testid="stColumn"] { flex:1 1 0 !important; }`)가 모든
+    # st.columns() 비율을 강제로 동일폭으로 만들어버리므로, 이 줄만 st.container(key=...)로
+    # 감싸서 app.py의 [class*="st-key-holdings_title_row"] 스코프 CSS로 비율을 다시 덮어씀.
+    with st.container(key="holdings_title_row"):
+        col_title2, col_change_toggle, col_updated = st.columns(3)
+        with col_title2:
+            st.markdown("##### 종목별 보유현황")
+        with col_change_toggle:
+            # 매일 가장 먼저 확인하는 기준이라 아래 "정렬 기준" 라디오까지 안 내려가도 타이틀
+            # 옆에서 바로 토글할 수 있게 함(2026-08-28 사용자 요청). 텍스트 라벨("등락률순")을
+            # 버튼에 넣으면 타이틀이 한 줄로 안 들어가는 문제가 있어서, 라벨 없이 동그라미
+            # 점 하나만 표시하는 아이콘 버튼으로 바꿈 — 안 눌린 상태는 옅은 회색, 누르면 빨강
+            # (국내 관례상 상승/강조=빨강)으로 채워짐. 아래 라디오와는 독립된 별도 상태
+            # (change_sort_active)로 두고, 활성화된 동안만 등락률순이 라디오 선택을 덮어씀 —
+            # 라디오 옵션 목록에는 "등락률"을 안 넣음(중복 노출 안 되게).
+            is_change_sort = st.session_state.change_sort_active
+            if st.button("●", key="change_sort_toggle",
+                         type="primary" if is_change_sort else "secondary",
+                         help="등락률순 정렬"):
+                st.session_state.change_sort_active = not is_change_sort
+                st.rerun()
+        with col_updated:
+            st.markdown(
+                f"<div style='text-align:right;font-size:11px;color:{T['muted2']};padding-top:10px;'>{last_updated}</div>",
+                unsafe_allow_html=True,
+            )
 
     # ---- 코스피 / 코스닥 지수 (상단 새로고침에 같이 갱신됨) ----
     idx = st.session_state.get("index_quotes") or {}
