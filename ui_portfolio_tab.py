@@ -549,9 +549,20 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     if updated_vals:
         last_updated = max(updated_vals)
 
-    col_title2, col_updated = st.columns([2, 1.3])
+    col_title2, col_change_toggle, col_updated = st.columns([1.7, 1.0, 1.1])
     with col_title2:
         st.markdown("##### 종목별 보유현황")
+    with col_change_toggle:
+        # 매일 가장 먼저 확인하는 기준이라 "정렬 기준" 라디오까지 안 내려가도 타이틀 옆에서
+        # 바로 토글할 수 있게 함(2026-08-28 사용자 요청) — 라디오와 같은 session_state를
+        # 공유하므로, 여기서 누르면 아래 라디오도 "등락률"로 같이 선택된 채 보임.
+        is_change_sort = st.session_state.sort_mode == "change"
+        if st.button("등락률순", key="change_sort_toggle",
+                     type="primary" if is_change_sort else "secondary",
+                     use_container_width=True):
+            st.session_state["sort_radio"] = "등락률"
+            st.session_state.sort_mode = "change"
+            st.rerun()
     with col_updated:
         st.markdown(
             f"<div style='text-align:right;font-size:11px;color:{T['muted2']};padding-top:10px;'>{last_updated}</div>",
