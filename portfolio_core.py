@@ -134,6 +134,39 @@ def update_sector_cache(new_entries: dict) -> None:
     pd.DataFrame(sorted(cache.items()), columns=["종목명", "섹터"]).to_csv(SECTOR_CACHE_FILE, index=False)
 
 
+def fix_holding_sector(name: str, sector: str) -> list[str]:
+    """이미 보유 중인 종목의 섹터를 안전하게 고친다. §1-7에서 언급된 "섹터만 고칠 수
+    있는 가벼운 도구" — 2026-08-28에 실제로 겪은 버그(체크포인트 섹터 되돌아감, §6-14
+    참고) 재발을 막으려고 만듦. 아래 3곳을 항상 같이 고쳐야 다음 ingest_daily.py 실행
+    때 되돌아가지 않는다:
+      1. stock_sector_cache.csv (영구 캐시) — 앞으로 이 종목이 다시 "신규 매수"로
+         잡힐 때(재진입 등) 기준이 되는 값.
+      2. portfolio_data.csv — 지금 화면에 보이는 값.
+      3. checkpoint_holdings.csv — 이미 보유 중인 종목은 apply_transaction이 이 값을
+         그대로 캐리하고 캐시를 다시 안 보므로, 여기가 안 고쳐지면 다음 반영 때 옛날
+         값으로 되돌아간다.
+    셋 다 dtype=str로 종목코드를 다뤄서(§1-6 실제 겪은 버그) 앞자리 0이 안 날아가게 함.
+    반환값: 실제로 값을 바꾼 파일 목록(디버깅/확인용)."""
+    touched = []
+    update_sector_cache({name: sector})
+    touched.append("stock_sector_cache.csv")
+
+    df = load_holdings()
+    if (df["종목명"] == name).any():
+        df.loc[df["종목명"] == name, "섹터"] = sector
+        save_holdings(df)
+        touched.append("portfolio_data.csv")
+
+    if CHECKPOINT_HOLDINGS_FILE.exists():
+        ckpt = pd.read_csv(CHECKPOINT_HOLDINGS_FILE, dtype={"종목코드": str}, keep_default_na=False)
+        if (ckpt["종목명"] == name).any():
+            ckpt.loc[ckpt["종목명"] == name, "섹터"] = sector
+            ckpt.to_csv(CHECKPOINT_HOLDINGS_FILE, index=False)
+            touched.append("checkpoint_holdings.csv")
+
+    return touched
+
+
 # ------------------------------------------------------------------ #
 # 데이터 로드 / 저장
 # ------------------------------------------------------------------ #
@@ -1352,38 +1385,3 @@ def import_daily_trades(parsed: pd.DataFrame, tx: pd.DataFrame, trade_date: str)
         tx = pd.concat([tx, pd.DataFrame(new_rows)], ignore_index=True)
 
     return tx, len(new_rows), replaced_count
-
-
-# ------------------------------------------------------------------ #
-# 종목별 체결내역 CSV 파싱 (dg.csv / lps 폴더 형식)
-# 형식: 종목 하나당 파일 하나, 체결(fill) 단위 원자적 기록.
-# 컬럼: 체결일자, 주문번호, 체결번호, 체결시각, 대출구분, 주문구분(매수/매도), 수량, 단가, 체결금액
-# ------------------------------------------------------------------ #
-def parse_execution_log_csv(raw: bytes, stock_name: str) -> pd.DataFrame:
-    text = None
-    for enc in ("cp949", "utf-8-sig", "utf-8"):
-        try:
-            text = raw.decode(enc)
-            break
-        except UnicodeDecodeError:
-            continue
-    if text is None:
-        raise ValueError(f"{stock_name}: CSV 인코딩을 인식할 수 없습니다 (cp949/utf-8 모두 실패).")
-
-    df = pd.read_csv(io.StringIO(text), dtype=str)
-    required = {"체결일자", "체결시각", "주문구분", "수량", "단가"}
-    if not required.issubset(df.columns):
-        raise ValueError(f"{stock_name}: 예상한 체결내역 형식이 아닙니다 (필요한 컬럼 없음: "
-                          f"{required - set(df.columns)}).")
-
-    out = pd.DataFrame({
-        "날짜": df["체결일자"].astype(str).str.strip(),
-        "시각": df["체결시각"].astype(str).str.strip(),
-        "종목명": stock_name,
-        "구분": df["주문구분"].astype(str).str.strip(),
-        "수량": pd.to_numeric(df["수량"].astype(str).str.replace(",", ""), errors="coerce"),
-        "단가": pd.to_numeric(df["단가"].astype(str).str.replace(",", ""), errors="coerce"),
-    })
-    out = out[out["구분"].isin(["매수", "매도"])]
-    out = out[out["수량"].notna() & out["단가"].notna() & (out["수량"] > 0) & (out["단가"] > 0)]
-    return out.reset_index(drop=True)
