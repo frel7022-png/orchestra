@@ -483,3 +483,15 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   (체크포인트날짜, 예수금, 초기자본, fee_rate) — 둘 다 `portfolio_data.csv`류와 같은 로컬
   CSV라 §1-5 원칙대로 세션이 git commit/push해야 유지된다(현재는 다른 데이터 파일과 함께
   `ingest_daily.py` 실행 후 커밋하는 루틴에 자연히 포함됨 — 별도 스텝 아님).
+- **섹터를 수동으로 고칠 때 반드시 `checkpoint_holdings.csv`도 같이 고칠 것** (2026-08-28
+  실제로 겪음): `portfolio_data.csv`의 섹터를 직접 고치고 `stock_sector_cache.csv`도
+  업데이트했는데, 다음 `ingest_daily.py` 실행 후 섹터가 옛날 값으로 되돌아간 사례가 있었음.
+  원인: 이미 보유 중인 종목은 `apply_transaction`의 "기존 종목 업데이트" 분기를 타서 섹터를
+  건드리지 않고(캐시 재조회 없음), 그 분기가 참조하는 기준값은 checkpoint 이후 재생에서
+  다시 만들어지는 `portfolio_data.csv`가 아니라 **checkpoint 시점에 이미 확정된
+  `checkpoint_holdings.csv`의 값**이기 때문. `load_holdings()`도 섹터가 빈 문자열일 때만
+  캐시에서 보충하지, "미분류가 아닌 잘못된 값"은 안 건드림. 즉 섹터를 캐시에서 자동
+  재조회하는 경로는 그 종목의 **최초 매수가 체크포인트 이전 시점**일 때만 우회된다 —
+  결론적으로 이미 보유 중인 종목 섹터를 고칠 땐 `portfolio_data.csv`뿐 아니라
+  `checkpoint_holdings.csv`의 해당 행도 직접 같은 값으로 고쳐야 다음 반영에서 안 되돌아감.
+  (meritz는 체크포인트가 없고 매번 전체 재생이라 이 문제가 없음 — new1만 해당.)
