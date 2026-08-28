@@ -401,11 +401,22 @@ tx = load_transactions()
 if "index_quotes" not in st.session_state:
     st.session_state["index_quotes"] = fetch_index_quotes()
 
+# 앱을 새로 열었을 때(세션당 1회) 자동으로 시세를 한 번 새로고침 — 안 그러면 마지막으로
+# "시세 새로고침"을 눌렀던 시점(보통 그날 아침 매매일지 반영 직후)의 낡은 가격이 화면에
+# 계속 남아있게 된다(2026-08-28 사용자 요청 — "예수금/총매입/총평가/총자산이 최신
+# 업데이트 기준으로 나오면 좋겠다"). "시세 새로고침" 버튼과 완전히 같은 로직을 세션
+# 시작 시 1회 자동 실행하는 것 — 버튼을 없애는 게 아니라 그 이후엔 그대로 수동으로도
+# 쓸 수 있음.
+auto_refresh_triggered = False
+if "auto_refreshed" not in st.session_state:
+    st.session_state["auto_refreshed"] = True
+    auto_refresh_triggered = True
+
 top_l, top_r = st.columns([5, 2])
 with top_r:
     refresh_clicked_top = st.button("시세 새로고침", use_container_width=True, key="refresh_btn_top")
 
-if refresh_clicked_top:
+if refresh_clicked_top or auto_refresh_triggered:
     with st.spinner("종목명으로 시세를 찾는 중..."):
         holdings, refresh_report = refresh_all_prices(holdings)
         st.session_state["index_quotes"] = fetch_index_quotes()
