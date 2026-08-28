@@ -149,6 +149,23 @@ st.markdown(f"""
     }}
     [class*="st-key-watering_"] button[kind="primary"] p {{ color:#fff !important; }}
 
+    /* "종목별 보유현황" 타이틀 옆 "등락률순" 버튼 — 아래 정렬 라디오(div[role="radiogroup"])
+       알약과 같은 크기/스타일로 맞춤(2026-08-28 사용자 요청: 디자인이 튀지 않게). */
+    [class*="st-key-change_sort_toggle"] {{ width:auto !important; }}
+    [class*="st-key-change_sort_toggle"] button {{
+        background-color:{T['card2']} !important; border:1px solid {T['border']} !important;
+        border-radius:7px !important; padding:2px 6px !important; min-height:0 !important;
+        height:auto !important; line-height:1.3 !important; box-shadow:none !important;
+    }}
+    [class*="st-key-change_sort_toggle"] button p {{
+        font-size:11px !important; font-weight:400 !important; color:{T['text']} !important;
+        white-space:nowrap;
+    }}
+    [class*="st-key-change_sort_toggle"] button[kind="primary"] {{
+        background-color:{T['card2']} !important; border:1.5px solid {T['muted2']} !important;
+    }}
+    [class*="st-key-change_sort_toggle"] button[kind="primary"] p {{ font-weight:700 !important; }}
+
     .tx-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:10px; padding:10px 14px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }}
     .tx-left {{ font-size:13px; }}
     .tx-left .name {{ font-weight:700; color:{T['text']}; }}

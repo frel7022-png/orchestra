@@ -537,31 +537,32 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 st.caption(f"평균 대비 보유율 변화(%p)가 큰 순 · 총 {len(fx_flags)}종목 중 상위 15개")
 
     # ---- 종목별 보유현황 ----
-    # "등락률"을 맨 앞에 둠 — 다른 정렬 기준(비중/섹터/현재가/평가금액/손익)보다 오늘 하루
-    # 등락이 더 중요하다는 사용자 판단(2026-08-28)에 따라 우선순위가 가장 높은 자리에 배치.
-    SORT_OPTIONS = {"등락률": "change", "비중": "weight", "섹터": "sector", "현재가": "price",
+    SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",
                      "평가금액": "valuation", "손익": "profit"}
     if "sort_mode" not in st.session_state:
         st.session_state.sort_mode = "weight"
+    if "change_sort_active" not in st.session_state:
+        st.session_state.change_sort_active = False
 
     last_updated = ""
     updated_vals = [v for v in df["업데이트시각"].tolist() if v]
     if updated_vals:
         last_updated = max(updated_vals)
 
-    col_title2, col_change_toggle, col_updated = st.columns([1.7, 1.0, 1.1])
+    col_title2, col_change_toggle, col_updated = st.columns([1.6, 0.85, 1.15])
     with col_title2:
         st.markdown("##### 종목별 보유현황")
     with col_change_toggle:
-        # 매일 가장 먼저 확인하는 기준이라 "정렬 기준" 라디오까지 안 내려가도 타이틀 옆에서
-        # 바로 토글할 수 있게 함(2026-08-28 사용자 요청) — 라디오와 같은 session_state를
-        # 공유하므로, 여기서 누르면 아래 라디오도 "등락률"로 같이 선택된 채 보임.
-        is_change_sort = st.session_state.sort_mode == "change"
+        # 매일 가장 먼저 확인하는 기준이라 아래 "정렬 기준" 라디오까지 안 내려가도 타이틀
+        # 옆에서 바로 토글할 수 있게 함(2026-08-28 사용자 요청). 아래 라디오와는 독립된
+        # 별도 상태(change_sort_active)로 두고, 눌려있는 동안만 등락률순이 라디오 선택을
+        # 덮어씀 — 라디오 옵션 목록에는 "등락률"을 안 넣음(중복 노출 안 되게, 같은 요청).
+        # CSS(app.py [class*="st-key-change_sort_toggle"])로 아래 정렬 라디오 알약과
+        # 같은 크기/스타일로 맞춤.
+        is_change_sort = st.session_state.change_sort_active
         if st.button("등락률순", key="change_sort_toggle",
-                     type="primary" if is_change_sort else "secondary",
-                     use_container_width=True):
-            st.session_state["sort_radio"] = "등락률"
-            st.session_state.sort_mode = "change"
+                     type="primary" if is_change_sort else "secondary"):
+            st.session_state.change_sort_active = not is_change_sort
             st.rerun()
     with col_updated:
         st.markdown(
@@ -602,7 +603,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     def sector_tag_color(raw_sector: str) -> str:
         return color_map.get(group_sector(raw_sector), "#6b7280")
 
-    mode = st.session_state.sort_mode
+    mode = "change" if st.session_state.change_sort_active else st.session_state.sort_mode
     if mode == "change":
         df_sorted = df.sort_values("등락률", ascending=False)
     elif mode == "sector":
