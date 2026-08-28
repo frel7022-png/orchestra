@@ -416,6 +416,16 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 if last_checked:
                     st.caption(f"마지막 조회: {last_checked}")
 
+                # "누적" %가 어느 날짜를 기준으로 계산됐는지 표시 — 지금은 전 종목이 DB
+                # 추적 시작일(2026-08-19)로 동일하지만, 나중에 새 종목이 추가되면 그 종목만
+                # 기준일이 달라질 수 있어 그 경우도 대비함(2026-08-28 사용자 요청).
+                if "기준일" in prices_df.columns:
+                    origin_dates = sorted(set(d for d in prices_df["기준일"].dropna().tolist() if d))
+                    if len(origin_dates) == 1:
+                        st.caption(f"누적 기준일: {origin_dates[0]}")
+                    elif len(origin_dates) > 1:
+                        st.caption(f"누적 기준일: {origin_dates[0]} ~ {origin_dates[-1]} (종목별로 다름)")
+
                 fc1, fc2 = st.columns(2)
                 with fc1:
                     fishing_basis = st.radio("기준", ["누적", "전일"], horizontal=True,

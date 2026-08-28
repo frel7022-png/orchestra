@@ -328,7 +328,7 @@ def save_watchlist(names_codes: list[dict]) -> None:
         WATCHLIST_FILE, index=False)
 
 
-WATCHLIST_PRICE_COLUMNS = ["종목명", "종목코드", "최초가", "최근가", "최근조회일시", "전일대비"]
+WATCHLIST_PRICE_COLUMNS = ["종목명", "종목코드", "최초가", "최근가", "최근조회일시", "전일대비", "기준일"]
 
 
 def get_first_day_prices_db(supabase_url: str, supabase_key: str) -> dict:
@@ -339,6 +339,17 @@ def get_first_day_prices_db(supabase_url: str, supabase_key: str) -> dict:
         return {}
     hist = hist.sort_values("날짜")
     return hist.groupby("종목코드")["종가"].first().to_dict()
+
+
+def get_first_day_dates_db(supabase_url: str, supabase_key: str) -> dict:
+    """Supabase price_history에서 종목코드별 최초 관측일(=Fishing "누적" %의 기준일)을
+    가져온다. 반환: {종목코드: 날짜문자열}. get_first_day_prices_db와 짝을 이루는 함수 —
+    화면에 "기준일"을 표시하려고 2026-08-28에 추가함(그전엔 계산에만 쓰이고 안 보였음)."""
+    hist = load_watchlist_history_db(supabase_url, supabase_key)
+    if hist.empty:
+        return {}
+    hist = hist.sort_values("날짜")
+    return hist.groupby("종목코드")["날짜"].first().to_dict()
 
 
 def refresh_watchlist_prices(watchlist: pd.DataFrame, supabase_url: str = "",
@@ -360,6 +371,8 @@ def refresh_watchlist_prices(watchlist: pd.DataFrame, supabase_url: str = "",
     codes = [c for c in watchlist["종목코드"].tolist() if c]
     quotes, quote_errors = fetch_quotes(codes)
     origin_prices = get_first_day_prices_db(supabase_url, supabase_key)
+    origin_dates = get_first_day_dates_db(supabase_url, supabase_key)
+    today = today_kst_str()
     now = now_kst_str()
 
     rows = []
@@ -370,10 +383,13 @@ def refresh_watchlist_prices(watchlist: pd.DataFrame, supabase_url: str = "",
             continue
         price, change_pct = q["price"], q["change_pct"]
         origin = origin_prices.get(code)
+        origin_date = origin_dates.get(code)
         if origin is None:
             origin = price / (1 + change_pct / 100) if change_pct != -100 else price
+            origin_date = origin_date or today  # DB 히스토리 아직 없음 — 오늘을 임시 기준일로
         rows.append({"종목명": name, "종목코드": code, "최초가": origin,
-                     "최근가": price, "최근조회일시": now, "전일대비": change_pct})
+                     "최근가": price, "최근조회일시": now, "전일대비": change_pct,
+                     "기준일": origin_date})
 
     result = pd.DataFrame(rows, columns=WATCHLIST_PRICE_COLUMNS)
     return result, quote_errors
