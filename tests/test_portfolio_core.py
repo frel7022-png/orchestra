@@ -445,3 +445,46 @@ def test_incremental_realized_pnl_stamped_same_as_full_replay(monkeypatch, tmp_p
     got_realized = got_tx.set_index("id")["실현손익"]
     for tid in ["2", "5"]:  # 매도 거래 id
         assert float(got_realized[tid]) == pytest.approx(float(exp_realized[tid]))
+
+
+def _watchlist_hist_df():
+    """get_watchlist_prev_day_ranks 테스트용 가짜 price_history 조인 결과.
+    A/B는 최초일(2026-01-01) 이후 2026-01-02에 각각 -6%/+10% 움직였고, C는 +1.67%로
+    임계값(3%) 밖, D는 2026-01-02 자체에 기록이 없음(=최근 편입돼 아직 안 쌓인 종목)."""
+    rows = [
+        {"종목코드": "001", "종목명": "A", "섹터": "", "날짜": "2026-01-01", "종가": 1000.0, "등락률": 0.0},
+        {"종목코드": "002", "종목명": "B", "섹터": "", "날짜": "2026-01-01", "종가": 2000.0, "등락률": 0.0},
+        {"종목코드": "003", "종목명": "C", "섹터": "", "날짜": "2026-01-01", "종가": 3000.0, "등락률": 0.0},
+        {"종목코드": "004", "종목명": "D", "섹터": "", "날짜": "2026-01-01", "종가": 4000.0, "등락률": 0.0},
+        {"종목코드": "001", "종목명": "A", "섹터": "", "날짜": "2026-01-02", "종가": 940.0, "등락률": -6.0},
+        {"종목코드": "002", "종목명": "B", "섹터": "", "날짜": "2026-01-02", "종가": 2200.0, "등락률": 10.0},
+        {"종목코드": "003", "종목명": "C", "섹터": "", "날짜": "2026-01-02", "종가": 3050.0, "등락률": 1.67},
+        # D는 2026-01-02 데이터 없음 — 새로 편입돼 cron이 아직 한 번도 못 돈 상태를 흉내냄.
+    ]
+    return pd.DataFrame(rows)
+
+
+def test_watchlist_prev_day_ranks_filters_by_threshold_and_direction():
+    hist = _watchlist_hist_df()
+    down_ranks = core.get_watchlist_prev_day_ranks(hist, "누적", "DOWN", 3.0, "2026-01-03")
+    assert down_ranks == {"A": 1}  # C는 1.67%로 임계값 밖, B는 방향(UP)이 다름
+
+    up_ranks = core.get_watchlist_prev_day_ranks(hist, "누적", "UP", 3.0, "2026-01-03")
+    assert up_ranks == {"B": 1}
+
+
+def test_watchlist_prev_day_ranks_ignores_today_and_missing_history():
+    hist = _watchlist_hist_df()
+    # "오늘"보다 이전 날짜만 써야 한다 — today를 2026-01-02로 주면 그 전날인 2026-01-01만
+    # 후보가 되고, 첫날은 등락률 0%라 아무도 임계값을 못 넘는다.
+    ranks = core.get_watchlist_prev_day_ranks(hist, "누적", "DOWN", 3.0, "2026-01-02")
+    assert ranks == {}
+
+    # D는 prev_date(2026-01-02) 기록이 아예 없으므로 어떤 기준으로도 dict에 나타나지 않는다
+    # (=UI에서 NEW로 처리되는 대상).
+    down_ranks = core.get_watchlist_prev_day_ranks(hist, "누적", "DOWN", 3.0, "2026-01-03")
+    assert "D" not in down_ranks
+
+
+def test_watchlist_prev_day_ranks_empty_history_returns_empty_dict():
+    assert core.get_watchlist_prev_day_ranks(pd.DataFrame(), "누적", "DOWN", 3.0, "2026-01-03") == {}

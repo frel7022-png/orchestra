@@ -428,6 +428,39 @@ def refresh_watchlist_prices(watchlist: pd.DataFrame, supabase_url: str = "",
     return result, quote_errors
 
 
+def get_watchlist_prev_day_ranks(hist_df: pd.DataFrame, basis: str, direction: str,
+                                  threshold: float, today: str) -> dict:
+    """Fishing 순위 변동 표시용. hist_df(load_watchlist_history_db 결과: 종목코드,종목명,
+    섹터,날짜,종가,등락률)에서 "오늘" 이전 가장 최근 거래일 데이터로, 화면에 쓰는 것과
+    동일한 기준(basis: "누적"/"전일")·방향(direction: "DOWN"/"UP")·임계값(threshold)으로
+    그날의 ±threshold% 목록을 재구성해 순위를 매긴다. 반환: {종목명: 순위(1부터)} — 그
+    거래일에 데이터가 없거나 임계값 밖이었던 종목은 dict에 없음(=UI에서 "NEW" 처리 대상)."""
+    if hist_df.empty:
+        return {}
+    dates = sorted(d for d in hist_df["날짜"].unique() if d < today)
+    if not dates:
+        return {}
+    prev_date = dates[-1]
+
+    origin = hist_df.sort_values("날짜").groupby("종목코드")["종가"].first()
+    prev_rows = hist_df[hist_df["날짜"] == prev_date]
+
+    scored = []
+    for _, r in prev_rows.iterrows():
+        o = origin.get(r["종목코드"])
+        if not o:
+            continue
+        pct_origin = (r["종가"] - o) / o * 100
+        pct_ref = r["등락률"]
+        basis_key = pct_origin if basis == "누적" else pct_ref
+        if (direction == "DOWN" and basis_key <= -threshold) or \
+           (direction == "UP" and basis_key >= threshold):
+            scored.append((r["종목명"], basis_key))
+
+    scored.sort(key=lambda x: abs(x[1]), reverse=True)
+    return {name: i + 1 for i, (name, _) in enumerate(scored)}
+
+
 # ------------------------------------------------------------------ #
 # Supabase DB 히스토리 조회 — GitHub Actions가 매일 평일 16:00 KST에 관심종목 153개
 # 종가를 Supabase price_history 테이블에 자동 적재한다(db_fetch_daily_prices.py 참고).

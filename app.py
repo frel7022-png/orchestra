@@ -91,6 +91,8 @@ st.markdown(f"""
 
     .updown-row {{ display:flex; align-items:center; gap:8px; padding:7px 2px; border-bottom:1px solid {T['border']}; font-size:12.5px; }}
     .updown-row:last-child {{ border-bottom:none; }}
+    .updown-row .rank {{ font-size:11px; color:{T['muted']}; font-family: ui-monospace, monospace; width:14px; text-align:right; }}
+    .updown-row .rank-delta {{ font-size:10.5px; font-weight:700; font-family: ui-monospace, monospace; width:28px; color:{T['muted']}; }}
     .updown-row .name {{ font-weight:700; color:{T['text']}; flex:1; }}
     .updown-row .pct {{ font-weight:700; font-family: ui-monospace, monospace; width:62px; text-align:right; }}
     .updown-row .detail {{ font-size:11px; color:{T['muted']}; font-family: ui-monospace, monospace; width:118px; text-align:right; }}

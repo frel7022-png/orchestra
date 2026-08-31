@@ -10,6 +10,7 @@ from portfolio_core import (
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
     compute_sector_weights, load_watchlist, refresh_watchlist_prices,
+    get_watchlist_prev_day_ranks,
     get_holding_trade_summary, get_holding_trade_summary_all_time,
     get_holding_trade_points, get_holding_avg_price_path,
     load_investor_flow_db, load_market_flow_db, load_watchlist_history_db,
@@ -393,7 +394,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             if st.button("새로고침", key="fishing_refresh", use_container_width=True):
                 with st.spinner("관심종목 시세 조회 중..."):
                     prices_df, quote_errors = refresh_watchlist_prices(watchlist, sb_url, sb_key)
+                    hist_df = load_watchlist_history_db(sb_url, sb_key)
                 st.session_state["fishing_prices"] = prices_df
+                st.session_state["fishing_hist"] = hist_df
                 for err in quote_errors:
                     st.warning(err)
                 st.rerun()
@@ -445,15 +448,32 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 if not flagged:
                     st.caption(f"{fishing_basis} 기준 {fishing_dir} ±{FISHING_THRESHOLD:.0f}% 이상 종목이 없습니다.")
                 else:
-                    rows_html = "".join(
-                        f'<div class="updown-row"><span class="name">{f["종목명"]}</span>'
-                        f'<span class="pct" style="color:{UP_COLOR if f["pct_origin"] >= 0 else DOWN_COLOR}">'
-                        f'{"+" if f["pct_origin"] >= 0 else ""}{f["pct_origin"]:.1f}%</span>'
-                        f'<span class="pct" style="color:{UP_COLOR if f["pct_ref"] >= 0 else DOWN_COLOR}">'
-                        f'{"+" if f["pct_ref"] >= 0 else ""}{f["pct_ref"]:.1f}%</span></div>'
-                        for f in flagged
-                    )
-                    st.markdown(rows_html, unsafe_allow_html=True)
+                    hist_df = st.session_state.get("fishing_hist", pd.DataFrame())
+                    prev_ranks = get_watchlist_prev_day_ranks(
+                        hist_df, fishing_basis, fishing_dir, FISHING_THRESHOLD, today_kst_str())
+
+                    row_parts = []
+                    for i, f in enumerate(flagged, 1):
+                        prev_rank = prev_ranks.get(f["종목명"])
+                        if prev_rank is None:
+                            rank_delta_html = f'<span class="rank-delta" style="color:{NEW_COLOR}">NEW</span>'
+                        else:
+                            delta = prev_rank - i
+                            if delta == 0:
+                                rank_delta_html = '<span class="rank-delta">-</span>'
+                            else:
+                                color = UP_COLOR if delta > 0 else DOWN_COLOR
+                                arrow = "▲" if delta > 0 else "▼"
+                                rank_delta_html = f'<span class="rank-delta" style="color:{color}">{arrow}{abs(delta)}</span>'
+                        row_parts.append(
+                            f'<div class="updown-row"><span class="rank">{i}</span>{rank_delta_html}'
+                            f'<span class="name">{f["종목명"]}</span>'
+                            f'<span class="pct" style="color:{UP_COLOR if f["pct_origin"] >= 0 else DOWN_COLOR}">'
+                            f'{"+" if f["pct_origin"] >= 0 else ""}{f["pct_origin"]:.1f}%</span>'
+                            f'<span class="pct" style="color:{UP_COLOR if f["pct_ref"] >= 0 else DOWN_COLOR}">'
+                            f'{"+" if f["pct_ref"] >= 0 else ""}{f["pct_ref"]:.1f}%</span></div>'
+                        )
+                    st.markdown("".join(row_parts), unsafe_allow_html=True)
 
     # ---- Volume / Foreigner: 거래량·외국인 수급이 평소보다 튀는 종목 (2026-08-24 신설) ----
     # investor_flow(종목별)/market_flow(시장 전체) 테이블을 조회해서 compute_volume_flags/
