@@ -49,6 +49,25 @@ def test_apply_transaction_full_sell_removes_holding():
     assert realized == pytest.approx(1000)  # (1200-1000)*5
 
 
+def test_new_holding_change_pct_starts_as_float_not_int(recwarn):
+    """신규 종목 매수 시 "등락률" 컬럼이 int(0)로 시작하면, 이후 재생 때마다
+    _apply_prior_prices가 실시간 시세의 float 등락률(예: -1.34)을 그 컬럼에 대입하면서
+    pandas가 "incompatible dtype" FutureWarning을 던진다(2026-08-31 ingest_daily.py 실행 중
+    실제로 발견) — 컬럼이 처음부터 float이어야 한다."""
+    holdings = pd.DataFrame(columns=core.HOLD_COLUMNS)
+    state = {"cash": 1_000_000, "initial": 1_000_000, "fee_rate": 0.0}
+    holdings, state, _ = core.apply_transaction(holdings, state, "테스트종목", "매수", 1, 1000)
+
+    assert holdings["등락률"].dtype == float
+
+    prior = holdings.copy()
+    prior.loc[0, "등락률"] = -1.34
+    result = core._apply_prior_prices(holdings, prior)
+
+    assert float(result.loc[0, "등락률"]) == pytest.approx(-1.34)
+    assert not any("incompatible dtype" in str(w.message) for w in recwarn.list)
+
+
 # ------------------------------------------------------------------ #
 # rebuild_portfolio_from_transactions — 거래 재생(replay)
 # ------------------------------------------------------------------ #

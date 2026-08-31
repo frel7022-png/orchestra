@@ -1132,7 +1132,7 @@ def apply_transaction(holdings: pd.DataFrame, state: dict, name: str, kind: str,
                 "종목코드": (code_cache or {}).get(name, ""),
                 "섹터": (sector_cache or {}).get(name, "미분류"),
                 "수량": qty, "평단가": price, "현재가": price,
-                "등락률": 0, "업데이트시각": now_kst_str(),
+                "등락률": 0.0, "업데이트시각": now_kst_str(),
             })
             holdings = pd.concat([holdings, pd.DataFrame([new_row])], ignore_index=True)
     else:  # 매도
