@@ -10,7 +10,7 @@ from constants import UP_COLOR, DOWN_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history,
     compute_index_vs_account, get_dip_watering_events, score_watering_events,
-    fetch_daily_price_history,
+    fetch_daily_price_history, refresh_market_cache,
 )
 
 KOSPI_COLOR = "#f59e0b"   # 지수 참조선(코스피) — 앰버
@@ -202,13 +202,15 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         with st.expander("물타기 성적표 — 지수 하락일에 물탄 게 방어가 됐나"):
             st.caption(
                 "그날 코스피/코스닥이 -1% 이상 빠졌을 때의 물타기(추가매수)만. "
-                "'초과' = 물탄 날부터 지금까지 그 종목 수익 − 같은 기간 코스피 수익. "
-                "양수면 그 하락에 물탄 게 시장보다 유리했다는 뜻. (전 종목 코스피 기준)"
+                "'초과' = 물탄 날부터 지금까지 그 종목 수익 − 같은 기간 지수 수익. "
+                "양수면 그 하락에 물탄 게 시장보다 유리했다는 뜻. "
+                "지수는 각 종목이 상장된 시장(코스피/코스닥) 기준."
             )
             if st.button("불러오기 / 새로고침", key="watering_score_btn"):
                 with st.spinner("종목별 일별시세 조회 중..."):
                     dip_ev = get_dip_watering_events(tx, idx_hist, drop=-0.01)
                     name2code = dict(zip(holdings["종목명"], holdings["종목코드"]))
+                    market_map = refresh_market_cache(holdings)  # 종목명→KOSPI/KOSDAQ (최초 1회만 조회)
                     ph_map = {}
                     start = (dip_ev["날짜"].min() if not dip_ev.empty else today_kst_str())
                     for nm in dip_ev["종목명"].unique():
@@ -218,7 +220,9 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                         rows = fetch_daily_price_history(str(code), start, today_kst_str())
                         if rows:
                             ph_map[nm] = pd.DataFrame(rows)[["날짜", "종가"]]
-                    st.session_state["watering_score"] = score_watering_events(dip_ev, ph_map, idx_hist)
+                    st.session_state["watering_score"] = score_watering_events(
+                        dip_ev, ph_map, idx_hist, market_map=market_map)
+                    st.session_state["watering_market_map"] = market_map
 
             sc = st.session_state.get("watering_score")
             if sc is None:
@@ -226,16 +230,17 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             elif sc.empty:
                 st.info("지수 하락일 물타기 기록이 아직 없습니다.")
             else:
+                mkt_map = st.session_state.get("watering_market_map", {})
                 win = int((sc["초과"] > 0).sum())
                 avg = sc["초과"].mean() * 100
                 deep = sc[sc["그날지수"] <= -0.01]
                 deep_win = int((deep["초과"] > 0).sum())
                 sc_txt = (
-                    f"지수 하락일 물타기 <b>{len(sc)}건</b> 중 <b>{win}건</b>이 코스피 대비 플러스 · "
+                    f"지수 하락일 물타기 <b>{len(sc)}건</b> 중 <b>{win}건</b>이 지수 대비 플러스 · "
                     f"평균 초과 <b>{avg:+.1f}%p</b>"
                 )
                 if len(deep):
-                    sc_txt += f" · 코스피 -1%↓ 당일 물타기 {len(deep)}건 중 {deep_win}건 플러스"
+                    sc_txt += f" · 그날 지수 -1%↓였던 {len(deep)}건 중 {deep_win}건 플러스"
                 st.markdown(
                     f"<div style='font-size:12px;color:{T['muted']};margin:4px 0 8px'>{sc_txt}</div>",
                     unsafe_allow_html=True,
@@ -245,8 +250,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                     exc = r["초과"] * 100
                     ec = UP_COLOR if exc >= 0 else DOWN_COLOR
                     day = "" if pd.isna(r["그날지수"]) else f"{r['그날지수'] * 100:+.1f}%"
+                    mkt = mkt_map.get(r["종목명"], "")
+                    mtag = f" <span style='color:{T['muted2']};font-size:9px'>{'KQ' if mkt == 'KOSDAQ' else 'KS' if mkt == 'KOSPI' else ''}</span>"
                     rows_html.append(
-                        f"<tr><td>{r['날짜']}</td><td>{r['종목명']}</td>"
+                        f"<tr><td>{r['날짜']}</td><td>{r['종목명']}{mtag}</td>"
                         f"<td style='text-align:right'>{day}</td>"
                         f"<td style='text-align:right'>{r['종목수익'] * 100:+.1f}%</td>"
                         f"<td style='text-align:right'>{r['지수수익'] * 100:+.1f}%</td>"
@@ -255,8 +262,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 st.markdown(
                     "<table style='width:100%;font-size:11px;border-collapse:collapse'>"
                     "<tr style='color:" + T["muted"] + ";text-align:left'>"
-                    "<th>날짜</th><th>종목</th><th style='text-align:right'>그날코스피</th>"
-                    "<th style='text-align:right'>종목수익</th><th style='text-align:right'>코스피</th>"
+                    "<th>날짜</th><th>종목</th><th style='text-align:right'>그날지수</th>"
+                    "<th style='text-align:right'>종목수익</th><th style='text-align:right'>지수</th>"
                     "<th style='text-align:right'>초과</th></tr>"
                     + "".join(rows_html) + "</table>",
                     unsafe_allow_html=True,

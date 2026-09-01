@@ -147,6 +147,7 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
 | `checkpoint_state.csv` | transactions 재생 체크포인트 — 현금/자본 스냅샷(§6-14) | 체크포인트날짜, 예수금, 초기자본, fee_rate |
 | `dividend_cache.csv` | 배당수익률 캐시, 최초 1회만 조회 후 영구 재사용(§6-15) | 종목코드, 배당수익률, 배당기준월, 조회일 |
 | `index_history.csv` | 날짜별 코스피/코스닥 종가 — "지수 대비 계좌" 그래프용(§6-17) | 날짜, KOSPI, KOSDAQ |
+| `stock_market_cache.csv` | 종목명→상장시장(KOSPI/KOSDAQ) 영구 캐시 — 물타기 성적표에서 종목별 지수 비교용(§6-17) | 종목명, 시장 |
 
 **Supabase(DB) 스키마는 §6-9/§6-12에 별도로 있음** — 로컬 CSV가 아니라 클라우드 DB라 여기 표에는 안 넣음.
 
@@ -706,14 +707,16 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   주식 약 ±M%)`. 민감도 = 최근 5개 스냅샷 구간의 원점회귀 기울기 `ΣΔ주식·Δ코스피 / ΣΔ코스피²`
   (단일일 `rs/Δidx`는 지수가 거의 안 움직인 날 발산해서 rolling으로). 구간 3개 미만이면 None.
 - **물타기 성적표** (그래프 아래 expander, v2): 지수 하락일 물타기 각각에 대해 `물탄 날 단가
-  → 오늘 종가` 종목수익 vs `같은 기간 코스피` 수익, `초과 = 종목수익 − 지수수익`. 양수면 그
-  하락에 물탄 게 시장보다 유리했다는 뜻. 맨 위 요약: `N건 중 M건 코스피 대비 플러스 · 평균
-  초과 ±X%p`. **"불러오기" 버튼을 눌러야** 계산됨(`st.session_state["watering_score"]`) —
+  → 오늘 종가` 종목수익 vs `같은 기간 그 종목 시장 지수` 수익, `초과 = 종목수익 − 지수수익`.
+  양수면 그 하락에 물탄 게 시장보다 유리했다는 뜻. 맨 위 요약: `N건 중 M건 지수 대비 플러스 ·
+  평균 초과 ±X%p`. **"불러오기" 버튼을 눌러야** 계산됨(`st.session_state["watering_score"]`) —
   종목별 일별시세를 `fetch_daily_price_history()`로 하나씩 긁어야 해서(Fishing/Volume/Foreigner와
-  같은 "버튼 → 세션 캐시" 패턴). **한계**: 종목별 코스피/코스닥 구분 태그가 아직 없어서 전
-  종목을 코스피 기준으로 비교함(§6-12에서 시장 구분의 필요성은 이미 지적됨 — 나중에 섹터
-  캐시처럼 시장 태그 캐시를 만들면 종목별로 맞는 지수와 비교 가능). 2026-09-01 실측: 지수
-  하락일 물타기 27건 중 13건이 코스피 대비 플러스, 평균 초과 −1.7%p.
+  같은 "버튼 → 세션 캐시" 패턴). 종목별 코스피/코스닥은 `refresh_market_cache()`(§1-3 "최초
+  1회만" 캐시 `stock_market_cache.csv`, `fetch_quotes`와 같은 실시간 시세 API의
+  `stockExchangeType.name` 필드로 판별)로 얻어 `score_watering_events(market_map=...)`에 넘김 —
+  표에 `KS`/`KQ` 태그로 표시하고 코스닥 종목은 코스닥 지수와 비교. 2026-09-01 실측: 지수
+  하락일 물타기 27건(보유 중 코스피 42·코스닥 23) 중 15건이 각자 시장 지수 대비 플러스,
+  평균 초과 −0.6%p.
 - **데이터 파이프라인**:
   - `index_history.csv`(날짜, KOSPI, KOSDAQ) — `asset_history.csv`와 같은 성격의 로컬 CSV,
     §1-5대로 세션이 git commit/push(다른 데이터 파일과 함께 커밋되므로 별도 스텝 아님).
@@ -732,6 +735,8 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
     구간 전체로 합산.
 - **함수** (`portfolio_core.py`): `load/save/snapshot_index_history`, `_cash_by_date`,
   `_cash_on`, `_index_cum_returns`, `compute_index_vs_account`, `get_watering_events`,
-  `_index_day_moves`, `get_dip_watering_events`, `score_watering_events`. 회귀 테스트 6개
+  `_index_day_moves`, `get_dip_watering_events`, `score_watering_events`,
+  `load/update_market_cache`, `fetch_stock_markets`, `refresh_market_cache`. 회귀 테스트 8개
   (`tests/test_portfolio_core.py`: 예수금 비중으로 de-lever되는지, 추가매수 flow가 Rs에서
-  빠지는지, 지수 누적, 물타기 사이클/첫매수 제외, 지수 하락일 필터, 성적표 초과수익).
+  빠지는지, 지수 누적, 물타기 사이클/첫매수 제외, 지수 하락일 필터, 성적표 초과수익,
+  종목별 시장 지수 비교, 시장 캐시 왕복).

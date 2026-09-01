@@ -38,6 +38,7 @@ SECTOR_HISTORY_FILE = HERE / "sector_history.csv"
 INDEX_HISTORY_FILE = HERE / "index_history.csv"  # 날짜별 코스피/코스닥 종가 (지수 대비 계좌 그래프용, §6-17)
 CODE_CACHE_FILE = HERE / "stock_code_cache.csv"
 SECTOR_CACHE_FILE = HERE / "stock_sector_cache.csv"
+MARKET_CACHE_FILE = HERE / "stock_market_cache.csv"  # 종목명→KOSPI/KOSDAQ, §1-3 영구 캐시(§6-17 물타기 성적표에서 종목별 지수 비교용)
 DIVIDEND_CACHE_FILE = HERE / "dividend_cache.csv"  # 종목코드→배당수익률, 하루 1회만 재조회(아래 refresh_dividend_yields 참고)
 WATCHLIST_FILE = HERE / "watchlist.csv"  # "Fishing" 관심종목 리스트 (보유/거래와 무관한 별도 목록)
 CHECKPOINT_HOLDINGS_FILE = HERE / "checkpoint_holdings.csv"  # rebuild_portfolio_incremental 참고
@@ -153,6 +154,25 @@ def update_sector_cache(new_entries: dict) -> None:
     cache = load_sector_cache()
     cache.update(new_entries)
     pd.DataFrame(sorted(cache.items()), columns=["종목명", "섹터"]).to_csv(SECTOR_CACHE_FILE, index=False)
+
+
+def load_market_cache() -> dict:
+    """종목명 → "KOSPI" | "KOSDAQ". stock_code_cache.csv/stock_sector_cache.csv와 같은
+    §1-3 "최초 1회만 조회, 그 뒤로는 영구 재사용" 캐시(§6-17 물타기 성적표에서 종목별로
+    자기 시장 지수와 비교하려고 둠 — 상장시장은 바뀌지 않으므로 새로고침마다 다시 안 긁음)."""
+    if MARKET_CACHE_FILE.exists():
+        df = pd.read_csv(MARKET_CACHE_FILE, dtype=str, keep_default_na=False)
+        return {k: v for k, v in zip(df["종목명"], df["시장"]) if k and v}
+    return {}
+
+
+def update_market_cache(new_entries: dict) -> None:
+    new_entries = {k: v for k, v in new_entries.items() if k and v in ("KOSPI", "KOSDAQ")}
+    if not new_entries:
+        return
+    cache = load_market_cache()
+    cache.update(new_entries)
+    pd.DataFrame(sorted(cache.items()), columns=["종목명", "시장"]).to_csv(MARKET_CACHE_FILE, index=False)
 
 
 def fix_holding_sector(name: str, sector: str) -> list[str]:
@@ -905,6 +925,49 @@ def refresh_dividend_yields(codes: list[str]) -> dict:
     if changed:
         _save_dividend_cache(cache)
     return {code: cache[code]["배당수익률"] for code in codes if code in cache}
+
+
+def fetch_stock_markets(codes: list[str]) -> dict:
+    """종목코드 → "KOSPI" | "KOSDAQ". fetch_quotes와 같은 실시간 시세 API를 쓰되
+    `stockExchangeType.name`("KOSPI"/"KOSDAQ") 필드만 읽는다(code는 "KS"/"KQ"). 20개씩
+    청크로 나눠 요청(§1-4). 실패/미확인 종목은 결과에서 빠짐."""
+    codes = [c for c in dict.fromkeys(codes) if c]
+    if not codes:
+        return {}
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
+    out = {}
+    for i in range(0, len(codes), 20):
+        chunk = codes[i:i + 20]
+        try:
+            resp = requests.get(
+                f"https://polling.finance.naver.com/api/realtime/domestic/stock/{','.join(chunk)}",
+                headers=headers, timeout=6)
+            resp.raise_for_status()
+            datas = resp.json().get("datas") or []
+        except Exception:
+            continue
+        for d in datas:
+            code = str(d.get("itemCode") or d.get("cd") or "").strip()
+            name = ((d.get("stockExchangeType") or {}).get("name") or "").strip().upper()
+            if code and name in ("KOSPI", "KOSDAQ"):
+                out[code] = name
+    return out
+
+
+def refresh_market_cache(holdings: pd.DataFrame) -> dict:
+    """holdings 중 stock_market_cache.csv에 없는 종목만 시장(KOSPI/KOSDAQ)을 조회해 채운다
+    (refresh_dividend_yields와 같은 "최초 1회만" 패턴 — 상장시장은 안 바뀌므로).
+    반환: {종목명: "KOSPI"|"KOSDAQ"} — holdings 종목 중 캐시에 있는 것 전부."""
+    cache = load_market_cache()
+    need = [(str(r["종목명"]), str(r["종목코드"])) for _, r in holdings.iterrows()
+            if r["종목명"] and r["종목명"] not in cache and r["종목코드"]]
+    if need:
+        by_code = fetch_stock_markets([c for _, c in need])
+        new = {name: by_code[code] for name, code in need if code in by_code}
+        update_market_cache(new)
+        cache.update(new)
+    return {str(r["종목명"]): cache[str(r["종목명"])] for _, r in holdings.iterrows()
+            if str(r["종목명"]) in cache}
 
 
 def fetch_investor_flow(code: str) -> list[dict]:

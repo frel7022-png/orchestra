@@ -749,3 +749,35 @@ def test_score_watering_events_excess_vs_index():
     assert sc.iloc[0]["종목수익"] == pytest.approx(0.10)
     assert sc.iloc[0]["지수수익"] == pytest.approx(0.02)
     assert sc.iloc[0]["초과"] == pytest.approx(0.08)
+
+
+def test_score_watering_events_uses_per_stock_market():
+    """market_map으로 KOSDAQ 종목은 코스닥 지수와 비교해야 한다."""
+    events = pd.DataFrame([
+        {"날짜": "2026-01-06", "종목명": "코스피주", "수량": 1.0, "단가": 1000.0},
+        {"날짜": "2026-01-06", "종목명": "코스닥주", "수량": 1.0, "단가": 1000.0},
+    ])
+    price_hist = {
+        "코스피주": pd.DataFrame([{"날짜": "2026-01-06", "종가": 1000.0}, {"날짜": "2026-01-08", "종가": 1050.0}]),
+        "코스닥주": pd.DataFrame([{"날짜": "2026-01-06", "종가": 1000.0}, {"날짜": "2026-01-08", "종가": 1050.0}]),
+    }
+    idx = _idx_hist([
+        ["2026-01-06", 100.0, 100.0],
+        ["2026-01-08", 101.0, 110.0],   # 코스피 +1%, 코스닥 +10%
+    ])
+    sc = core.score_watering_events(events, price_hist, idx,
+                                     market_map={"코스피주": "KOSPI", "코스닥주": "KOSDAQ"})
+    row_ks = sc[sc["종목명"] == "코스피주"].iloc[0]
+    row_kq = sc[sc["종목명"] == "코스닥주"].iloc[0]
+    assert row_ks["지수수익"] == pytest.approx(0.01)
+    assert row_ks["초과"] == pytest.approx(0.04)     # +5% - +1%
+    assert row_kq["지수수익"] == pytest.approx(0.10)
+    assert row_kq["초과"] == pytest.approx(-0.05)    # +5% - +10%
+
+
+def test_market_cache_roundtrip(tmp_path, monkeypatch):
+    f = tmp_path / "mkt.csv"
+    monkeypatch.setattr(core, "MARKET_CACHE_FILE", f)
+    core.update_market_cache({"A": "KOSPI", "B": "KOSDAQ", "C": "이상한값"})
+    got = core.load_market_cache()
+    assert got == {"A": "KOSPI", "B": "KOSDAQ"}  # 유효하지 않은 값은 저장 안 됨
