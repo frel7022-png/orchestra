@@ -109,8 +109,10 @@ st.markdown(f"""
     .stock-title-group {{ flex:1 1 auto; min-width:0; max-width:calc(100% - 180px); }}
     .stock-name {{ font-size:13px; font-weight:700; color:{T['text']}; white-space:nowrap; }}
     .dividend-tag {{ font-size:11px; margin-left:5px; white-space:nowrap; }}
+    .dividend-row {{ margin-top:1px; line-height:1.2; }}
+    .dividend-row .dividend-tag {{ margin-left:0; }}
     .sector-tag {{ font-size:10.5px; padding:2px 7px; border-radius:5px; font-weight:600; flex-shrink:0; }}
-    .stock-grid {{ display:grid; grid-template-columns: 0.7fr 1.05fr 1.05fr 1.3fr; gap:6px; margin-top:7px; }}
+    .stock-grid {{ display:grid; grid-template-columns: 0.7fr 1.05fr 1.05fr 1.3fr; gap:6px; margin-top:4px; }}
     .cell .top {{ font-size:12.5px; font-weight:700; color:{T['text']}; }}
     .cell .bottom {{ font-size:11px; color:{T['muted']}; margin-top:2px; }}
     .stock-foot {{ display:flex; justify-content:flex-end; margin-top:6px; font-size:10px; color:{T['muted2']}; }}

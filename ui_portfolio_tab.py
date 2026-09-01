@@ -701,14 +701,16 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             is_open = st.session_state.holding_detail_open == code
 
             dividend_html = _dividend_badge_html(code, dividend_cache)
+            dividend_row_html = f'<div class="dividend-row">{dividend_html}</div>' if dividend_html else ""
 
             with st.container(key=f"holding_wrap_{code}"):
                 st.markdown(f"""
                 <div class="stock-card">
                     <div class="stock-top">
-                        <span class="stock-title-group"><span class="stock-name" style="{name_style}">{r['종목명']}</span>{dividend_html}</span>
+                        <span class="stock-title-group"><span class="stock-name" style="{name_style}">{r['종목명']}</span></span>
                         <span class="sector-tag" style="background:{sc}22;color:{sc}">{r['섹터']}</span>
                     </div>
+                    {dividend_row_html}
                     <div class="stock-grid">
                         <div class="cell"><div class="top">{r['수량']:.0f}주</div><div class="bottom">{r['비중']:.1f}%</div></div>
                         <div class="cell"><div class="top">{r['현재가']:,.0f}</div><div class="bottom">{r['평단가']:,.0f}</div></div>
