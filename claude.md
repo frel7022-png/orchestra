@@ -119,7 +119,8 @@ ui_portfolio_tab.py       # render_portfolio_tab() — 요약카드/섹터비중
 ui_transactions_tab.py     # render_transactions_tab() — 실현손익 그래프/거래 캘린더/누적요약.
 ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-2 참고, 내부적으로 rebuild_portfolio_incremental 사용 — §6-14).
 fix_sector.py                  # 보유종목 섹터만 안전하게 고치는 스크립트 (§1-7 참고, 2026-08-28 신설).
-db_fetch_daily_prices.py       # watchlist 153종목 시세/거래량/수급을 매일 Supabase에 적재하는 cron 스크립트 (§6-9, §6-12 참고).
+db_fetch_daily_prices.py       # watchlist 종목 전체 시세/거래량/수급을 매일 Supabase에 적재하는 cron 스크립트 (§6-9, §6-12 참고).
+backfill_watchlist_from_holdings.py  # watchlist 밖의 보유종목을 찾아 자동 편입+시세 백필 (§6-16, 2026-09-01 신설).
 tests/                            # pytest 회귀 테스트 (§6-11 참고).
 ```
 
@@ -284,9 +285,11 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   - UI: "기준"(누적/전일) 라디오 + "방향"(DOWN/UP) 라디오로 고른 값이 ±3% 넘는 종목만, 넘는
     정도가 큰 순으로 "종목명  누적%  전일%"(둘 다 항상 같이 표시) 형식으로 보여줌.
   - "마지막 조회" 캡션 밑에 **"누적 기준일"**도 표시(2026-08-28 신설, `get_first_day_dates_db()`,
-    `WATCHLIST_PRICE_COLUMNS`에 `기준일` 컬럼 추가) — 지금은 153종목 전부 DB 추적 시작일인
-    2026-08-19로 동일해서 날짜 하나만 뜨지만, 나중에 새 종목이 섞여 기준일이 갈리면
-    "2026-08-19 ~ 2026-08-XX (종목별로 다름)" 형식으로 자동 전환됨.
+    `WATCHLIST_PRICE_COLUMNS`에 `기준일` 컬럼 추가) — 원래 153종목 전부 DB 추적 시작일인
+    2026-08-19로 동일해서 날짜 하나만 떴었는데, §6-16(2026-09-01, 153개 밖 보유종목
+    19개를 각자 실제 진입일부터 백필해서 편입)로 실제로 종목별 기준일이 갈리게 됨 —
+    이제 "2026-08-04 ~ 2026-08-31 (종목별로 다름)" 형식으로 뜬다(당시 예상했던 시나리오가
+    실제로 발생한 사례).
 - v2에서 v3로 왜 바뀌었는지(실제 겪은 버그), "오늘의 순위" TOP20을 왜 없앴는지는
   `ARCHIVE.md` §6-6 참고. **결론만: 로컬 캐시 파일(`watchlist_prices.csv`)은 다시 만들거나
   최초가를 로컬 파일에 저장하는 방식으로 되돌리지 말 것.**
@@ -608,3 +611,45 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   그 줄 자체가 안 나옴(빈 줄 안 남게 `dividend_html`이 빈 문자열이면 `dividend-row` 자체를
   안 만듦). 줄이 하나 늘어난 만큼 `.dividend-row`의 margin-top(1px)과 `.stock-grid`의
   margin-top(7px→4px)을 줄여서 카드가 필요 이상으로 안 길어지게 함.
+
+### 6-16. 153개 관심종목 밖의 보유종목 자동 백필 (2026-09-01 도입)
+- **동기**: 보유종목 중 153개 관심종목(watchlist)에 없는 종목은 Fishing/Volume/Foreigner
+  스크리너에서 아예 안 보이고, price_history가 없어서 Up/Down 판별의 근거(과거 대비 변화)도
+  못 만든다. §6-6/§6-9가 원래 "153개는 이미 정해진 선정 기준"이라고 전제하고 있었는데,
+  실제로 보유종목이 그 153개 밖에서도 계속 생기니(둘러보다 발견한 신규 종목 등) 이 갭을
+  메우는 절차가 필요해짐.
+- **스크립트**: `backfill_watchlist_from_holdings.py` — 재사용 가능(사용자 요청 그대로):
+  실행할 때마다 `portfolio_data.csv`(보유종목)와 `watchlist.csv`(153+)를 비교해서 아직
+  없는 종목만 찾아 처리하고, 이미 있는 종목은 건드리지 않는다. 앞으로 153개 밖의 새 종목이
+  편입될 때마다 이 스크립트를 그냥 다시 실행하면 됨 — 별도 인자 없음.
+- **"최초가 기준일"이 실제 진입 시점이어야 하는 이유**: 그냥 오늘 날짜로 watchlist에
+  추가하면 Fishing의 "누적" 등락률이 항상 0%에서 시작해서, 실제로 그 종목이 얼마나
+  움직였는지(그리고 나중에 Up/Down에서 "마지막 매도가 대비 얼마나 변했는지" 판별하는
+  근거)를 알 수 없다. 그래서 각 종목의 **"현재 보유 사이클" 최초 매수일**
+  (`get_holding_trade_points`, §6-10과 동일한 사이클 기준 — 전량매도 후 재진입이면
+  그 이후만)부터 오늘까지 시세를 소급해서 채운다.
+- **데이터 소스**: 네이버 일별시세 API(`api.finance.naver.com/siseJson.naver`,
+  `fetch_daily_price_history()`) — 실시간 시세 API(`fetch_quotes`)와 달리 특정 기간의
+  과거 일별 종가/거래량을 한 번에 받을 수 있다. 응답이 진짜 JSON은 아니고(작은따옴표
+  헤더 + 큰따옴표 날짜가 섞인) 파이썬 리터럴에 가까운 형태라 `ast.literal_eval`로
+  파싱한다. 등락률은 이 API가 안 주므로 전날 종가 대비로 직접 계산 — 그래서 최초매수일보다
+  10일 여유를 두고 더 앞에서부터 데이터를 받아와, 최초매수일 "당일"의 등락률 계산에 쓸
+  전날 종가를 확보한 뒤, 실제 저장은 최초매수일 이후 구간만 한다.
+- **Supabase에 세션이 직접 쓸 수 있음**: `.streamlit/secrets.toml`의 anon_key로 `watchlist`/
+  `price_history` 테이블에 직접 upsert 가능(§6-9 "테스트 단계, anon key가 읽기/쓰기 다
+  열려있음" 상태라 가능한 것 — 나중에 쓰기 권한이 잠기면 이 스크립트도 막힐 수 있음).
+  **즉 이 작업은 사용자가 Supabase에서 따로 뭘 할 필요 없이 세션이 전부 처리 가능** —
+  로컬 `watchlist.csv`만 세션이 git commit/push하면 끝(§1-5).
+  `on_conflict=user_id,stock_code`(watchlist)/`stock_code,trade_date`(price_history)는
+  db_fetch_daily_prices.py와 같은 unique 제약 기준을 그대로 재사용.
+- **2026-09-01 실행 결과**: 19개 종목(미스토홀딩스/메리츠금융지주/JYP Ent./신세계인터내셔날/
+  한샘/삼성중공업/동서/마녀공장/계룡건설/크라운해태홀딩스/풀무원/하림/CJ/삼성전자/
+  씨앤씨인터내셔널/동국제강/광동제약/신도리코/원익홀딩스) 백필, price_history 160건 upsert,
+  watchlist 172개로 증가.
+- **GitHub Actions cron 상태 점검(같은 날 확인)**: `daily-price-fetch.yml` 실행 이력을
+  GitHub API로 조회해보니 대체로 잘 도는데, **2026-08-27(목, 평일)에는 스케줄이 아예
+  한 번도 안 돎**(다른 날은 전부 성공) — §6-9에 이미 적힌 "정각 예약은 지연이 심하다"는
+  문제와는 다른 종류로, 이날은 지연이 아니라 트리거 자체가 안 됐던 것으로 보임(GitHub
+  스케줄 트리거가 가끔 통째로 스킵될 수 있다는 걸 보여주는 실제 사례). 그날 하루치
+  price_history/investor_flow/market_flow가 통째로 빠졌다는 뜻 — 모든 종목이 똑같이
+  하루씩 비므로 상대비교(등락폭 등)엔 큰 영향 없지만, 완전히 무해하다고 단정하진 말 것.

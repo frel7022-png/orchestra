@@ -278,8 +278,9 @@ def test_parse_daily_trade_csv_rejects_truncated_format():
 # requests.get을 monkeypatch해서 네트워크 없이 파싱 로직만 검증한다.
 # ------------------------------------------------------------------ #
 class _FakeResp:
-    def __init__(self, content):
+    def __init__(self, content=None, text=None):
         self.content = content
+        self.text = text
 
     def raise_for_status(self):
         pass
@@ -355,6 +356,34 @@ def test_fetch_market_flow_merges_volume_and_flow_pages(monkeypatch):
     assert r["개인순매수"] == -2382
     assert r["외국인순매수"] == 2161
     assert r["기관순매수"] == 292
+
+
+_SISE_JSON_TEXT = """ [['날짜', '시가', '고가', '저가', '종가', '거래량', '외국인소진율'],
+
+["20260828", 262500, 266000, 256000, 257000, 15106746, 46.72],
+["20260831", 249000, 260000, 246000, 260000, 18270969, 46.72],
+["20260901", 256500, 262500, 254000, 260500, 11036511, 46.72]
+
+]
+"""
+
+
+def test_fetch_daily_price_history_parses_sise_json(monkeypatch):
+    monkeypatch.setattr(core.requests, "get",
+                         lambda url, headers=None, timeout=None: _FakeResp(text=_SISE_JSON_TEXT))
+    rows = core.fetch_daily_price_history("005930", "2026-08-28", "2026-09-01")
+    assert rows == [
+        {"날짜": "2026-08-28", "종가": 257000.0, "거래량": 15106746},
+        {"날짜": "2026-08-31", "종가": 260000.0, "거래량": 18270969},
+        {"날짜": "2026-09-01", "종가": 260500.0, "거래량": 11036511},
+    ]
+
+
+def test_fetch_daily_price_history_returns_empty_on_network_failure(monkeypatch):
+    def raise_err(*a, **k):
+        raise ConnectionError("boom")
+    monkeypatch.setattr(core.requests, "get", raise_err)
+    assert core.fetch_daily_price_history("005930", "2026-08-28", "2026-09-01") == []
 
 
 # ------------------------------------------------------------------ #

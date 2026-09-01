@@ -15,6 +15,7 @@ app.py(웹 화면)와 ingest_daily.py(일일 매매일지 반영 스크립트)�
   "그 날짜의 기존 CSV 기반 거래는 지우고 이번 것으로 교체 후 전체 재생"한다.
 """
 
+import ast
 import difflib
 import io
 import uuid
@@ -727,6 +728,48 @@ def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
             result[code] = {"price": price, "change_pct": change_pct, "volume": volume}
 
     return result, errors
+
+
+def fetch_daily_price_history(code: str, start_date: str, end_date: str) -> list[dict]:
+    """네이버 일별시세 API(api.finance.naver.com/siseJson.naver)에서 종목의 과거 일별
+    종가/거래량을 가져온다. 실시간 시세 API(fetch_quotes)와 달리 특정 기간의 과거
+    데이터를 한 번에 받을 수 있어서, watchlist에 새로 편입된 보유종목의 price_history를
+    "그 종목이 실제로 처음 들어온 날짜"부터 소급해서 채우는 용도로 쓴다
+    (backfill_watchlist_from_holdings.py, §6-16 참고).
+
+    start_date/end_date: "YYYY-MM-DD". 응답이 진짜 JSON은 아니고(작은따옴표 헤더 +
+    큰따옴표 날짜가 섞인) 파이썬 리터럴에 가까운 형태라 ast.literal_eval로 파싱한다.
+    반환: [{"날짜": "YYYY-MM-DD", "종가": float, "거래량": int}, ...] 날짜 오름차순.
+    실패/데이터 없음이면 빈 리스트(비공식 API라 조용히 실패 처리, fetch_investor_flow와
+    같은 패턴)."""
+    start, end = start_date.replace("-", ""), end_date.replace("-", "")
+    url = (f"https://api.finance.naver.com/siseJson.naver?symbol={code}"
+           f"&requestType=1&startTime={start}&endTime={end}&timeframe=day")
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        rows = ast.literal_eval(resp.text.strip())
+    except Exception:
+        return []
+    if not rows or len(rows) < 2:
+        return []
+
+    header, data = rows[0], rows[1:]
+    try:
+        i_date, i_close, i_vol = header.index("날짜"), header.index("종가"), header.index("거래량")
+    except ValueError:
+        return []
+
+    result = []
+    for row in data:
+        try:
+            d = row[i_date]
+            date_str = f"{d[0:4]}-{d[4:6]}-{d[6:8]}"
+            result.append({"날짜": date_str, "종가": float(row[i_close]), "거래량": int(row[i_vol])})
+        except (IndexError, ValueError, TypeError):
+            continue
+    return result
 
 
 def load_dividend_cache() -> dict:
