@@ -93,10 +93,6 @@ st.markdown(f"""
     .updown-row:last-child {{ border-bottom:none; }}
     .updown-row .rank {{ font-size:11px; color:{T['muted']}; font-family: ui-monospace, monospace; width:14px; text-align:right; }}
     .updown-row .rank-delta {{ font-size:10.5px; font-weight:700; font-family: ui-monospace, monospace; width:28px; color:{T['muted']}; }}
-    .updown-row .name-group {{ display:flex; align-items:baseline; gap:4px; flex:1; min-width:0; }}
-    .updown-row .name-group .name {{ font-weight:700; color:{T['text']}; flex:1 1 auto; min-width:0;
-        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
-    .updown-row .name-group .dividend-tag {{ flex-shrink:0; }}
     .updown-row .name {{ font-weight:700; color:{T['text']}; flex:1; }}
     .updown-row .pct {{ font-weight:700; font-family: ui-monospace, monospace; width:62px; text-align:right; }}
     .updown-row .detail {{ font-size:11px; color:{T['muted']}; font-family: ui-monospace, monospace; width:118px; text-align:right; }}

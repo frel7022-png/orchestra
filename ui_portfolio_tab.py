@@ -10,7 +10,7 @@ from portfolio_core import (
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
     compute_sector_weights, load_watchlist, refresh_watchlist_prices,
-    get_watchlist_prev_day_ranks, load_dividend_cache, refresh_dividend_yields,
+    get_watchlist_prev_day_ranks, load_dividend_cache,
     get_holding_trade_summary, get_holding_trade_summary_all_time,
     get_holding_trade_points, get_holding_avg_price_path,
     load_investor_flow_db, load_market_flow_db, load_watchlist_history_db,
@@ -424,7 +424,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 with st.spinner("관심종목 시세 조회 중..."):
                     prices_df, quote_errors = refresh_watchlist_prices(watchlist, sb_url, sb_key)
                     hist_df = load_watchlist_history_db(sb_url, sb_key)
-                    refresh_dividend_yields(watchlist["종목코드"].tolist())
                 st.session_state["fishing_prices"] = prices_df
                 st.session_state["fishing_hist"] = hist_df
                 for err in quote_errors:
@@ -443,8 +442,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     except (TypeError, ValueError):
                         continue
                     pct_origin = (last - origin) / origin * 100 if origin else 0.0
-                    all_rows.append({"종목명": r["종목명"], "종목코드": r["종목코드"], "현재가": last,
-                                      "pct_ref": pct_ref, "pct_origin": pct_origin})
+                    all_rows.append({"종목명": r["종목명"], "현재가": last, "pct_ref": pct_ref, "pct_origin": pct_origin})
 
                 last_checked = prices_df["최근조회일시"].max() if "최근조회일시" in prices_df else ""
                 if last_checked:
@@ -482,7 +480,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     hist_df = st.session_state.get("fishing_hist", pd.DataFrame())
                     prev_ranks = get_watchlist_prev_day_ranks(
                         hist_df, fishing_basis, fishing_dir, FISHING_THRESHOLD, today_kst_str())
-                    fishing_dividend_cache = load_dividend_cache()
 
                     row_parts = []
                     for i, f in enumerate(flagged, 1):
@@ -497,10 +494,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                                 color = UP_COLOR if delta > 0 else DOWN_COLOR
                                 arrow = "▲" if delta > 0 else "▼"
                                 rank_delta_html = f'<span class="rank-delta" style="color:{color}">{arrow}{abs(delta)}</span>'
-                        dividend_html = _dividend_badge_html(f["종목코드"], fishing_dividend_cache, show_period=False)
                         row_parts.append(
                             f'<div class="updown-row"><span class="rank">{i}</span>{rank_delta_html}'
-                            f'<span class="name-group"><span class="name">{f["종목명"]}</span>{dividend_html}</span>'
+                            f'<span class="name">{f["종목명"]}</span>'
                             f'<span class="pct" style="color:{UP_COLOR if f["pct_origin"] >= 0 else DOWN_COLOR}">'
                             f'{"+" if f["pct_origin"] >= 0 else ""}{f["pct_origin"]:.1f}%</span>'
                             f'<span class="pct" style="color:{UP_COLOR if f["pct_ref"] >= 0 else DOWN_COLOR}">'
