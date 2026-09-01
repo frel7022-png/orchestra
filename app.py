@@ -93,6 +93,10 @@ st.markdown(f"""
     .updown-row:last-child {{ border-bottom:none; }}
     .updown-row .rank {{ font-size:11px; color:{T['muted']}; font-family: ui-monospace, monospace; width:14px; text-align:right; }}
     .updown-row .rank-delta {{ font-size:10.5px; font-weight:700; font-family: ui-monospace, monospace; width:28px; color:{T['muted']}; }}
+    .updown-row .name-group {{ display:flex; align-items:baseline; gap:4px; flex:1; min-width:0; }}
+    .updown-row .name-group .name {{ font-weight:700; color:{T['text']}; flex:1 1 auto; min-width:0;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+    .updown-row .name-group .dividend-tag {{ flex-shrink:0; }}
     .updown-row .name {{ font-weight:700; color:{T['text']}; flex:1; }}
     .updown-row .pct {{ font-weight:700; font-family: ui-monospace, monospace; width:62px; text-align:right; }}
     .updown-row .detail {{ font-size:11px; color:{T['muted']}; font-family: ui-monospace, monospace; width:118px; text-align:right; }}
@@ -104,7 +108,7 @@ st.markdown(f"""
     .stock-top {{ display:flex; justify-content:space-between; align-items:baseline; }}
     .stock-title-group {{ flex:1 1 auto; min-width:0; max-width:calc(100% - 180px); }}
     .stock-name {{ font-size:13px; font-weight:700; color:{T['text']}; white-space:nowrap; }}
-    .dividend-tag {{ font-size:11px; color:#000000; margin-left:5px; white-space:nowrap; }}
+    .dividend-tag {{ font-size:11px; margin-left:5px; white-space:nowrap; }}
     .sector-tag {{ font-size:10.5px; padding:2px 7px; border-radius:5px; font-weight:600; flex-shrink:0; }}
     .stock-grid {{ display:grid; grid-template-columns: 0.7fr 1.05fr 1.05fr 1.3fr; gap:6px; margin-top:7px; }}
     .cell .top {{ font-size:12.5px; font-weight:700; color:{T['text']}; }}

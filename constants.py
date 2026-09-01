@@ -3,6 +3,7 @@
 UP_COLOR = "#d9364f"    # 국내 관례: 상승/이익 = 빨강
 DOWN_COLOR = "#2b6cd4"  # 하락/손실 = 파랑
 NEW_COLOR = "#22c55e"   # 오늘 신규 진입 종목 강조색(초록) — 당일 한정, 다음날엔 사라짐
+DIVIDEND_MID_COLOR = "#15803d"  # 배당수익률 3~5% 구간 강조색(진한 녹색) — NEW_COLOR보다 어둡게
 CASH_LABEL = "현금(예수금)"
 
 SECTOR_PALETTE = [

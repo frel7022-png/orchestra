@@ -5,17 +5,40 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_TARGETS
+from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR, DIVIDEND_MID_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_TARGETS
 from portfolio_core import (
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
     compute_sector_weights, load_watchlist, refresh_watchlist_prices,
-    get_watchlist_prev_day_ranks,
+    get_watchlist_prev_day_ranks, load_dividend_cache, refresh_dividend_yields,
     get_holding_trade_summary, get_holding_trade_summary_all_time,
     get_holding_trade_points, get_holding_avg_price_path,
-    load_investor_flow_db, load_market_flow_db, load_watchlist_history_db, load_dividend_cache,
+    load_investor_flow_db, load_market_flow_db, load_watchlist_history_db,
     compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline,
 )
+
+
+def _dividend_badge_html(code: str, dividend_cache: dict) -> str:
+    """배당수익률 배지 — 보유종목 카드와 Fishing 관심종목 줄에서 공유해서 쓴다(2026-09-01).
+    색깔 구간(사용자 지정): 5% 초과 빨강, 3~5% 진한 녹색, 1~3% 검정, 1% 미만 파랑.
+    괄호 안 날짜는 실제 배당락일이 아니라 네이버가 배당수익률 계산에 쓴 결산연월(예:
+    "2025.12")이다 — 이 페이지엔 정확한 배당락일이 없어서 구할 수 있는 것 중 가장
+    가까운 값을 대신 쓰기로 함(사용자 확인, 2026-09-01)."""
+    entry = dividend_cache.get(code)
+    if not entry:
+        return ""
+    dv = entry["배당수익률"]
+    if dv > 5:
+        dvc = UP_COLOR
+    elif dv >= 3:
+        dvc = DIVIDEND_MID_COLOR
+    elif dv >= 1:
+        dvc = "#000000"
+    else:
+        dvc = DOWN_COLOR
+    period = entry.get("배당기준월", "")
+    period_txt = f" ({period})" if period else ""
+    return f'<span class="dividend-tag" style="color:{dvc}">{dv:.1f}%{period_txt}</span>'
 
 
 def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
@@ -395,6 +418,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 with st.spinner("관심종목 시세 조회 중..."):
                     prices_df, quote_errors = refresh_watchlist_prices(watchlist, sb_url, sb_key)
                     hist_df = load_watchlist_history_db(sb_url, sb_key)
+                    refresh_dividend_yields(watchlist["종목코드"].tolist())
                 st.session_state["fishing_prices"] = prices_df
                 st.session_state["fishing_hist"] = hist_df
                 for err in quote_errors:
@@ -413,7 +437,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     except (TypeError, ValueError):
                         continue
                     pct_origin = (last - origin) / origin * 100 if origin else 0.0
-                    all_rows.append({"종목명": r["종목명"], "현재가": last, "pct_ref": pct_ref, "pct_origin": pct_origin})
+                    all_rows.append({"종목명": r["종목명"], "종목코드": r["종목코드"], "현재가": last,
+                                      "pct_ref": pct_ref, "pct_origin": pct_origin})
 
                 last_checked = prices_df["최근조회일시"].max() if "최근조회일시" in prices_df else ""
                 if last_checked:
@@ -451,6 +476,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     hist_df = st.session_state.get("fishing_hist", pd.DataFrame())
                     prev_ranks = get_watchlist_prev_day_ranks(
                         hist_df, fishing_basis, fishing_dir, FISHING_THRESHOLD, today_kst_str())
+                    fishing_dividend_cache = load_dividend_cache()
 
                     row_parts = []
                     for i, f in enumerate(flagged, 1):
@@ -465,9 +491,10 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                                 color = UP_COLOR if delta > 0 else DOWN_COLOR
                                 arrow = "▲" if delta > 0 else "▼"
                                 rank_delta_html = f'<span class="rank-delta" style="color:{color}">{arrow}{abs(delta)}</span>'
+                        dividend_html = _dividend_badge_html(f["종목코드"], fishing_dividend_cache)
                         row_parts.append(
                             f'<div class="updown-row"><span class="rank">{i}</span>{rank_delta_html}'
-                            f'<span class="name">{f["종목명"]}</span>'
+                            f'<span class="name-group"><span class="name">{f["종목명"]}</span>{dividend_html}</span>'
                             f'<span class="pct" style="color:{UP_COLOR if f["pct_origin"] >= 0 else DOWN_COLOR}">'
                             f'{"+" if f["pct_origin"] >= 0 else ""}{f["pct_origin"]:.1f}%</span>'
                             f'<span class="pct" style="color:{UP_COLOR if f["pct_ref"] >= 0 else DOWN_COLOR}">'
@@ -673,9 +700,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             code = r["종목코드"]
             is_open = st.session_state.holding_detail_open == code
 
-            div_entry = dividend_cache.get(code)
-            dividend_html = (f'<span class="dividend-tag">{div_entry["배당수익률"]:.1f}%</span>'
-                              if div_entry else "")
+            dividend_html = _dividend_badge_html(code, dividend_cache)
 
             with st.container(key=f"holding_wrap_{code}"):
                 st.markdown(f"""

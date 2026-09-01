@@ -730,32 +730,39 @@ def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
 
 
 def load_dividend_cache() -> dict:
-    """종목코드→{"배당수익률": float, "조회일": str}. §1-3과 같은 영구 캐시 패턴이지만,
-    섹터/종목코드와 달리 배당수익률은 시세처럼 계속 바뀌는 값이라 "하루에 한 번만 다시
-    긁으면 된다"는 조회일 기준을 같이 저장해둔다(refresh_dividend_yields가 이 기준으로
-    이미 오늘 조회한 종목은 건너뛴다)."""
+    """종목코드→{"배당수익률": float, "배당기준월": str, "조회일": str}. stock_code_cache.csv/
+    stock_sector_cache.csv와 똑같은 §1-3 "최초 1회만 조회, 그 뒤로는 영구 재사용" 캐시
+    패턴 — 배당수익률은 시세와 달리 시시각각 바뀌는 값이 아니라서(사용자 판단,
+    2026-09-01) 한 번 조회하면 다시 긁지 않는다. "조회일"은 실제 갱신 판단에는 안 쓰고
+    참고용 기록으로만 남겨둔다."""
     if DIVIDEND_CACHE_FILE.exists():
         df = pd.read_csv(DIVIDEND_CACHE_FILE, dtype={"종목코드": str}, keep_default_na=False)
         return {
-            row["종목코드"]: {"배당수익률": float(row["배당수익률"]), "조회일": row["조회일"]}
+            row["종목코드"]: {"배당수익률": float(row["배당수익률"]),
+                           "배당기준월": row.get("배당기준월", ""), "조회일": row["조회일"]}
             for _, row in df.iterrows() if row["종목코드"]
         }
     return {}
 
 
 def _save_dividend_cache(cache: dict) -> None:
-    rows = [{"종목코드": code, "배당수익률": v["배당수익률"], "조회일": v["조회일"]}
-            for code, v in sorted(cache.items())]
-    pd.DataFrame(rows, columns=["종목코드", "배당수익률", "조회일"]).to_csv(DIVIDEND_CACHE_FILE, index=False)
+    rows = [{"종목코드": code, "배당수익률": v["배당수익률"], "배당기준월": v.get("배당기준월", ""),
+             "조회일": v["조회일"]} for code, v in sorted(cache.items())]
+    pd.DataFrame(rows, columns=["종목코드", "배당수익률", "배당기준월", "조회일"]).to_csv(
+        DIVIDEND_CACHE_FILE, index=False)
 
 
-def fetch_dividend_yield(code: str) -> float | None:
+def fetch_dividend_yield(code: str) -> tuple[float, str] | None:
     """네이버 종목분석 페이지(`/item/coinfo.naver`)의 "배당수익률" 행을 긁어온다.
     fetch_investor_flow와 같은 이유로 비공식 HTML 스크레이핑 — 페이지 구조가 바뀌면
     조용히 깨질 수 있다는 걸 알고 씀. 배당을 안 주는 종목은 그 행 값이 "N/A"로 표시되는데,
     이건 실패가 아니라 "배당수익률 0%"라는 뜻이라 0.0으로 반환한다(파싱 자체가 안 되는
     진짜 실패와 구분하려고 None과 별도로 둠).
-    반환: 배당수익률(%), 또는 페이지 파싱 실패 시 None."""
+
+    반환: (배당수익률(%), 배당기준월) 튜플, 또는 페이지 파싱 실패 시 None. 배당기준월은
+    "배당수익률" 라벨 옆에 네이버가 표시하는 결산연월(예: "2025.12")이다 — 실제 배당
+    지급일/기준일 같은 날짜 단위 정보는 이 페이지에 없어서, 구할 수 있는 것 중 가장
+    가까운 걸 대신 쓴다. 배당이 없는 종목은 이 값도 빈 문자열."""
     url = f"https://finance.naver.com/item/coinfo.naver?code={code}"
     headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
     try:
@@ -771,36 +778,43 @@ def fetch_dividend_yield(code: str) -> float | None:
             (th for th in soup.find_all("th") if th.get_text(strip=True).startswith("배당수익률")), None)
         if target_th is None:
             return None
+        period_spans = target_th.find_all("span", recursive=False)
+        period = period_spans[-1].get_text(strip=True) if len(period_spans) >= 2 else ""
         td = target_th.find_next_sibling("td")
         em = td.find("em") if td else None
         text = em.get_text(strip=True) if em else ""
         if not text or text == "N/A":
-            return 0.0
-        return float(text.replace(",", ""))
+            return 0.0, ""
+        return float(text.replace(",", "")), period
     except Exception:
         return None
 
 
 def refresh_dividend_yields(codes: list[str]) -> dict:
-    """보유종목 배당수익률을 새로고침한다. 오늘 이미 조회한 종목은 건너뛰고(캐시 재사용),
-    새 종목이나 날짜가 지난 종목만 실제로 긁는다 — fetch_quotes처럼 한 번에 여러 종목을
-    묶어 보내는 API가 없어(종목별 페이지 스크레이핑) 63개 전부 매번 새로 긁으면 새로고침
-    버튼이 느려지는 걸 막기 위한 설계.
+    """보유종목 배당수익률 캐시에 없는 종목만 채운다("최초 1회만" — 사용자 요청,
+    2026-09-01: 배당수익률은 새로고침마다 다시 조회할 필요가 없다고 판단). 이미 캐시에
+    있는 종목은 새로고침을 몇 번을 눌러도 네트워크 요청이 전혀 안 나가고, 새로 편입된
+    종목만 그 시점에 한 번 긁힌다 — fetch_quotes처럼 여러 종목을 한 번에 묶어 보내는
+    API가 없어(종목별 페이지 스크레이핑) 매번 전부 다시 긁으면 새로고침이 느려지는 걸
+    막기 위한 설계.
     반환: {종목코드: 배당수익률}(요청한 codes 전부, 캐시에 있던 값 포함)."""
     codes = [c for c in dict.fromkeys(codes) if c]
     cache = load_dividend_cache()
     today = today_kst_str()
+    changed = False
 
     for code in codes:
-        cached = cache.get(code)
-        if cached and cached["조회일"] == today:
+        if code in cache:
             continue
-        yield_pct = fetch_dividend_yield(code)
-        if yield_pct is not None:
-            cache[code] = {"배당수익률": yield_pct, "조회일": today}
-        # 조회 실패면 기존 캐시값(있다면 어제자 값)을 그대로 둔다 — 아예 지우지 않음
+        fetched = fetch_dividend_yield(code)
+        if fetched is not None:
+            yield_pct, period = fetched
+            cache[code] = {"배당수익률": yield_pct, "배당기준월": period, "조회일": today}
+            changed = True
+        # 조회 실패면 다음 새로고침 때 다시 시도할 수 있게 캐시에 아예 안 넣는다
 
-    _save_dividend_cache(cache)
+    if changed:
+        _save_dividend_cache(cache)
     return {code: cache[code]["배당수익률"] for code in codes if code in cache}
 
 

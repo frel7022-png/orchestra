@@ -378,16 +378,18 @@ _DIVIDEND_HTML_NA = """
 """.encode("euc-kr")
 
 
-def test_fetch_dividend_yield_parses_percent_value(monkeypatch):
+def test_fetch_dividend_yield_parses_percent_value_and_period(monkeypatch):
     monkeypatch.setattr(core.requests, "get",
                          lambda url, headers=None, timeout=None: _FakeResp(_DIVIDEND_HTML_WITH_VALUE))
-    assert core.fetch_dividend_yield("138040") == pytest.approx(1.09)
+    yield_pct, period = core.fetch_dividend_yield("138040")
+    assert yield_pct == pytest.approx(1.09)
+    assert period == "2025.12"
 
 
 def test_fetch_dividend_yield_na_means_zero_not_failure(monkeypatch):
     monkeypatch.setattr(core.requests, "get",
                          lambda url, headers=None, timeout=None: _FakeResp(_DIVIDEND_HTML_NA))
-    assert core.fetch_dividend_yield("226400") == 0.0
+    assert core.fetch_dividend_yield("226400") == (0.0, "")
 
 
 def test_fetch_dividend_yield_returns_none_on_network_failure(monkeypatch):
@@ -397,13 +399,16 @@ def test_fetch_dividend_yield_returns_none_on_network_failure(monkeypatch):
     assert core.fetch_dividend_yield("138040") is None
 
 
-def test_refresh_dividend_yields_skips_codes_already_fetched_today(monkeypatch, tmp_path):
+def test_refresh_dividend_yields_never_refetches_cached_codes(monkeypatch, tmp_path):
+    """배당수익률은 시시각각 바뀌는 값이 아니므로(사용자 판단, 2026-09-01) 한 번 조회한
+    종목은 날짜가 바뀌어도 다시 긁지 않아야 한다 — stock_code_cache.csv/
+    stock_sector_cache.csv와 같은 "최초 1회만" 캐시(§1-3)."""
     monkeypatch.setattr(core, "DIVIDEND_CACHE_FILE", tmp_path / "dividend_cache.csv")
     calls = []
 
     def fake_fetch(code):
         calls.append(code)
-        return 1.5
+        return 1.5, "2025.12"
     monkeypatch.setattr(core, "fetch_dividend_yield", fake_fetch)
 
     result1 = core.refresh_dividend_yields(["138040", "226400"])
@@ -411,9 +416,26 @@ def test_refresh_dividend_yields_skips_codes_already_fetched_today(monkeypatch, 
     assert calls == ["138040", "226400"]
 
     calls.clear()
-    result2 = core.refresh_dividend_yields(["138040"])  # 같은 날 재조회 — 캐시만 써야 함
+    monkeypatch.setattr(core, "today_kst_str", lambda: "2099-12-31")  # 다른 날짜여도
+    result2 = core.refresh_dividend_yields(["138040"])
     assert result2 == {"138040": 1.5}
-    assert calls == []
+    assert calls == []  # 캐시에 있으므로 네트워크 요청 자체가 안 나가야 함
+
+
+def test_refresh_dividend_yields_only_fetches_new_codes(monkeypatch, tmp_path):
+    monkeypatch.setattr(core, "DIVIDEND_CACHE_FILE", tmp_path / "dividend_cache.csv")
+    calls = []
+
+    def fake_fetch(code):
+        calls.append(code)
+        return 1.5, "2025.12"
+    monkeypatch.setattr(core, "fetch_dividend_yield", fake_fetch)
+
+    core.refresh_dividend_yields(["138040"])
+    calls.clear()
+    result = core.refresh_dividend_yields(["138040", "226400"])  # 226400만 새 종목
+    assert result == {"138040": 1.5, "226400": 1.5}
+    assert calls == ["226400"]
 
 
 # ------------------------------------------------------------------ #
