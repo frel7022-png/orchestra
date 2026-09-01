@@ -87,6 +87,24 @@ def now_kst_str() -> str:
     return now_kst().strftime("%m/%d %H:%M")
 
 
+def resolve_trading_date() -> str:
+    """"오늘 날짜"가 아니라 "이 시점이 대표하는 거래일"을 반환한다. daily-price-fetch.yml
+    cron이 GitHub 스케줄 지연으로 자정을 넘겨서 돌면(예: 16:13 KST 목표가 다음날 00:05
+    KST에 실행), `today_kst_str()`을 그대로 trade_date로 쓰면 실제로는 전날 종가인데
+    다음날 날짜로 잘못 찍힌다 — 2026-09-01에 실제로 발견함(8/28 종가가 "8/29"로, 8/31
+    종가가 "9/1"로 Supabase price_history에 잘못 저장돼있었음, §6-16 참고). 장 시작 전
+    (오전 9시 이전)에 실행되면 "오늘"이 아니라 "직전 거래일"로 보정한다.
+    한계: 이 보정은 "자정 넘겨 지연"만 잡는다 — 만약 지연이 다음날 오전 9시를 넘길
+    정도로 극단적이면 이 휴리스틱으로는 못 잡는다(지금까지 관측된 지연은 전부 자정~
+    오전 7시 사이였음)."""
+    d = now_kst().date()
+    if now_kst().hour < 9:
+        d -= timedelta(days=1)
+    while d.weekday() >= 5:  # 토(5)/일(6)이면 가장 최근 평일로 보정
+        d -= timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
+
+
 def clean_str(x) -> str:
     """pd.NA / NaN / None 안전하게 빈 문자열로 처리."""
     if x is None or (isinstance(x, float) and pd.isna(x)) or (x is pd.NA):

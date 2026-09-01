@@ -87,7 +87,7 @@ def main():
         names = {r["stock_code"]: r["stock_name"] for r in watchlist}
         print(f"   시세 못 받은 종목({len(missing)}개): {[names[c] for c in missing]}")
 
-    today = core.today_kst_str()
+    today = core.resolve_trading_date()
     records = [
         {"stock_code": code, "trade_date": today, "close_price": q["price"],
          "change_pct": q["change_pct"], "volume": q.get("volume")}

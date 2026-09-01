@@ -6,6 +6,8 @@
 전체 이력 반영 등) 여기서 바로 잡히게 하는 게 목적.
 """
 
+from datetime import datetime
+
 import pandas as pd
 import pytest
 
@@ -384,6 +386,30 @@ def test_fetch_daily_price_history_returns_empty_on_network_failure(monkeypatch)
         raise ConnectionError("boom")
     monkeypatch.setattr(core.requests, "get", raise_err)
     assert core.fetch_daily_price_history("005930", "2026-08-28", "2026-09-01") == []
+
+
+# ------------------------------------------------------------------ #
+# resolve_trading_date — GitHub Actions cron이 자정 넘겨 지연 실행되면 today_kst_str()이
+# 실제 거래일보다 하루 늦은 날짜를 반환하던 실제 버그(2026-09-01 발견, §6-16) 재발 방지.
+# ------------------------------------------------------------------ #
+def test_resolve_trading_date_before_market_open_means_previous_day(monkeypatch):
+    """cron이 자정 넘겨 새벽에 실행되면(예: 화요일 00:05) 그 데이터는 실제로 전날(월요일)
+    종가이므로 "오늘"이 아니라 "어제" 날짜를 반환해야 한다."""
+    monkeypatch.setattr(core, "now_kst", lambda: datetime(2026, 9, 1, 0, 5))  # 화요일 새벽
+    assert core.resolve_trading_date() == "2026-08-31"
+
+
+def test_resolve_trading_date_rolls_back_over_weekend(monkeypatch):
+    """자정 넘겨 지연된 실행이 월요일 새벽이면, 그 전날인 일요일이 아니라 가장 최근
+    평일(금요일)로 보정해야 한다."""
+    monkeypatch.setattr(core, "now_kst", lambda: datetime(2026, 8, 24, 0, 30))  # 월요일 새벽
+    assert core.resolve_trading_date() == "2026-08-21"  # 금요일
+
+
+def test_resolve_trading_date_normal_afternoon_run_is_today(monkeypatch):
+    """평소대로 장마감 후(16:13 KST) 정상 실행되면 그날 날짜 그대로."""
+    monkeypatch.setattr(core, "now_kst", lambda: datetime(2026, 8, 31, 16, 13))  # 월요일 오후
+    assert core.resolve_trading_date() == "2026-08-31"
 
 
 # ------------------------------------------------------------------ #
