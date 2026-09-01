@@ -127,7 +127,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         st.info("시세를 새로고침하면 지수·자산 스냅샷이 쌓여서 그래프가 그려집니다.")
     else:
         def _pct(v):
-            return "—" if v is None else f"{v * 100:+.1f}%"
+            return "—" if v is None else f"{v * 100:+.2f}%"
 
         mix = latest.get("혼합") or latest.get("코스피", (None, None))
 
