@@ -18,12 +18,16 @@ from portfolio_core import (
 )
 
 
-def _dividend_badge_html(code: str, dividend_cache: dict) -> str:
+def _dividend_badge_html(code: str, dividend_cache: dict, show_period: bool = True) -> str:
     """배당수익률 배지 — 보유종목 카드와 Fishing 관심종목 줄에서 공유해서 쓴다(2026-09-01).
     색깔 구간(사용자 지정): 5% 초과 빨강, 3~5% 진한 녹색, 1~3% 검정, 1% 미만 파랑.
     괄호 안 날짜는 실제 배당락일이 아니라 네이버가 배당수익률 계산에 쓴 결산연월(예:
     "2025.12")이다 — 이 페이지엔 정확한 배당락일이 없어서 구할 수 있는 것 중 가장
-    가까운 값을 대신 쓰기로 함(사용자 확인, 2026-09-01)."""
+    가까운 값을 대신 쓰기로 함(사용자 확인, 2026-09-01).
+
+    show_period=False: Fishing 관심종목 줄은 한 줄짜리 리스트라 이 괄호까지 붙이면
+    종목명이 잘리는 문제가 있어(2026-09-01 실제 확인) 퍼센트만 보여준다 — 보유종목
+    카드는 배당 배지가 종목명 아래 전용 줄에 있어 자리가 넉넉하므로 계속 표시."""
     entry = dividend_cache.get(code)
     if not entry:
         return ""
@@ -36,8 +40,10 @@ def _dividend_badge_html(code: str, dividend_cache: dict) -> str:
         dvc = "#000000"
     else:
         dvc = DOWN_COLOR
-    period = entry.get("배당기준월", "")
-    period_txt = f" ({period})" if period else ""
+    period_txt = ""
+    if show_period:
+        period = entry.get("배당기준월", "")
+        period_txt = f" ({period})" if period else ""
     return f'<span class="dividend-tag" style="color:{dvc}">{dv:.1f}%{period_txt}</span>'
 
 
@@ -491,7 +497,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                                 color = UP_COLOR if delta > 0 else DOWN_COLOR
                                 arrow = "▲" if delta > 0 else "▼"
                                 rank_delta_html = f'<span class="rank-delta" style="color:{color}">{arrow}{abs(delta)}</span>'
-                        dividend_html = _dividend_badge_html(f["종목코드"], fishing_dividend_cache)
+                        dividend_html = _dividend_badge_html(f["종목코드"], fishing_dividend_cache, show_period=False)
                         row_parts.append(
                             f'<div class="updown-row"><span class="rank">{i}</span>{rank_delta_html}'
                             f'<span class="name-group"><span class="name">{f["종목명"]}</span>{dividend_html}</span>'
