@@ -1381,11 +1381,13 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
       (종목별 상장시장을 반영한 전체 벤치마크 — 사용자 요청 2026-09-01). None이면 코스피 기준.
 
     반환 dict:
-      me:     DataFrame[날짜, 계좌수익, 주식수익]  (asset_hist 스냅샷 날짜, 누적)
-      index:  DataFrame[날짜, 코스피, 코스닥]       (index_hist의 모든 거래일, 누적)
-      latest: {"코스피"/"코스닥"/"주식"/"계좌"/"혼합": (누적, 당일)} — 최신 시점 값.
-              당일: 지수는 마지막 거래일 등락, 주식/계좌는 마지막 스냅샷 구간 변화.
-              "혼합"은 kospi_weight를 줬을 때만 (없으면 None).
+      me:     DataFrame[날짜, 계좌수익, 주식수익, 주식당일, 계좌당일, 벤치누적, 벤치당일]
+              (asset_hist 스냅샷 날짜. 누적은 anchor 대비, 당일은 직전 스냅샷 대비 diff.
+               벤치 = 혼합 지수(wk 없으면 코스피)를 그 스냅샷 날짜에 정렬한 값.)
+      index:  DataFrame[날짜, 코스피, 코스닥]  (index_hist의 모든 거래일, 누적)
+      latest: {"코스피"/"코스닥"/"주식"/"계좌"/"벤치": (누적, 당일)} — 최신 시점 값.
+              지수 당일 = 마지막 거래일 등락, 주식/계좌/벤치 당일 = 마지막 스냅샷 구간 변화.
+              "벤치"는 주식·계좌의 누적/당일을 "지수 이겼나"로 색칠할 때의 기준선.
       sensitivity: 최근 beta_window개 스냅샷 구간의 원점회귀 기울기 ΣΔ주식·Δ벤치 / ΣΔ벤치²
                    ("벤치 -1%일 때 내 주식 약 -x%") — 구간 3개 미만이면 None
       sensitivity_basis: "혼합" | "코스피" (민감도가 어느 벤치 기준인지)
@@ -1435,42 +1437,47 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
 
     wk = None if kospi_weight is None else min(max(float(kospi_weight), 0.0), 1.0)
 
+    # 벤치 = 혼합 지수(wk·코스피 + (1-wk)·코스닥, wk 없으면 코스피)를 스냅샷 날짜에 정렬해서 붙임.
+    # 내 주식·내 계좌의 누적/당일을 "지수 이겼나/졌나"로 색칠하려면 각 스냅샷 시점의 벤치값이 필요.
+    bench = idx_cum.copy()
+    bench["_b"] = bench["코스피"] if wk is None else wk * bench["코스피"] + (1.0 - wk) * bench["코스닥"]
+    bdates, bvals = list(bench["날짜"]), list(bench["_b"])
+
+    def _bench_on(d):
+        prior = [v for bd, v in zip(bdates, bvals) if bd <= d]
+        return float(prior[-1]) if prior else None
+
+    me["주식당일"] = me["주식수익"].diff()
+    me["계좌당일"] = me["계좌수익"].diff()
+    me["벤치누적"] = [_bench_on(d) for d in me["날짜"]]
+    me["벤치당일"] = me["벤치누적"].diff()
+
+    def _last(s):
+        v = s.iloc[-1] if len(s) else None
+        return float(v) if v is not None and pd.notna(v) else None
+
     # ---- 최신 시점 누적 + 당일 ----
     latest = {}
     if not idx_cum.empty:
         moves = _index_day_moves(index_hist)
-        kd = float(moves["코스피d"].iloc[-1]) if len(moves) and pd.notna(moves["코스피d"].iloc[-1]) else None
-        qd = float(moves["코스닥d"].iloc[-1]) if len(moves) and pd.notna(moves["코스닥d"].iloc[-1]) else None
-        kc, qc = float(idx_cum["코스피"].iloc[-1]), float(idx_cum["코스닥"].iloc[-1])
-        latest["코스피"] = (kc, kd)
-        latest["코스닥"] = (qc, qd)
-        if wk is not None:
-            mix_c = wk * kc + (1.0 - wk) * qc
-            mix_d = None if (kd is None or qd is None) else wk * kd + (1.0 - wk) * qd
-            latest["혼합"] = (mix_c, mix_d)
-        else:
-            latest["혼합"] = None
+        kd = _last(moves["코스피d"]) if len(moves) else None
+        qd = _last(moves["코스닥d"]) if len(moves) else None
+        latest["코스피"] = (float(idx_cum["코스피"].iloc[-1]), kd)
+        latest["코스닥"] = (float(idx_cum["코스닥"].iloc[-1]), qd)
     if not me.empty:
-        for key, col in (("주식", "주식수익"), ("계좌", "계좌수익")):
-            cum = float(me[col].iloc[-1])
-            day = float(me[col].iloc[-1] - me[col].iloc[-2]) if len(me) >= 2 else None
-            latest[key] = (cum, day)
+        latest["주식"] = (_last(me["주식수익"]), _last(me["주식당일"]))
+        latest["계좌"] = (_last(me["계좌수익"]), _last(me["계좌당일"]))
+        latest["벤치"] = (_last(me["벤치누적"]), _last(me["벤치당일"]))  # 주식·계좌 색칠 기준
 
-    # ---- 민감도(rolling beta): Δ주식수익 vs Δ벤치(혼합 우선, 없으면 코스피) ----
+    # ---- 민감도(rolling beta): Δ주식수익 vs Δ벤치 ----
     sensitivity = None
-    if not idx_cum.empty and len(me) >= 2:
-        bench = idx_cum[["날짜", "코스피", "코스닥"]].copy()
-        bench["_bench"] = bench["코스피"] if wk is None else wk * bench["코스피"] + (1.0 - wk) * bench["코스닥"]
-        merged = pd.merge_asof(
-            me[["날짜", "주식수익"]].assign(_d=pd.to_datetime(me["날짜"])).sort_values("_d"),
-            bench[["날짜", "_bench"]].assign(_d=pd.to_datetime(bench["날짜"])).sort_values("_d"),
-            on="_d", direction="backward",
-        ).dropna(subset=["_bench"])
-        if len(merged) >= 2:
-            dme = merged["주식수익"].diff().dropna().iloc[-beta_window:]
-            dbe = merged["_bench"].diff().dropna().iloc[-beta_window:]
-            if len(dbe) >= 3 and (dbe ** 2).sum() > 1e-12:
-                sensitivity = float((dme * dbe).sum() / (dbe ** 2).sum())
+    if me["벤치누적"].notna().sum() >= 3:
+        dme = me["주식수익"].diff().dropna()
+        dbe = me["벤치누적"].diff().dropna()
+        n = min(len(dme), len(dbe), beta_window)
+        dme, dbe = dme.iloc[-n:].values, dbe.iloc[-n:].values
+        if n >= 3 and (dbe ** 2).sum() > 1e-12:
+            sensitivity = float((dme * dbe).sum() / (dbe ** 2).sum())
 
     return {"me": me, "index": idx_cum, "latest": latest, "sensitivity": sensitivity,
             "sensitivity_basis": "혼합" if wk is not None else "코스피"}

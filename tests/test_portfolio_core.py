@@ -731,7 +731,8 @@ def test_compute_index_vs_account_latest_has_cum_and_day():
 
 
 def test_compute_index_vs_account_blended_benchmark():
-    """kospi_weight를 주면 혼합 지수 = wk·코스피 + (1-wk)·코스닥, 민감도 기준도 '혼합'."""
+    """kospi_weight를 주면 벤치 = wk·코스피 + (1-wk)·코스닥, 민감도 기준도 '혼합'.
+    안 주면 벤치 = 코스피 단독, 기준은 '코스피'."""
     asset_hist = pd.DataFrame([
         {"날짜": "2026-01-05", "총자산": 1_000_000.0, "조정자산": 1_000_000.0},
         {"날짜": "2026-01-07", "총자산": 1_000_000.0, "조정자산": 1_000_000.0},
@@ -743,12 +744,13 @@ def test_compute_index_vs_account_blended_benchmark():
     empty_tx = pd.DataFrame(columns=["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"])
     r = core.compute_index_vs_account(empty_tx, asset_hist, idx, initial_capital=1_000_000.0,
                                        kospi_weight=0.75)
-    mix_cum, _ = r["latest"]["혼합"]
-    assert mix_cum == pytest.approx(0.75 * -0.10 + 0.25 * 0.10)  # -0.05
+    bench_cum, _ = r["latest"]["벤치"]
+    assert bench_cum == pytest.approx(0.75 * -0.10 + 0.25 * 0.10)  # -0.05
+    assert r["me"]["벤치누적"].iloc[-1] == pytest.approx(-0.05)
     assert r["sensitivity_basis"] == "혼합"
 
     r2 = core.compute_index_vs_account(empty_tx, asset_hist, idx, initial_capital=1_000_000.0)
-    assert r2["latest"]["혼합"] is None
+    assert r2["latest"]["벤치"][0] == pytest.approx(-0.10)   # 코스피 단독
     assert r2["sensitivity_basis"] == "코스피"
 
 

@@ -129,17 +129,17 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         def _pct(v):
             return "—" if v is None else f"{v * 100:+.2f}%"
 
-        mix = latest.get("혼합") or latest.get("코스피", (None, None))
+        bench = latest.get("벤치") or (None, None)
 
-        def _color_vs_mix(v, ref):
+        def _color_vs_bench(v, ref):
             if v is None or ref is None:
                 return T["text"]
-            return UP_COLOR if v >= ref else DOWN_COLOR
+            return UP_COLOR if v >= ref else DOWN_COLOR  # 벤치 이겼으면 빨강, 졌으면 파랑
 
-        def _row(label, dot_color, dashed, key, color_by_mix):
+        def _row(label, dot_color, dashed, key, color_by_bench):
             cum, day = latest.get(key, (None, None))
-            if color_by_mix:
-                cc, dc = _color_vs_mix(cum, mix[0]), _color_vs_mix(day, mix[1])
+            if color_by_bench:
+                cc, dc = _color_vs_bench(cum, bench[0]), _color_vs_bench(day, bench[1])
             else:
                 cc = dc = T["muted"]
             mark = "┈" if dashed else "●"
@@ -171,35 +171,51 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 unsafe_allow_html=True,
             )
 
-        # 선별 당일 변화(hover용): 지수는 전 거래일 대비, 내 선은 직전 스냅샷 대비
+        # hover: 각 줄 앞을 "누적"으로 통일(어느 선인지는 색점으로 구분). 지수는 그대로,
+        # 내 주식·내 계좌는 누적/당일 각각을 벤치(혼합지수)와 비교해 이겼으면 빨강/졌으면 파랑.
         moves = _index_day_moves(idx_hist).set_index("날짜")
         kd_map = moves["코스피d"].to_dict()
         qd_map = moves["코스닥d"].to_dict()
+
+        def _fmt(v):
+            return "—" if v is None or pd.isna(v) else f"{v * 100:+.2f}%"
+
+        def _cell(v, ref):
+            if v is None or pd.isna(v):
+                return "—"
+            s = f"{v * 100:+.2f}%"
+            if ref is None or pd.isna(ref):
+                return s
+            return f"<span style='color:{UP_COLOR if v >= ref else DOWN_COLOR}'>{s}</span>"
+
+        HT = "%{x}<br>누적 %{customdata[0]}  ·  당일 %{customdata[1]}<extra></extra>"
 
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(
             x=idxc["날짜"], y=idxc["코스피"], name="코스피", mode="lines",
             line=dict(color=KOSPI_COLOR, width=1.6),
-            customdata=[kd_map.get(d) for d in idxc["날짜"]],
-            hovertemplate="%{x}<br>코스피 %{y:+.2%}  ·  당일 %{customdata:+.2%}<extra></extra>",
+            customdata=[[_fmt(c), _fmt(kd_map.get(d))] for c, d in zip(idxc["코스피"], idxc["날짜"])],
+            hovertemplate=HT,
         ))
         fig2.add_trace(go.Scatter(
             x=idxc["날짜"], y=idxc["코스닥"], name="코스닥", mode="lines",
             line=dict(color=KOSDAQ_COLOR, width=1.6),
-            customdata=[qd_map.get(d) for d in idxc["날짜"]],
-            hovertemplate="%{x}<br>코스닥 %{y:+.2%}  ·  당일 %{customdata:+.2%}<extra></extra>",
+            customdata=[[_fmt(c), _fmt(qd_map.get(d))] for c, d in zip(idxc["코스닥"], idxc["날짜"])],
+            hovertemplate=HT,
         ))
         fig2.add_trace(go.Scatter(
             x=me["날짜"], y=me["주식수익"], name="내 주식", mode="lines+markers",
             line=dict(color=T["text"], width=2.8), marker=dict(size=5),
-            customdata=me["주식수익"].diff().tolist(),
-            hovertemplate="%{x}<br>내 주식 %{y:+.2%}  ·  당일 %{customdata:+.2%}<extra></extra>",
+            customdata=[[_cell(cr, br), _cell(dr, bd)] for cr, dr, br, bd
+                        in zip(me["주식수익"], me["주식당일"], me["벤치누적"], me["벤치당일"])],
+            hovertemplate=HT,
         ))
         fig2.add_trace(go.Scatter(
             x=me["날짜"], y=me["계좌수익"], name="내 계좌", mode="lines",
             line=dict(color=T["muted2"], width=1.8, dash="dot"),
-            customdata=me["계좌수익"].diff().tolist(),
-            hovertemplate="%{x}<br>내 계좌 %{y:+.2%}  ·  당일 %{customdata:+.2%}<extra></extra>",
+            customdata=[[_cell(cr, br), _cell(dr, bd)] for cr, dr, br, bd
+                        in zip(me["계좌수익"], me["계좌당일"], me["벤치누적"], me["벤치당일"])],
+            hovertemplate=HT,
         ))
         fig2.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig2.update_layout(
