@@ -1349,9 +1349,22 @@ def _index_cum_returns(index_hist: pd.DataFrame, anchor: str) -> pd.DataFrame:
     })
 
 
+def _index_day_moves(index_hist: pd.DataFrame) -> pd.DataFrame:
+    """index_hist(날짜, KOSPI, KOSDAQ)에 '전 거래일 대비 그날 등락(소수)'을 붙인다.
+    반환 DataFrame[날짜, 코스피d, 코스닥d]."""
+    if index_hist is None or index_hist.empty:
+        return pd.DataFrame(columns=["날짜", "코스피d", "코스닥d"])
+    h = index_hist.copy().sort_values("날짜").reset_index(drop=True)
+    return pd.DataFrame({
+        "날짜": h["날짜"],
+        "코스피d": pd.to_numeric(h["KOSPI"], errors="coerce").pct_change(),
+        "코스닥d": pd.to_numeric(h["KOSDAQ"], errors="coerce").pct_change(),
+    })
+
+
 def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_hist: pd.DataFrame,
                               initial_capital: float, fee_rate: float = 0.0,
-                              beta_window: int = 5) -> dict:
+                              kospi_weight: float | None = None, beta_window: int = 5) -> dict:
     """'지수 대비 계좌' 그래프 데이터(§6-17). 값은 전부 소수(0.0145 = +1.45%).
 
     - 계좌수익(t)  = 총자산(t)/최초자본 - 1  — 앱 요약카드의 그 값. 예수금이 눌러주는 '완충된' 선.
@@ -1363,16 +1376,24 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
       0이라 비교 기준이 맞음).
     - 코스피/코스닥 = anchor일(asset_hist·index_hist 공통 시작일) 종가 대비 누적등락(0 중심).
 
+    kospi_weight: 내 보유주식 중 코스피 종목의 평가금액 비중(0~1). 주면 "혼합 지수"
+      (= wk·코스피 + (1-wk)·코스닥)를 만들어 민감도와 초과수익 판정 기준으로 쓴다
+      (종목별 상장시장을 반영한 전체 벤치마크 — 사용자 요청 2026-09-01). None이면 코스피 기준.
+
     반환 dict:
-      me:          DataFrame[날짜, 계좌수익, 주식수익]  (asset_hist 스냅샷 날짜)
-      index:       DataFrame[날짜, 코스피, 코스닥]       (index_hist의 모든 거래일)
-      sensitivity: 최근 beta_window개 스냅샷 구간의 원점회귀 기울기 ΣΔ주식·Δ코스피 / ΣΔ코스피²
-                   ("코스피 -1%일 때 내 주식 약 -x%") — 구간 3개 미만이면 None
-      alpha:       마지막 스냅샷 시점 (주식수익 - 코스피 누적등락) — 계산 불가 시 None
+      me:     DataFrame[날짜, 계좌수익, 주식수익]  (asset_hist 스냅샷 날짜, 누적)
+      index:  DataFrame[날짜, 코스피, 코스닥]       (index_hist의 모든 거래일, 누적)
+      latest: {"코스피"/"코스닥"/"주식"/"계좌"/"혼합": (누적, 당일)} — 최신 시점 값.
+              당일: 지수는 마지막 거래일 등락, 주식/계좌는 마지막 스냅샷 구간 변화.
+              "혼합"은 kospi_weight를 줬을 때만 (없으면 None).
+      sensitivity: 최근 beta_window개 스냅샷 구간의 원점회귀 기울기 ΣΔ주식·Δ벤치 / ΣΔ벤치²
+                   ("벤치 -1%일 때 내 주식 약 -x%") — 구간 3개 미만이면 None
+      sensitivity_basis: "혼합" | "코스피" (민감도가 어느 벤치 기준인지)
     """
     empty = {"me": pd.DataFrame(columns=["날짜", "계좌수익", "주식수익"]),
              "index": pd.DataFrame(columns=["날짜", "코스피", "코스닥"]),
-             "sensitivity": None, "alpha": None}
+             "latest": {}, "sensitivity": None,
+             "sensitivity_basis": "혼합" if kospi_weight is not None else "코스피"}
     if asset_hist is None or asset_hist.empty or index_hist is None or index_hist.empty:
         return empty
 
@@ -1412,136 +1433,47 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
 
     me = pd.DataFrame(rows, columns=["날짜", "계좌수익", "주식수익"])
 
-    # 민감도(rolling beta) / alpha — 스냅샷 날짜에 코스피 누적등락을 붙여서 계산
+    wk = None if kospi_weight is None else min(max(float(kospi_weight), 0.0), 1.0)
+
+    # ---- 최신 시점 누적 + 당일 ----
+    latest = {}
+    if not idx_cum.empty:
+        moves = _index_day_moves(index_hist)
+        kd = float(moves["코스피d"].iloc[-1]) if len(moves) and pd.notna(moves["코스피d"].iloc[-1]) else None
+        qd = float(moves["코스닥d"].iloc[-1]) if len(moves) and pd.notna(moves["코스닥d"].iloc[-1]) else None
+        kc, qc = float(idx_cum["코스피"].iloc[-1]), float(idx_cum["코스닥"].iloc[-1])
+        latest["코스피"] = (kc, kd)
+        latest["코스닥"] = (qc, qd)
+        if wk is not None:
+            mix_c = wk * kc + (1.0 - wk) * qc
+            mix_d = None if (kd is None or qd is None) else wk * kd + (1.0 - wk) * qd
+            latest["혼합"] = (mix_c, mix_d)
+        else:
+            latest["혼합"] = None
+    if not me.empty:
+        for key, col in (("주식", "주식수익"), ("계좌", "계좌수익")):
+            cum = float(me[col].iloc[-1])
+            day = float(me[col].iloc[-1] - me[col].iloc[-2]) if len(me) >= 2 else None
+            latest[key] = (cum, day)
+
+    # ---- 민감도(rolling beta): Δ주식수익 vs Δ벤치(혼합 우선, 없으면 코스피) ----
     sensitivity = None
-    alpha = None
     if not idx_cum.empty and len(me) >= 2:
+        bench = idx_cum[["날짜", "코스피", "코스닥"]].copy()
+        bench["_bench"] = bench["코스피"] if wk is None else wk * bench["코스피"] + (1.0 - wk) * bench["코스닥"]
         merged = pd.merge_asof(
             me[["날짜", "주식수익"]].assign(_d=pd.to_datetime(me["날짜"])).sort_values("_d"),
-            idx_cum[["날짜", "코스피"]].assign(_d=pd.to_datetime(idx_cum["날짜"])).sort_values("_d")
-                .rename(columns={"날짜": "_idxdate"}),
+            bench[["날짜", "_bench"]].assign(_d=pd.to_datetime(bench["날짜"])).sort_values("_d"),
             on="_d", direction="backward",
-        )
-        merged = merged.dropna(subset=["코스피"])
+        ).dropna(subset=["_bench"])
         if len(merged) >= 2:
-            alpha = float(merged["주식수익"].iloc[-1] - merged["코스피"].iloc[-1])
-            dme = merged["주식수익"].diff().dropna()
-            didx = merged["코스피"].diff().dropna()
-            dme, didx = dme.iloc[-beta_window:], didx.iloc[-beta_window:]
-            if len(didx) >= 3 and (didx ** 2).sum() > 1e-12:
-                sensitivity = float((dme * didx).sum() / (didx ** 2).sum())
+            dme = merged["주식수익"].diff().dropna().iloc[-beta_window:]
+            dbe = merged["_bench"].diff().dropna().iloc[-beta_window:]
+            if len(dbe) >= 3 and (dbe ** 2).sum() > 1e-12:
+                sensitivity = float((dme * dbe).sum() / (dbe ** 2).sum())
 
-    return {"me": me, "index": idx_cum, "sensitivity": sensitivity, "alpha": alpha}
-
-
-def get_watering_events(tx: pd.DataFrame, held_names=None) -> pd.DataFrame:
-    """'물타기'(현재 보유 사이클에서 첫 매수 이후의 추가 매수) 목록. §6-10
-    _current_cycle_transactions 사이클 기준 그대로 — 과거에 청산한 사이클의 추가매수는 제외.
-    held_names=None이면 현재 보유 사이클 순수량이 양(+)인 종목 전부를 대상으로 한다.
-    반환 DataFrame[날짜, 종목명, 수량, 단가] 날짜 오름차순."""
-    if tx is None or tx.empty:
-        return pd.DataFrame(columns=["날짜", "종목명", "수량", "단가"])
-    names = list(held_names) if held_names is not None else sorted(tx["종목명"].dropna().unique())
-    rows = []
-    for name in names:
-        cyc = _current_cycle_transactions(tx, name)
-        if cyc.empty:
-            continue
-        cyc = cyc.copy()
-        cyc["수량"] = pd.to_numeric(cyc["수량"], errors="coerce").fillna(0.0)
-        signed = cyc["수량"].where(cyc["구분"] == "매수", -cyc["수량"])
-        if held_names is None and signed.sum() <= 1e-6:
-            continue  # 지금 보유 중이 아닌 종목(사이클이 안 닫혔지만 순수량 0 이하)은 제외
-        buys = cyc[cyc["구분"] == "매수"].reset_index(drop=True)
-        for i in range(1, len(buys)):  # 사이클 첫 매수는 '진입'이라 물타기 아님
-            b = buys.iloc[i]
-            rows.append({"날짜": str(b["날짜"]), "종목명": name,
-                         "수량": float(b["수량"]), "단가": float(pd.to_numeric(b["단가"], errors="coerce"))})
-    return pd.DataFrame(rows, columns=["날짜", "종목명", "수량", "단가"]).sort_values("날짜").reset_index(drop=True)
-
-
-def _index_day_moves(index_hist: pd.DataFrame) -> pd.DataFrame:
-    """index_hist(날짜, KOSPI, KOSDAQ)에 '전 거래일 대비 그날 등락(소수)'을 붙인다.
-    반환 DataFrame[날짜, 코스피d, 코스닥d]."""
-    if index_hist is None or index_hist.empty:
-        return pd.DataFrame(columns=["날짜", "코스피d", "코스닥d"])
-    h = index_hist.copy().sort_values("날짜").reset_index(drop=True)
-    return pd.DataFrame({
-        "날짜": h["날짜"],
-        "코스피d": pd.to_numeric(h["KOSPI"], errors="coerce").pct_change(),
-        "코스닥d": pd.to_numeric(h["KOSDAQ"], errors="coerce").pct_change(),
-    })
-
-
-def get_dip_watering_events(tx: pd.DataFrame, index_hist: pd.DataFrame, held_names=None,
-                             drop: float = -0.01) -> pd.DataFrame:
-    """물타기(get_watering_events) 중 '그날 코스피 또는 코스닥이 drop 이하로 빠진 날'의 것만.
-    '지수가 빠진 날 물탄 게 나중에 방어가 됐나'(§6-17 v2)를 보려는 목적이라, 지수가 안 빠진
-    날의 일상적 추가매수는 제외해서 신호만 남긴다. drop=-0.01 → 그날 지수 -1% 이하.
-    반환: get_watering_events 컬럼 + [코스피d, 코스닥d](그날 등락, 소수). 날짜 오름차순."""
-    ev = get_watering_events(tx, held_names)
-    if ev.empty:
-        return ev.assign(코스피d=pd.Series(dtype=float), 코스닥d=pd.Series(dtype=float))
-    moves = _index_day_moves(index_hist)
-    ev = ev.merge(moves, on="날짜", how="left")
-    mask = (ev["코스피d"] <= drop) | (ev["코스닥d"] <= drop)
-    return ev[mask.fillna(False)].reset_index(drop=True)
-
-
-def score_watering_events(events: pd.DataFrame, price_hist_map: dict, index_hist: pd.DataFrame,
-                           market_map: dict | None = None, end_date: str | None = None) -> pd.DataFrame:
-    """물타기 성적표(§6-17 v2). 각 물타기 매수에 대해 '그 뒤 오늘까지 종목 수익 vs 같은 기간
-    지수 수익'을 비교한다. 초과가 양(+)이면 그 하락에 물탄 게 시장보다 유리했다는 뜻.
-
-    events:         get_watering_events() 결과
-    price_hist_map: {종목명: DataFrame[날짜, 종가]} (오름차순). 없는 종목은 결과에서 빠짐.
-    index_hist:     load_index_history() 결과 (날짜, KOSPI, KOSDAQ)
-    market_map:     {종목명: "KOSPI"|"KOSDAQ"} — 없으면 전부 KOSPI 기준
-    반환 DataFrame[날짜, 종목명, 그날지수, 종목수익, 지수수익, 초과] — 값은 소수. 초과 내림차순."""
-    if events is None or events.empty or index_hist is None or index_hist.empty:
-        return pd.DataFrame(columns=["날짜", "종목명", "그날지수", "종목수익", "지수수익", "초과"])
-    ih = index_hist.copy().sort_values("날짜").reset_index(drop=True)
-    end_date = end_date or str(ih["날짜"].max())
-
-    def idx_ret(market, d0, d1):
-        col = "KOSDAQ" if market == "KOSDAQ" else "KOSPI"
-        a = ih[ih["날짜"] <= d0]
-        b = ih[ih["날짜"] <= d1]
-        if a.empty or b.empty:
-            return None
-        p0, p1 = float(a.iloc[-1][col]), float(b.iloc[-1][col])
-        return p1 / p0 - 1.0 if p0 else None
-
-    def idx_day_move(market, d):
-        col = "KOSDAQ" if market == "KOSDAQ" else "KOSPI"
-        upto = ih[ih["날짜"] <= d].reset_index(drop=True)
-        if len(upto) < 2:
-            return None
-        p_prev, p_d = float(upto.iloc[-2][col]), float(upto.iloc[-1][col])
-        return p_d / p_prev - 1.0 if p_prev else None
-
-    rows = []
-    for _, e in events.iterrows():
-        name, d0, entry = e["종목명"], str(e["날짜"]), float(e["단가"])
-        ph = price_hist_map.get(name)
-        if ph is None or len(ph) == 0:
-            continue
-        ph = ph.sort_values("날짜")
-        after = ph[ph["날짜"] <= end_date]
-        if after.empty:
-            continue
-        last_close = float(after.iloc[-1]["종가"])
-        if entry <= 0:
-            continue
-        stock_ret = last_close / entry - 1.0
-        market = (market_map or {}).get(name, "KOSPI")
-        iret = idx_ret(market, d0, end_date)
-        if iret is None:
-            continue
-        rows.append({"날짜": d0, "종목명": name, "그날지수": idx_day_move(market, d0),
-                     "종목수익": stock_ret, "지수수익": iret, "초과": stock_ret - iret})
-    return pd.DataFrame(rows, columns=["날짜", "종목명", "그날지수", "종목수익", "지수수익", "초과"]) \
-        .sort_values("초과", ascending=False).reset_index(drop=True)
+    return {"me": me, "index": idx_cum, "latest": latest, "sensitivity": sensitivity,
+            "sensitivity_basis": "혼합" if wk is not None else "코스피"}
 
 
 # ------------------------------------------------------------------ #

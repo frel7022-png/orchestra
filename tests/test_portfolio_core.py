@@ -705,74 +705,51 @@ def test_compute_index_vs_account_index_is_cumulative_from_anchor():
     assert ix["코스닥"].iloc[-1] == pytest.approx(0.05)    # 200 → 210
 
 
-def test_get_watering_events_excludes_first_buy_and_closed_cycles():
-    """물타기 = 현재 보유 사이클에서 '첫 매수 이후의 추가 매수'만. 전량매도 전 사이클의
-    추가매수도, 재진입 첫 매수도 물타기가 아니다(§6-10 사이클 기준)."""
-    tx = pd.DataFrame([
-        _tx_row("t1", "2026-01-01", "A", "매수", 1, 1000),
-        _tx_row("t2", "2026-01-02", "A", "매수", 1, 900),    # 옛 사이클 물타기 — 제외
-        _tx_row("t3", "2026-01-03", "A", "매도", 2, 950),    # 전량매도
-        _tx_row("t4", "2026-01-05", "A", "매수", 1, 500),    # 재진입 첫 매수 — 제외
-        _tx_row("t5", "2026-01-06", "A", "매수", 1, 400),    # 현재 사이클 물타기 — 이것만
+def test_compute_index_vs_account_latest_has_cum_and_day():
+    """latest에 각 선의 (누적, 당일)이 들어와야 하고, 지수 당일은 마지막 거래일 등락,
+    내 주식/계좌 당일은 마지막 스냅샷 구간 변화여야 한다."""
+    tx = pd.DataFrame([_tx_row("t1", "2026-01-05", "A", "매수", 6, 100_000)])
+    asset_hist = pd.DataFrame([
+        {"날짜": "2026-01-05", "총자산": 1_000_000.0, "조정자산": 1_000_000.0},
+        {"날짜": "2026-01-06", "총자산": 1_003_500.0, "조정자산": 1_003_500.0},
+        {"날짜": "2026-01-07", "총자산": 1_000_500.0, "조정자산": 1_000_500.0},
     ])
-    ev = core.get_watering_events(tx, ["A"])
-    assert list(ev["날짜"]) == ["2026-01-06"]
-    assert ev.iloc[0]["단가"] == 400
+    idx = _idx_hist([
+        ["2026-01-05", 100.0, 200.0],
+        ["2026-01-06", 101.0, 200.0],
+        ["2026-01-07", 99.0, 210.0],   # 코스피 당일 -1.98%, 코스닥 당일 +5%
+    ])
+    r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0)
+    kc, kd = r["latest"]["코스피"]
+    assert kc == pytest.approx(-0.01)          # 100 → 99 누적
+    assert kd == pytest.approx(99.0 / 101.0 - 1.0)  # 당일
+    qc, qd = r["latest"]["코스닥"]
+    assert qd == pytest.approx(0.05)
+    _, sday = r["latest"]["주식"]
+    _, aday = r["latest"]["계좌"]
+    assert aday == pytest.approx((1_000_500.0 - 1_003_500.0) / 1_000_000.0)  # 마지막 구간 계좌수익 변화
 
 
-def test_get_dip_watering_events_keeps_only_index_down_days():
-    tx = pd.DataFrame([
-        _tx_row("t1", "2026-01-05", "A", "매수", 1, 1000),
-        _tx_row("t2", "2026-01-06", "A", "매수", 1, 990),   # 코스피 -0.5% — 임계값 밖
-        _tx_row("t3", "2026-01-07", "A", "매수", 1, 900),   # 코스피 -2.5% — 남김
+def test_compute_index_vs_account_blended_benchmark():
+    """kospi_weight를 주면 혼합 지수 = wk·코스피 + (1-wk)·코스닥, 민감도 기준도 '혼합'."""
+    asset_hist = pd.DataFrame([
+        {"날짜": "2026-01-05", "총자산": 1_000_000.0, "조정자산": 1_000_000.0},
+        {"날짜": "2026-01-07", "총자산": 1_000_000.0, "조정자산": 1_000_000.0},
     ])
     idx = _idx_hist([
         ["2026-01-05", 100.0, 100.0],
-        ["2026-01-06", 99.5, 100.0],
-        ["2026-01-07", 97.0, 100.0],
+        ["2026-01-07", 90.0, 110.0],   # 코스피 -10%, 코스닥 +10%
     ])
-    ev = core.get_dip_watering_events(tx, idx, ["A"], drop=-0.01)
-    assert list(ev["날짜"]) == ["2026-01-07"]
+    empty_tx = pd.DataFrame(columns=["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"])
+    r = core.compute_index_vs_account(empty_tx, asset_hist, idx, initial_capital=1_000_000.0,
+                                       kospi_weight=0.75)
+    mix_cum, _ = r["latest"]["혼합"]
+    assert mix_cum == pytest.approx(0.75 * -0.10 + 0.25 * 0.10)  # -0.05
+    assert r["sensitivity_basis"] == "혼합"
 
-
-def test_score_watering_events_excess_vs_index():
-    events = pd.DataFrame([{"날짜": "2026-01-06", "종목명": "A", "수량": 1.0, "단가": 1000.0}])
-    price_hist = {"A": pd.DataFrame([
-        {"날짜": "2026-01-06", "종가": 1000.0},
-        {"날짜": "2026-01-08", "종가": 1100.0},   # +10%
-    ])}
-    idx = _idx_hist([
-        ["2026-01-06", 100.0, 100.0],
-        ["2026-01-08", 102.0, 100.0],             # 코스피 +2%
-    ])
-    sc = core.score_watering_events(events, price_hist, idx)
-    assert sc.iloc[0]["종목수익"] == pytest.approx(0.10)
-    assert sc.iloc[0]["지수수익"] == pytest.approx(0.02)
-    assert sc.iloc[0]["초과"] == pytest.approx(0.08)
-
-
-def test_score_watering_events_uses_per_stock_market():
-    """market_map으로 KOSDAQ 종목은 코스닥 지수와 비교해야 한다."""
-    events = pd.DataFrame([
-        {"날짜": "2026-01-06", "종목명": "코스피주", "수량": 1.0, "단가": 1000.0},
-        {"날짜": "2026-01-06", "종목명": "코스닥주", "수량": 1.0, "단가": 1000.0},
-    ])
-    price_hist = {
-        "코스피주": pd.DataFrame([{"날짜": "2026-01-06", "종가": 1000.0}, {"날짜": "2026-01-08", "종가": 1050.0}]),
-        "코스닥주": pd.DataFrame([{"날짜": "2026-01-06", "종가": 1000.0}, {"날짜": "2026-01-08", "종가": 1050.0}]),
-    }
-    idx = _idx_hist([
-        ["2026-01-06", 100.0, 100.0],
-        ["2026-01-08", 101.0, 110.0],   # 코스피 +1%, 코스닥 +10%
-    ])
-    sc = core.score_watering_events(events, price_hist, idx,
-                                     market_map={"코스피주": "KOSPI", "코스닥주": "KOSDAQ"})
-    row_ks = sc[sc["종목명"] == "코스피주"].iloc[0]
-    row_kq = sc[sc["종목명"] == "코스닥주"].iloc[0]
-    assert row_ks["지수수익"] == pytest.approx(0.01)
-    assert row_ks["초과"] == pytest.approx(0.04)     # +5% - +1%
-    assert row_kq["지수수익"] == pytest.approx(0.10)
-    assert row_kq["초과"] == pytest.approx(-0.05)    # +5% - +10%
+    r2 = core.compute_index_vs_account(empty_tx, asset_hist, idx, initial_capital=1_000_000.0)
+    assert r2["latest"]["혼합"] is None
+    assert r2["sensitivity_basis"] == "코스피"
 
 
 def test_market_cache_roundtrip(tmp_path, monkeypatch):
