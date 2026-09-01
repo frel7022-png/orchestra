@@ -7,10 +7,17 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from constants import UP_COLOR, DOWN_COLOR
-from portfolio_core import now_kst, today_kst_str, load_history
+from portfolio_core import (
+    now_kst, today_kst_str, load_history, load_index_history,
+    compute_index_vs_account, get_dip_watering_events, score_watering_events,
+    fetch_daily_price_history,
+)
+
+KOSPI_COLOR = "#f59e0b"   # 지수 참조선(코스피) — 앰버
+KOSDAQ_COLOR = "#14b8a6"  # 지수 참조선(코스닥) — 틸
 
 
-def render_transactions_tab(state, tx, total_assets, unrealized_loss, T):
+def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, T):
     cap_return = total_assets - state["initial"]
     cap_return_pct = (cap_return / state["initial"] * 100) if state["initial"] else 0
     c3 = UP_COLOR if cap_return >= 0 else DOWN_COLOR
@@ -90,6 +97,170 @@ def render_transactions_tab(state, tx, total_assets, unrealized_loss, T):
             "scrollZoom": False,
             "doubleClick": False,
         })
+
+    st.divider()
+
+    # ---- 지수 대비 계좌 (§6-17): 코스피/코스닥 누적등락 vs 내 계좌·주식 수익 ----
+    # "지수가 -2% 빠졌는데 내 자산은 얼마나 방어됐나 / 물타기가 효과 있었나"를 보는 그래프.
+    #  · 코스피·코스닥      = anchor일 종가 대비 누적등락(0 중심)
+    #  · 내 주식(예수금 제외) = 보유주식 100% 투자로 환산한 누적수익 Rs — 지수와 1:1 비교 가능
+    #  · 내 계좌(예수금 포함) = 총자산/최초자본 - 1 (요약카드 값, 예수금이 눌러주는 완충선)
+    #  · ▲ 마커            = 그날 코스피/코스닥이 -1% 이하로 빠진 날의 물타기(추가매수)
+    st.markdown("##### 지수 대비 계좌")
+
+    idx_hist = load_index_history()
+    iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"], state.get("fee_rate", 0.0))
+    me, idxc = iva["me"], iva["index"]
+
+    if me.empty or idxc.empty:
+        st.info("시세를 새로고침하면 지수·자산 스냅샷이 쌓여서 그래프가 그려집니다.")
+    else:
+        sens, alpha = iva["sensitivity"], iva["alpha"]
+        cap = []
+        if alpha is not None:
+            ac = UP_COLOR if alpha >= 0 else DOWN_COLOR
+            cap.append(
+                f"누적 초과수익 <b style='color:{ac}'>{alpha * 100:+.1f}%p</b> "
+                f"(내 주식 {me['주식수익'].iloc[-1] * 100:+.1f}% vs 코스피 {idxc['코스피'].iloc[-1] * 100:+.1f}%)"
+            )
+        if sens is not None:
+            cap.append(f"최근 민감도 <b>{sens:+.2f}</b> (코스피 -1% → 내 주식 약 {-sens * 1:+.2f}%)")
+        if cap:
+            st.markdown(
+                f"<div style='font-size:12px;color:{T['muted']};margin:-4px 0 6px'>" + " · ".join(cap) + "</div>",
+                unsafe_allow_html=True,
+            )
+
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(
+            x=idxc["날짜"], y=idxc["코스피"], name="코스피", mode="lines",
+            line=dict(color=KOSPI_COLOR, width=1.6),
+            hovertemplate="%{x}<br>코스피 %{y:.2%}<extra></extra>",
+        ))
+        fig2.add_trace(go.Scatter(
+            x=idxc["날짜"], y=idxc["코스닥"], name="코스닥", mode="lines",
+            line=dict(color=KOSDAQ_COLOR, width=1.6),
+            hovertemplate="%{x}<br>코스닥 %{y:.2%}<extra></extra>",
+        ))
+        fig2.add_trace(go.Scatter(
+            x=me["날짜"], y=me["주식수익"], name="내 주식(예수금 제외)", mode="lines+markers",
+            line=dict(color=T["text"], width=2.8), marker=dict(size=5),
+            hovertemplate="%{x}<br>내 주식수익 %{y:.2%}<extra></extra>",
+        ))
+        fig2.add_trace(go.Scatter(
+            x=me["날짜"], y=me["계좌수익"], name="내 계좌(예수금 포함)", mode="lines",
+            line=dict(color=T["muted2"], width=1.8, dash="dot"),
+            hovertemplate="%{x}<br>내 계좌수익 %{y:.2%}<extra></extra>",
+        ))
+
+        dip = get_dip_watering_events(tx, idx_hist, drop=-0.01)
+        if not dip.empty:
+            me_by_date = dict(zip(me["날짜"], me["주식수익"]))
+            mx, my, mtext = [], [], []
+            for d, grp in dip.groupby("날짜"):
+                y = me_by_date.get(d)
+                if y is None:  # 그날 자산 스냅샷이 없으면 직전 스냅샷 값에 얹음
+                    prior = me[me["날짜"] <= d]
+                    y = float(prior["주식수익"].iloc[-1]) if not prior.empty else 0.0
+                kd, qd = grp["코스피d"].iloc[0], grp["코스닥d"].iloc[0]
+                names = ", ".join(list(dict.fromkeys(grp["종목명"]))[:6])
+                mx.append(d)
+                my.append(y)
+                mtext.append(
+                    f"{d} 물타기 {grp['종목명'].nunique()}종목<br>"
+                    f"코스피 {kd * 100:+.1f}% · 코스닥 {qd * 100:+.1f}%<br>{names}"
+                )
+            fig2.add_trace(go.Scatter(
+                x=mx, y=my, name="물타기(지수↓일)", mode="markers",
+                marker=dict(symbol="triangle-up", size=13, color=DOWN_COLOR,
+                            line=dict(width=1, color=T["card"])),
+                text=mtext, hovertemplate="%{text}<extra></extra>",
+            ))
+
+        fig2.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
+        fig2.update_layout(
+            height=300,
+            margin=dict(l=10, r=10, t=10, b=45),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=T["text"], size=11),
+            legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5,
+                        bgcolor="rgba(0,0,0,0)"),
+            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False,
+                       tickfont=dict(size=9, color=T["muted"]), tickformat=".1%", fixedrange=True),
+            hovermode="x unified",
+            dragmode=False,
+        )
+        st.plotly_chart(fig2, width="stretch", config={
+            "displayModeBar": False,
+            "scrollZoom": False,
+            "doubleClick": False,
+        })
+
+        # ---- 물타기 성적표 (v2): 지수 하락일에 물탄 게 그 뒤 지수 대비 방어가 됐나 ----
+        with st.expander("물타기 성적표 — 지수 하락일에 물탄 게 방어가 됐나"):
+            st.caption(
+                "그날 코스피/코스닥이 -1% 이상 빠졌을 때의 물타기(추가매수)만. "
+                "'초과' = 물탄 날부터 지금까지 그 종목 수익 − 같은 기간 코스피 수익. "
+                "양수면 그 하락에 물탄 게 시장보다 유리했다는 뜻. (전 종목 코스피 기준)"
+            )
+            if st.button("불러오기 / 새로고침", key="watering_score_btn"):
+                with st.spinner("종목별 일별시세 조회 중..."):
+                    dip_ev = get_dip_watering_events(tx, idx_hist, drop=-0.01)
+                    name2code = dict(zip(holdings["종목명"], holdings["종목코드"]))
+                    ph_map = {}
+                    start = (dip_ev["날짜"].min() if not dip_ev.empty else today_kst_str())
+                    for nm in dip_ev["종목명"].unique():
+                        code = name2code.get(nm)
+                        if not code:
+                            continue
+                        rows = fetch_daily_price_history(str(code), start, today_kst_str())
+                        if rows:
+                            ph_map[nm] = pd.DataFrame(rows)[["날짜", "종가"]]
+                    st.session_state["watering_score"] = score_watering_events(dip_ev, ph_map, idx_hist)
+
+            sc = st.session_state.get("watering_score")
+            if sc is None:
+                st.info("버튼을 누르면 종목별로 계산합니다.")
+            elif sc.empty:
+                st.info("지수 하락일 물타기 기록이 아직 없습니다.")
+            else:
+                win = int((sc["초과"] > 0).sum())
+                avg = sc["초과"].mean() * 100
+                deep = sc[sc["그날지수"] <= -0.01]
+                deep_win = int((deep["초과"] > 0).sum())
+                sc_txt = (
+                    f"지수 하락일 물타기 <b>{len(sc)}건</b> 중 <b>{win}건</b>이 코스피 대비 플러스 · "
+                    f"평균 초과 <b>{avg:+.1f}%p</b>"
+                )
+                if len(deep):
+                    sc_txt += f" · 코스피 -1%↓ 당일 물타기 {len(deep)}건 중 {deep_win}건 플러스"
+                st.markdown(
+                    f"<div style='font-size:12px;color:{T['muted']};margin:4px 0 8px'>{sc_txt}</div>",
+                    unsafe_allow_html=True,
+                )
+                rows_html = []
+                for _, r in sc.iterrows():
+                    exc = r["초과"] * 100
+                    ec = UP_COLOR if exc >= 0 else DOWN_COLOR
+                    day = "" if pd.isna(r["그날지수"]) else f"{r['그날지수'] * 100:+.1f}%"
+                    rows_html.append(
+                        f"<tr><td>{r['날짜']}</td><td>{r['종목명']}</td>"
+                        f"<td style='text-align:right'>{day}</td>"
+                        f"<td style='text-align:right'>{r['종목수익'] * 100:+.1f}%</td>"
+                        f"<td style='text-align:right'>{r['지수수익'] * 100:+.1f}%</td>"
+                        f"<td style='text-align:right;color:{ec}'><b>{exc:+.1f}%p</b></td></tr>"
+                    )
+                st.markdown(
+                    "<table style='width:100%;font-size:11px;border-collapse:collapse'>"
+                    "<tr style='color:" + T["muted"] + ";text-align:left'>"
+                    "<th>날짜</th><th>종목</th><th style='text-align:right'>그날코스피</th>"
+                    "<th style='text-align:right'>종목수익</th><th style='text-align:right'>코스피</th>"
+                    "<th style='text-align:right'>초과</th></tr>"
+                    + "".join(rows_html) + "</table>",
+                    unsafe_allow_html=True,
+                )
 
     st.divider()
 

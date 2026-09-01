@@ -16,7 +16,7 @@ import streamlit as st
 from constants import THEMES, UP_COLOR
 from portfolio_core import (
     load_holdings, load_transactions, load_state,
-    snapshot_history, snapshot_sector_history,
+    snapshot_history, snapshot_sector_history, snapshot_index_history,
     refresh_all_prices, fetch_index_quotes, refresh_dividend_yields,
     compute_metrics, compute_sector_weights,
 )
@@ -429,6 +429,9 @@ if refresh_clicked_top or auto_refresh_triggered:
         df_top, stock_val_top, total_assets_top, unreal_top = compute_metrics(holdings, state["cash"])
         snapshot_history(total_assets_top, total_assets_top + unreal_top)
         snapshot_sector_history(compute_sector_weights(df_top))
+        iq = st.session_state["index_quotes"]
+        if iq.get("KOSPI") and iq.get("KOSDAQ"):
+            snapshot_index_history(iq["KOSPI"].get("price"), iq["KOSDAQ"].get("price"))
     if refresh_report["updated"]:
         st.toast(f"{refresh_report['updated']}개 종목 시세 갱신 완료")
     if refresh_report["unresolved"]:
@@ -448,4 +451,4 @@ with tab_port:
     render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets, unrealized_loss, T)
 
 with tab_tx:
-    render_transactions_tab(state, tx, total_assets, unrealized_loss, T)
+    render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, T)
