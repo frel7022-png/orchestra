@@ -358,6 +358,65 @@ def test_fetch_market_flow_merges_volume_and_flow_pages(monkeypatch):
 
 
 # ------------------------------------------------------------------ #
+# fetch_dividend_yield / refresh_dividend_yields — 종목별 배당수익률 (2026-09-01 도입,
+# ui_portfolio_tab의 보유종목 카드에 종목명 옆 배지로 표시). 배당 없는 종목은 네이버
+# 페이지에 "N/A"로 표시되는데, 이걸 파싱 실패가 아니라 "배당수익률 0%"로 취급해야 한다.
+# ------------------------------------------------------------------ #
+_DIVIDEND_HTML_WITH_VALUE = """
+<table>
+<tr><th scope="row">동일업종 PER</th><td><em>17.11</em>배</td></tr>
+<tr><th scope="row">배당수익률<span class="bar">l</span><span>2025.12</span></th>
+<td><em id="_dvr">1.09</em>%</td></tr>
+</table>
+""".encode("euc-kr")
+
+_DIVIDEND_HTML_NA = """
+<table>
+<tr><th scope="row">동일업종 PER</th><td><em>-59.34</em>배</td></tr>
+<tr><th scope="row">배당수익률</th><td><em>N/A</em></td></tr>
+</table>
+""".encode("euc-kr")
+
+
+def test_fetch_dividend_yield_parses_percent_value(monkeypatch):
+    monkeypatch.setattr(core.requests, "get",
+                         lambda url, headers=None, timeout=None: _FakeResp(_DIVIDEND_HTML_WITH_VALUE))
+    assert core.fetch_dividend_yield("138040") == pytest.approx(1.09)
+
+
+def test_fetch_dividend_yield_na_means_zero_not_failure(monkeypatch):
+    monkeypatch.setattr(core.requests, "get",
+                         lambda url, headers=None, timeout=None: _FakeResp(_DIVIDEND_HTML_NA))
+    assert core.fetch_dividend_yield("226400") == 0.0
+
+
+def test_fetch_dividend_yield_returns_none_on_network_failure(monkeypatch):
+    def raise_err(*a, **k):
+        raise ConnectionError("boom")
+    monkeypatch.setattr(core.requests, "get", raise_err)
+    assert core.fetch_dividend_yield("138040") is None
+
+
+def test_refresh_dividend_yields_skips_codes_already_fetched_today(monkeypatch, tmp_path):
+    monkeypatch.setattr(core, "DIVIDEND_CACHE_FILE", tmp_path / "dividend_cache.csv")
+    calls = []
+
+    def fake_fetch(code):
+        calls.append(code)
+        return 1.5
+    monkeypatch.setattr(core, "fetch_dividend_yield", fake_fetch)
+
+    result1 = core.refresh_dividend_yields(["138040", "226400"])
+    assert result1 == {"138040": 1.5, "226400": 1.5}
+    assert calls == ["138040", "226400"]
+
+    calls.clear()
+    result2 = core.refresh_dividend_yields(["138040"])  # 같은 날 재조회 — 캐시만 써야 함
+    assert result2 == {"138040": 1.5}
+    assert calls == []
+
+
+# ------------------------------------------------------------------ #
 # rebuild_portfolio_incremental — 체크포인트 재생 (2026-08-25 도입).
 # 핵심 불변식: 어떤 시나리오든 rebuild_portfolio_from_transactions(전체 재생)과
 # 최종 결과(holdings/현금)가 항상 같아야 한다. 체크포인트 파일은 실제 repo 파일을

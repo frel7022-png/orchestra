@@ -36,6 +36,7 @@ HISTORY_FILE = HERE / "asset_history.csv"
 SECTOR_HISTORY_FILE = HERE / "sector_history.csv"
 CODE_CACHE_FILE = HERE / "stock_code_cache.csv"
 SECTOR_CACHE_FILE = HERE / "stock_sector_cache.csv"
+DIVIDEND_CACHE_FILE = HERE / "dividend_cache.csv"  # 종목코드→배당수익률, 하루 1회만 재조회(아래 refresh_dividend_yields 참고)
 WATCHLIST_FILE = HERE / "watchlist.csv"  # "Fishing" 관심종목 리스트 (보유/거래와 무관한 별도 목록)
 CHECKPOINT_HOLDINGS_FILE = HERE / "checkpoint_holdings.csv"  # rebuild_portfolio_incremental 참고
 CHECKPOINT_STATE_FILE = HERE / "checkpoint_state.csv"
@@ -726,6 +727,81 @@ def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
             result[code] = {"price": price, "change_pct": change_pct, "volume": volume}
 
     return result, errors
+
+
+def load_dividend_cache() -> dict:
+    """종목코드→{"배당수익률": float, "조회일": str}. §1-3과 같은 영구 캐시 패턴이지만,
+    섹터/종목코드와 달리 배당수익률은 시세처럼 계속 바뀌는 값이라 "하루에 한 번만 다시
+    긁으면 된다"는 조회일 기준을 같이 저장해둔다(refresh_dividend_yields가 이 기준으로
+    이미 오늘 조회한 종목은 건너뛴다)."""
+    if DIVIDEND_CACHE_FILE.exists():
+        df = pd.read_csv(DIVIDEND_CACHE_FILE, dtype={"종목코드": str}, keep_default_na=False)
+        return {
+            row["종목코드"]: {"배당수익률": float(row["배당수익률"]), "조회일": row["조회일"]}
+            for _, row in df.iterrows() if row["종목코드"]
+        }
+    return {}
+
+
+def _save_dividend_cache(cache: dict) -> None:
+    rows = [{"종목코드": code, "배당수익률": v["배당수익률"], "조회일": v["조회일"]}
+            for code, v in sorted(cache.items())]
+    pd.DataFrame(rows, columns=["종목코드", "배당수익률", "조회일"]).to_csv(DIVIDEND_CACHE_FILE, index=False)
+
+
+def fetch_dividend_yield(code: str) -> float | None:
+    """네이버 종목분석 페이지(`/item/coinfo.naver`)의 "배당수익률" 행을 긁어온다.
+    fetch_investor_flow와 같은 이유로 비공식 HTML 스크레이핑 — 페이지 구조가 바뀌면
+    조용히 깨질 수 있다는 걸 알고 씀. 배당을 안 주는 종목은 그 행 값이 "N/A"로 표시되는데,
+    이건 실패가 아니라 "배당수익률 0%"라는 뜻이라 0.0으로 반환한다(파싱 자체가 안 되는
+    진짜 실패와 구분하려고 None과 별도로 둠).
+    반환: 배당수익률(%), 또는 페이지 파싱 실패 시 None."""
+    url = f"https://finance.naver.com/item/coinfo.naver?code={code}"
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        html = resp.content.decode("euc-kr", errors="replace")
+    except Exception:
+        return None
+
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        target_th = next(
+            (th for th in soup.find_all("th") if th.get_text(strip=True).startswith("배당수익률")), None)
+        if target_th is None:
+            return None
+        td = target_th.find_next_sibling("td")
+        em = td.find("em") if td else None
+        text = em.get_text(strip=True) if em else ""
+        if not text or text == "N/A":
+            return 0.0
+        return float(text.replace(",", ""))
+    except Exception:
+        return None
+
+
+def refresh_dividend_yields(codes: list[str]) -> dict:
+    """보유종목 배당수익률을 새로고침한다. 오늘 이미 조회한 종목은 건너뛰고(캐시 재사용),
+    새 종목이나 날짜가 지난 종목만 실제로 긁는다 — fetch_quotes처럼 한 번에 여러 종목을
+    묶어 보내는 API가 없어(종목별 페이지 스크레이핑) 63개 전부 매번 새로 긁으면 새로고침
+    버튼이 느려지는 걸 막기 위한 설계.
+    반환: {종목코드: 배당수익률}(요청한 codes 전부, 캐시에 있던 값 포함)."""
+    codes = [c for c in dict.fromkeys(codes) if c]
+    cache = load_dividend_cache()
+    today = today_kst_str()
+
+    for code in codes:
+        cached = cache.get(code)
+        if cached and cached["조회일"] == today:
+            continue
+        yield_pct = fetch_dividend_yield(code)
+        if yield_pct is not None:
+            cache[code] = {"배당수익률": yield_pct, "조회일": today}
+        # 조회 실패면 기존 캐시값(있다면 어제자 값)을 그대로 둔다 — 아예 지우지 않음
+
+    _save_dividend_cache(cache)
+    return {code: cache[code]["배당수익률"] for code in codes if code in cache}
 
 
 def fetch_investor_flow(code: str) -> list[dict]:

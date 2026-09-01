@@ -13,7 +13,7 @@ from portfolio_core import (
     get_watchlist_prev_day_ranks,
     get_holding_trade_summary, get_holding_trade_summary_all_time,
     get_holding_trade_points, get_holding_avg_price_path,
-    load_investor_flow_db, load_market_flow_db, load_watchlist_history_db,
+    load_investor_flow_db, load_market_flow_db, load_watchlist_history_db, load_dividend_cache,
     compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline,
 )
 
@@ -660,6 +660,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         if "holding_detail_open" not in st.session_state:
             st.session_state.holding_detail_open = None
 
+        dividend_cache = load_dividend_cache()
+
         for r in rows:
             pc = UP_COLOR if r["손익"] >= 0 else DOWN_COLOR
             psign = "+" if r["손익"] >= 0 else ""
@@ -671,11 +673,15 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             code = r["종목코드"]
             is_open = st.session_state.holding_detail_open == code
 
+            div_entry = dividend_cache.get(code)
+            dividend_html = (f'<span class="dividend-tag">{div_entry["배당수익률"]:.1f}%</span>'
+                              if div_entry else "")
+
             with st.container(key=f"holding_wrap_{code}"):
                 st.markdown(f"""
                 <div class="stock-card">
                     <div class="stock-top">
-                        <span class="stock-title-group"><span class="stock-name" style="{name_style}">{r['종목명']}</span></span>
+                        <span class="stock-title-group"><span class="stock-name" style="{name_style}">{r['종목명']}</span>{dividend_html}</span>
                         <span class="sector-tag" style="background:{sc}22;color:{sc}">{r['섹터']}</span>
                     </div>
                     <div class="stock-grid">

@@ -17,7 +17,7 @@ from constants import THEMES, UP_COLOR
 from portfolio_core import (
     load_holdings, load_transactions, load_state,
     snapshot_history, snapshot_sector_history,
-    refresh_all_prices, fetch_index_quotes,
+    refresh_all_prices, fetch_index_quotes, refresh_dividend_yields,
     compute_metrics, compute_sector_weights,
 )
 from ui_portfolio_tab import render_portfolio_tab
@@ -104,6 +104,7 @@ st.markdown(f"""
     .stock-top {{ display:flex; justify-content:space-between; align-items:baseline; }}
     .stock-title-group {{ flex:1 1 auto; min-width:0; max-width:calc(100% - 180px); }}
     .stock-name {{ font-size:13px; font-weight:700; color:{T['text']}; white-space:nowrap; }}
+    .dividend-tag {{ font-size:11px; color:#000000; margin-left:5px; white-space:nowrap; }}
     .sector-tag {{ font-size:10.5px; padding:2px 7px; border-radius:5px; font-weight:600; flex-shrink:0; }}
     .stock-grid {{ display:grid; grid-template-columns: 0.7fr 1.05fr 1.05fr 1.3fr; gap:6px; margin-top:7px; }}
     .cell .top {{ font-size:12.5px; font-weight:700; color:{T['text']}; }}
@@ -421,6 +422,7 @@ with top_r:
 if refresh_clicked_top or auto_refresh_triggered:
     with st.spinner("종목명으로 시세를 찾는 중..."):
         holdings, refresh_report = refresh_all_prices(holdings)
+        refresh_dividend_yields(holdings["종목코드"].tolist())
         st.session_state["index_quotes"] = fetch_index_quotes()
         df_top, stock_val_top, total_assets_top, unreal_top = compute_metrics(holdings, state["cash"])
         snapshot_history(total_assets_top, total_assets_top + unreal_top)
