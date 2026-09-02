@@ -1425,12 +1425,12 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
       latest: {"코스피"/"코스닥"/"주식"/"계좌"/"벤치": (누적, 당일)} — 최신 시점 값.
               지수 당일 = 마지막 거래일 등락, 주식/계좌/벤치 당일 = 마지막 스냅샷 구간 변화.
               "벤치"는 주식·계좌의 누적/당일을 "지수 이겼나"로 색칠할 때의 기준선.
-      sens_all / sens_recent / sens_today: 원점회귀 베타 ΣΔ주식·Δ벤치 / ΣΔ벤치²
-                   ("벤치 -1%일 때 내 주식 약 -x%"). 누적=전체 구간, 최근=마지막
-                   beta_window(기본 5)구간, 당일=마지막 1구간(=Δ주식/Δ벤치). 표본 부족/
-                   벤치 미동이면 None. sensitivity = sens_recent(하위호환).
+      sens_all / sens_recent / sens_today: 방향 일관 민감도 점수 (1=시장 동일, <1=시장 이김,
+                   >1=시장에 짐, 하락장 한정 음수=역행). 하락장은 Δ주식/Δ벤치, 상승장은
+                   Δ벤치/Δ주식(뒤집음), 상승장인데 하락하면 상한 3.0. 누적/5일은 구간별 점수
+                   중앙값(최소 3구간), 당일은 마지막 1구간. sensitivity = sens_recent(하위호환).
       acct_sens_all / acct_sens_recent / acct_sens_today: 같은 걸 내 계좌수익(예수금 포함)
-                   기준으로 — 보통 내 주식보다 작게 나온다(예수금이 완충하므로).
+                   기준으로 — 예수금 완충 때문에 시장과 덜 붙음(하락장선 방어 유리, 상승장선 불리).
       sensitivity_basis: "혼합" | "코스피" (민감도가 어느 벤치 기준인지)
     """
     empty = {"me": pd.DataFrame(columns=["날짜", "계좌수익", "주식수익"]),
@@ -1512,26 +1512,46 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         latest["계좌"] = (_last(me["계좌수익"]), _last(me["계좌당일"]))
         latest["벤치"] = (_last(me["벤치누적"]), _last(me["벤치당일"]))  # 주식·계좌 색칠 기준
 
-    # ---- 민감도(원점회귀 베타 = ΣΔ주식·Δ벤치 / ΣΔ벤치²) 3종 — 스냅샷 날짜별 시계열 ----
-    #  누적 = 첫 구간부터 그 날까지 / 최근 = 그 날 기준 뒤 beta_window구간 / 당일 = 그 한 구간(=Δ주식/Δ벤치)
-    def _beta(a, b, min_n):
-        if len(b) < min_n or (b ** 2).sum() <= 1e-12:
-            return None
-        return float((a * b).sum() / (b ** 2).sum())
-
+    # ---- 민감도(방향 일관 점수) 3종 — 스냅샷 날짜별 시계열 (2026-09-02 재설계) ----
+    # 예전엔 원점회귀 베타였는데, 오른 날·빠진 날을 섞어 회귀하면 "누적/5일"이 방어를 잘했는지
+    # 상승장을 잘 탔는지 구분이 안 됐음(사용자 지적). 그래서 구간마다 방향에 따라 식을 바꿔
+    # "1이면 시장과 동일, <1이면 시장 이김, >1이면 시장에 짐"이 상승·하락장 모두 성립하게 함:
+    #   · 하락장(Δ벤치<0):  Δ내주식 / Δ벤치   (음수=시장 빠질 때 내가 오름=최고, 0=완전방어, <1=선방)
+    #   · 상승장(Δ벤치>0), 내주식 상승: Δ벤치 / Δ내주식  (뒤집음 — 5%장에 2.5%만 오르면 2 = 반타작)
+    #   · 상승장인데 내주식 하락: 상한값(SCORE_CAP)  ("올라야 하는데 빠짐 = 최악")
+    # 누적/5일은 구간별 점수의 중앙값(median — 벤치가 0 근처인 날 값 폭발을 이상치로 흘림).
+    SCORE_CAP, SCORE_FLOOR = 3.0, -1.0
     dbe = me["벤치당일"].values           # = 벤치누적.diff() (index 0은 NaN)
 
+    def _interval_score(dm, db):
+        if pd.isna(dm) or pd.isna(db) or abs(db) < 1e-9:
+            return None
+        if db < 0:
+            s = dm / db
+        elif dm > 0:
+            s = db / dm
+        else:
+            s = SCORE_CAP
+        return min(max(s, SCORE_FLOOR), SCORE_CAP)
+
+    def _median(vals):
+        v = sorted(x for x in vals if x is not None)
+        if not v:
+            return None
+        n = len(v)
+        return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2.0
+
     def _sens_cols(dser):
-        """dser(주식수익.diff() 또는 계좌수익.diff())로 누적/최근/당일 베타 시계열 3개."""
+        """dser(주식수익.diff() 또는 계좌수익.diff())로 누적/5일/당일 점수 시계열 3개."""
         dm = dser.values
+        scores = [None] + [_interval_score(dm[i], dbe[i]) for i in range(1, len(me))]
         all_c, rec_c, tod_c = [None], [None], [None]
         for i in range(1, len(me)):
-            a, b = dm[1:i + 1], dbe[1:i + 1]
-            ok = ~(pd.isna(a) | pd.isna(b))
-            a, b = a[ok], b[ok]
-            all_c.append(_beta(a, b, 3))
-            rec_c.append(_beta(a[-beta_window:], b[-beta_window:], 3))
-            tod_c.append(_beta(a[-1:], b[-1:], 1))
+            win = [x for x in scores[1:i + 1] if x is not None]
+            rec = [x for x in scores[max(1, i + 1 - beta_window):i + 1] if x is not None]
+            all_c.append(_median(win) if len(win) >= 3 else None)
+            rec_c.append(_median(rec) if len(rec) >= 3 else None)
+            tod_c.append(scores[i])
         return all_c, rec_c, tod_c
 
     s_all_col, s_rec_col, s_tod_col = _sens_cols(me["주식수익"].diff())        # 내 주식(Rs)

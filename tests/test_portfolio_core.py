@@ -754,32 +754,47 @@ def test_compute_index_vs_account_blended_benchmark():
     assert r2["sensitivity_basis"] == "코스피"
 
 
-def test_compute_index_vs_account_three_sensitivities():
-    """민감도 3종: 당일 = 마지막 1구간의 Δ주식/Δ벤치, 최근 = 마지막 5구간, 누적 = 전체.
-    주식이 벤치의 딱 0.5배로 움직이게 데이터를 만들면 셋 다 +0.5여야 한다."""
+def test_compute_index_vs_account_sensitivity_down_market():
+    """하락장(매 구간 벤치 −): 주식이 벤치의 0.5배로 빠지면 점수 = Δ주식/Δ벤치 = 0.5 (선방).
+    누적/5일/당일 셋 다 0.5, 시계열도 전부 0.5."""
     dates = ["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09",
              "2026-01-12", "2026-01-13"]
-    kospi = [100.0, 99.0, 98.0, 97.0, 96.0, 95.0, 94.0]  # 매 구간 -1%p, 코스닥 고정
+    kospi = [100.0, 99.0, 98.0, 97.0, 96.0, 95.0, 94.0]  # 매 구간 -1%p
     idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates, kospi)])
-    # 첫날 전액 매수(예수금 0) → 이후 주식평가액=총자산. 총자산이 코스피 등락의 절반만 따라가게.
-    tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])  # 100만원어치
-    asset = [1_000_000.0 * (1 + 0.5 * (k / 100 - 1)) for k in kospi]
+    tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])
+    asset = [1_000_000.0 * (1 + 0.5 * (k / 100 - 1)) for k in kospi]  # 코스피 등락의 절반만
     asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, asset)])
     r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
     assert r["sens_today"] == pytest.approx(0.5, abs=1e-6)
     assert r["sens_recent"] == pytest.approx(0.5, abs=1e-6)
     assert r["sens_all"] == pytest.approx(0.5, abs=1e-6)
-    assert r["sensitivity"] == r["sens_recent"]  # 하위호환
-    # 이 시나리오는 예수금 0이라 계좌수익 == 주식수익 → 계좌 민감도도 0.5
-    assert r["acct_sens_all"] == pytest.approx(0.5, abs=1e-6)
-    assert r["acct_sens_today"] == pytest.approx(0.5, abs=1e-6)
-    # 시계열 컬럼: 스칼라는 마지막 행 값과 같아야, 그리고 매 구간이 0.5라 시계열도 전부 0.5
+    assert r["sensitivity"] == r["sens_recent"]
+    assert r["acct_sens_all"] == pytest.approx(0.5, abs=1e-6)  # 예수금 0 → 계좌==주식
     me = r["me"]
-    assert me["계좌민감도누적"].iloc[-1] == pytest.approx(r["acct_sens_all"])
     assert me["민감도당일"].iloc[-1] == pytest.approx(r["sens_today"])
-    assert me["민감도누적"].iloc[-1] == pytest.approx(r["sens_all"])
     assert me["민감도누적"].dropna().apply(lambda v: round(v, 6)).eq(0.5).all()
-    assert pd.isna(me["민감도누적"].iloc[0])  # 첫 행은 구간이 없음
+    assert pd.isna(me["민감도누적"].iloc[0])
+
+
+def test_compute_index_vs_account_sensitivity_up_market_is_inverted():
+    """상승장: 방향을 뒤집어 '5% 장에 2.5%만 오르면 점수 2.0(반타작)'이 되게 —
+    '낮을수록 좋다'가 상승장에도 성립하는지 검증. 지수·자산을 선형으로 둬서 Δ가 상수가 되게.
+    Δ벤치 = 0.05, Δ주식 = 0.025 매 구간 → 점수 = Δ벤치/Δ주식 = 2.0 상수."""
+    dates = ["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08"]
+    kospi = [100.0, 105.0, 110.0, 115.0]  # 매 구간 +5 (앵커 대비 Δ벤치 = 0.05 상수)
+    idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates, kospi)])
+    tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])
+    asset = [1_000_000.0 * (1 + 0.025 * i) for i in range(len(dates))]  # Rs = 0.025·i (Δ주식 = 0.025)
+    asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, asset)])
+    r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
+    assert r["sens_today"] == pytest.approx(2.0, abs=1e-6)
+    assert r["me"]["민감도당일"].dropna().apply(lambda v: round(v, 6)).eq(2.0).all()
+
+    # 상승장인데 내 주식이 하락하면 상한 3.0
+    asset_dn = [1_000_000.0 * (1 - 0.01 * i) for i in range(len(dates))]
+    ah_dn = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, asset_dn)])
+    r2 = core.compute_index_vs_account(tx, ah_dn, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
+    assert r2["sens_today"] == pytest.approx(3.0, abs=1e-6)
 
 
 def test_market_cache_roundtrip(tmp_path, monkeypatch):

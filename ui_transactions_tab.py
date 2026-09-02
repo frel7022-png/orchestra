@@ -188,7 +188,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         basis = iva["sensitivity_basis"]
 
         def _s(v):
-            return "—" if v is None else f"{v:+.2f}"
+            return "—" if v is None else f"{v:.2f}"
 
         def _sens_line(label, a, r, t):
             return (
@@ -271,26 +271,25 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             hovermode="x unified",
             dragmode=False,
         )
-        # ---- 민감도 그래프 (누적 검정 / 5일 녹색 / 당일 빨강, y축 0 중심) ----
-        # 당일 민감도는 Δ벤치가 0에 가까운 날 발산(±3~4)해서 y축을 ±1.6으로 고정 — 그 밖으로
-        # 나간 스파이크는 위/아래로 잘려 보이고(진짜 값은 hover에), 누적·5일은 잘 읽힘.
-        #  1.0 = 시장과 1:1, 0 = 무관, 음수 = 역행 이라는 눈금이 항상 같은 자리에 있게 됨.
+        # ---- 민감도 그래프 (누적 검정 / 5일 녹색 / 당일 빨강) ----
+        # 방향 일관 점수: y=1 = 시장과 동일, 1 아래 = 시장 이김(하락장 방어 / 상승장 초과),
+        # 1 위 = 시장에 짐, 음수(하락장 한정) = 시장 빠질 때 내가 오름. y축 [-1.1, 3.2] 고정.
         fig_s = go.Figure()
         for col, nm, color, w in (
             ("민감도누적", "누적", T["text"], 2.6),
             ("민감도최근", "5일", NEW_COLOR, 2.0),
             ("민감도당일", "당일", UP_COLOR, 1.4),
         ):
-            # 값은 파이썬에서 미리 "+0.53" 문자열로 만들어 customdata로 넘김 — x-unified에서
-            # plotly의 %{y:+.2f} 포맷이 안 먹혀 원시 float이 찍히던 문제 회피(2026-09-02).
-            cd = ["—" if pd.isna(v) else f"{v:+.2f}" for v in me[col]]
+            # 값은 파이썬에서 미리 문자열로 만들어 customdata로 넘김 — x-unified에서
+            # plotly의 %{y:.2f} 포맷이 안 먹혀 원시 float이 찍히던 문제 회피(2026-09-02).
+            cd = ["—" if pd.isna(v) else f"{v:.2f}" for v in me[col]]
             fig_s.add_trace(go.Scatter(
                 x=me["날짜"], y=me[col], name=nm, mode="lines+markers",
                 line=dict(color=color, width=w), marker=dict(size=4),
                 connectgaps=True, customdata=cd,
                 hovertemplate="<b>" + nm + "</b> 민감도 %{customdata}<extra></extra>",
             ))
-        fig_s.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
+        fig_s.add_hline(y=1, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig_s.update_layout(
             height=275,
             margin=dict(l=40, r=8, t=8, b=30),
@@ -300,10 +299,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], align="left",
                             font=dict(size=11, color=T["text"])),
             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=True,
-                       zerolinecolor=T["muted2"], zerolinewidth=1, range=[-1.6, 1.6], dtick=0.5,
-                       tickfont=dict(size=9, color=T["muted"]), tickformat="+.1f", fixedrange=True,
-                       hoverformat="+.2f"),
+            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False,
+                       range=[-1.1, 3.2], dtick=0.5,
+                       tickfont=dict(size=9, color=T["muted"]), tickformat=".1f", fixedrange=True,
+                       hoverformat=".2f"),
             hovermode="x unified", dragmode=False,
         )
 
