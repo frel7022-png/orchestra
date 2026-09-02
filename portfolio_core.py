@@ -1416,21 +1416,20 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
 
     반환 dict:
       me:     DataFrame[날짜, 계좌수익, 주식수익, 주식당일, 계좌당일, 벤치누적, 벤치당일,
-                        민감도누적/최근/당일, 계좌민감도누적/최근/당일]
+                        상대성과누적/최근/당일, 계좌상대성과누적/최근/당일]
               (asset_hist 스냅샷 날짜. 누적은 anchor 대비, 당일은 직전 스냅샷 대비 diff.
                벤치 = 혼합 지수(wk 없으면 코스피)를 그 스냅샷 날짜에 정렬한 값.
-               민감도* = Δ주식수익 vs Δ벤치 원점회귀 베타 시계열(민감도 그래프용),
-               계좌민감도* = 같은 걸 Δ계좌수익으로 — 예수금 쿠션까지 포함한 계좌 전체 반응.)
+               상대성과*(UI 라벨 "RP") = 구간별 (Δ주식 − Δ벤치)/|Δ벤치| 의 시계열,
+               계좌상대성과* = 같은 걸 Δ계좌수익으로.)
       index:  DataFrame[날짜, 코스피, 코스닥]  (index_hist의 모든 거래일, 누적)
       latest: {"코스피"/"코스닥"/"주식"/"계좌"/"벤치": (누적, 당일)} — 최신 시점 값.
               지수 당일 = 마지막 거래일 등락, 주식/계좌/벤치 당일 = 마지막 스냅샷 구간 변화.
               "벤치"는 주식·계좌의 누적/당일을 "지수 이겼나"로 색칠할 때의 기준선.
-      sens_all / sens_recent / sens_today: 방향 일관 민감도 점수 (1=시장 동일, <1=시장 이김,
-                   >1=시장에 짐, 하락장 한정 음수=역행). 하락장은 Δ주식/Δ벤치, 상승장은
-                   Δ벤치/Δ주식(뒤집음), 상승장인데 하락하면 상한 3.0. 누적/5일은 구간별 점수
-                   중앙값(최소 3구간), 당일은 마지막 1구간. sensitivity = sens_recent(하위호환).
-      acct_sens_all / acct_sens_recent / acct_sens_today: 같은 걸 내 계좌수익(예수금 포함)
-                   기준으로 — 예수금 완충 때문에 시장과 덜 붙음(하락장선 방어 유리, 상승장선 불리).
+      sens_all / sens_recent / sens_today: 상대성과(UI "RP") — 구간별 (Δ주식−Δ벤치)/|Δ벤치|.
+                   0 = 시장과 동일, 양수 = 시장보다 잘함, 음수 = 못함(상승·하락장 동일). ±3 clamp.
+                   누적/5일은 구간별 점수 중앙값(최소 3구간), 당일은 마지막 1구간.
+                   sensitivity = sens_recent(하위호환 키 이름만 유지).
+      acct_sens_all / acct_sens_recent / acct_sens_today: 같은 걸 내 계좌수익(예수금 포함) 기준으로.
       sensitivity_basis: "혼합" | "코스피" (민감도가 어느 벤치 기준인지)
     """
     empty = {"me": pd.DataFrame(columns=["날짜", "계좌수익", "주식수익"]),
@@ -1512,27 +1511,21 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         latest["계좌"] = (_last(me["계좌수익"]), _last(me["계좌당일"]))
         latest["벤치"] = (_last(me["벤치누적"]), _last(me["벤치당일"]))  # 주식·계좌 색칠 기준
 
-    # ---- 민감도(방향 일관 점수) 3종 — 스냅샷 날짜별 시계열 (2026-09-02 재설계) ----
-    # 예전엔 원점회귀 베타였는데, 오른 날·빠진 날을 섞어 회귀하면 "누적/5일"이 방어를 잘했는지
-    # 상승장을 잘 탔는지 구분이 안 됐음(사용자 지적). 그래서 구간마다 방향에 따라 식을 바꿔
-    # "1이면 시장과 동일, <1이면 시장 이김, >1이면 시장에 짐"이 상승·하락장 모두 성립하게 함:
-    #   · 하락장(Δ벤치<0):  Δ내주식 / Δ벤치   (음수=시장 빠질 때 내가 오름=최고, 0=완전방어, <1=선방)
-    #   · 상승장(Δ벤치>0), 내주식 상승: Δ벤치 / Δ내주식  (뒤집음 — 5%장에 2.5%만 오르면 2 = 반타작)
-    #   · 상승장인데 내주식 하락: 상한값(SCORE_CAP)  ("올라야 하는데 빠짐 = 최악")
+    # ---- 상대성과 3종 — 스냅샷 날짜별 시계열 (2026-09-02, 최종 설계) ----
+    # 예전엔 원점회귀 베타 → 방향 일관 점수로 갔다가, 결국 가장 단순한 "정규화 알파"로 확정:
+    #   점수(구간) = (Δ내주식 − Δ벤치) / |Δ벤치|
+    # 0 = 시장과 동일, 양수 = 시장보다 잘함, 음수 = 못함. 상승·하락장 분기 없이 한 식.
+    #   예) 벤치 +2%: 내 +4% → +1, 내 +2% → 0, 내 −2% → −2
+    #       벤치 −2%: 내 −2% → 0, 내 0% → +1, 내 −4% → −1
+    # = "시장이 X% 움직일 때 나는 그보다 몇 배 더/덜 했나"(정규화 초과수익). 표시는 ±3으로 자름.
     # 누적/5일은 구간별 점수의 중앙값(median — 벤치가 0 근처인 날 값 폭발을 이상치로 흘림).
-    SCORE_CAP, SCORE_FLOOR = 3.0, -1.0
+    CLAMP = 3.0
     dbe = me["벤치당일"].values           # = 벤치누적.diff() (index 0은 NaN)
 
     def _interval_score(dm, db):
         if pd.isna(dm) or pd.isna(db) or abs(db) < 1e-9:
             return None
-        if db < 0:
-            s = dm / db
-        elif dm > 0:
-            s = db / dm
-        else:
-            s = SCORE_CAP
-        return min(max(s, SCORE_FLOOR), SCORE_CAP)
+        return min(max((dm - db) / abs(db), -CLAMP), CLAMP)
 
     def _median(vals):
         v = sorted(x for x in vals if x is not None)
@@ -1542,7 +1535,7 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2.0
 
     def _sens_cols(dser):
-        """dser(주식수익.diff() 또는 계좌수익.diff())로 누적/5일/당일 점수 시계열 3개."""
+        """dser(주식수익.diff() 또는 계좌수익.diff())로 누적/5일/당일 상대성과 시계열 3개."""
         dm = dser.values
         scores = [None] + [_interval_score(dm[i], dbe[i]) for i in range(1, len(me))]
         all_c, rec_c, tod_c = [None], [None], [None]
@@ -1558,9 +1551,9 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
     a_all_col, a_rec_col, a_tod_col = _sens_cols(me["계좌수익"].diff())        # 내 계좌(예수금 포함)
 
     # float64로 못박음 — None+float 혼합이면 object dtype이 돼서 plotly가 %{y:.2f} 포맷을
-    # 못 걸고 원시 float(0.96187…)을 그대로 hover에 찍는다(2026-09-02 실제로 겪음).
-    for col, data in (("민감도누적", s_all_col), ("민감도최근", s_rec_col), ("민감도당일", s_tod_col),
-                       ("계좌민감도누적", a_all_col), ("계좌민감도최근", a_rec_col), ("계좌민감도당일", a_tod_col)):
+    # 못 걸고 원시 float을 그대로 hover에 찍는다(2026-09-02 실제로 겪음).
+    for col, data in (("상대성과누적", s_all_col), ("상대성과최근", s_rec_col), ("상대성과당일", s_tod_col),
+                       ("계좌상대성과누적", a_all_col), ("계좌상대성과최근", a_rec_col), ("계좌상대성과당일", a_tod_col)):
         me[col] = pd.Series(data, index=me.index, dtype="float64")
 
     def _tail(x):

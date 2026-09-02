@@ -182,25 +182,28 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             unsafe_allow_html=True,
         )
 
-        # 민감도 3종(누적=전체 구간 / 5일=최근 5구간 / 당일=마지막 1구간)을 두 줄로:
-        #  내 주식(Rs, 예수금 제외) — 아래 민감도 그래프가 그리는 그 값 (누적/5일/당일 색 = 그래프 선 색)
-        #  내 계좌(예수금 포함)     — 예수금 쿠션까지 포함한 계좌 전체가 지수에 얼마나 반응하나
+        # RP(relative performance) 3종(누적=전체 구간 / 5일=최근 5구간 / 당일=마지막 1구간)을 두 줄로.
+        # RP = 구간별 (Δ내수익 − Δ벤치)/|Δ벤치|. 0=시장과 동일, 양수=시장보다 잘함, 음수=못함.
+        #  내 주식(Rs, 예수금 제외) — 아래 RP 그래프가 그리는 값 (누적/5일/당일 색 = 그래프 선 색)
+        #  내 계좌(예수금 포함)     — 예수금 쿠션까지 포함한 계좌 전체
         basis = iva["sensitivity_basis"]
 
         def _s(v):
-            return "—" if v is None else f"{v:.2f}"
+            return "—" if v is None else f"{v:+.2f}"
 
         def _sens_line(label, a, r, t):
             return (
                 f"<div style='font-size:11px;color:{T['muted']};margin:0 0 3px'>"
-                f"민감도·{label} <span style='color:{T['muted2']}'>({basis})</span>  "
+                f"RP·{label} <span style='color:{T['muted2']}'>({basis})</span>  "
                 f"<b style='color:{T['text']}'>누적 {_s(a)}</b> · "
                 f"<b style='color:{NEW_COLOR}'>5일 {_s(r)}</b> · "
                 f"<b style='color:{UP_COLOR}'>당일 {_s(t)}</b></div>"
             )
 
         st.markdown(
-            _sens_line("내 주식", iva["sens_all"], iva["sens_recent"], iva["sens_today"])
+            "<div style='font-size:10px;color:" + T["muted2"] + ";margin:2px 0 1px'>"
+            "RP (relative performance) — 0=시장과 동일, 양수=시장보다 잘함</div>"
+            + _sens_line("내 주식", iva["sens_all"], iva["sens_recent"], iva["sens_today"])
             + _sens_line("내 계좌", iva["acct_sens_all"], iva["acct_sens_recent"], iva["acct_sens_today"]),
             unsafe_allow_html=True,
         )
@@ -271,38 +274,38 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             hovermode="x unified",
             dragmode=False,
         )
-        # ---- 민감도 그래프 (누적 검정 / 5일 녹색 / 당일 빨강) ----
-        # 방향 일관 점수: y=1 = 시장과 동일, 1 아래 = 시장 이김(하락장 방어 / 상승장 초과),
-        # 1 위 = 시장에 짐, 음수(하락장 한정) = 시장 빠질 때 내가 오름. y축 [-1.1, 3.2] 고정.
+        # ---- RP 그래프 (누적 검정 / 5일 녹색 / 당일 빨강) ----
+        # RP = (Δ내주식 − Δ벤치)/|Δ벤치|. y=0 = 시장과 동일, 위 = 시장보다 잘함, 아래 = 못함.
+        # y축 [-3.2, 3.2] 고정, 값은 ±3으로 잘라서 표시.
         fig_s = go.Figure()
         for col, nm, color, w in (
-            ("민감도누적", "누적", T["text"], 2.6),
-            ("민감도최근", "5일", NEW_COLOR, 2.0),
-            ("민감도당일", "당일", UP_COLOR, 1.4),
+            ("상대성과누적", "누적", T["text"], 2.6),
+            ("상대성과최근", "5일", NEW_COLOR, 2.0),
+            ("상대성과당일", "당일", UP_COLOR, 1.4),
         ):
             # 값은 파이썬에서 미리 문자열로 만들어 customdata로 넘김 — x-unified에서
             # plotly의 %{y:.2f} 포맷이 안 먹혀 원시 float이 찍히던 문제 회피(2026-09-02).
-            cd = ["—" if pd.isna(v) else f"{v:.2f}" for v in me[col]]
+            cd = ["—" if pd.isna(v) else f"{v:+.2f}" for v in me[col]]
             fig_s.add_trace(go.Scatter(
                 x=me["날짜"], y=me[col], name=nm, mode="lines+markers",
                 line=dict(color=color, width=w), marker=dict(size=4),
                 connectgaps=True, customdata=cd,
-                hovertemplate="<b>" + nm + "</b> 민감도 %{customdata}<extra></extra>",
+                hovertemplate="<b>" + nm + "</b> RP %{customdata}<extra></extra>",
             ))
-        fig_s.add_hline(y=1, line_dash="dash", line_color=T["muted2"], line_width=1)
+        fig_s.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig_s.update_layout(
             height=275,
             margin=dict(l=40, r=8, t=8, b=30),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11),
-            showlegend=False,  # 위 "민감도 누적·5일·당일" 줄이 같은 색이라 범례 겸용
+            showlegend=False,  # 위 "RP 누적·5일·당일" 줄이 같은 색이라 범례 겸용
             hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], align="left",
                             font=dict(size=11, color=T["text"])),
             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
             yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False,
-                       range=[-1.1, 3.2], dtick=0.5,
-                       tickfont=dict(size=9, color=T["muted"]), tickformat=".1f", fixedrange=True,
-                       hoverformat=".2f"),
+                       range=[-3.2, 3.2], dtick=1.0,
+                       tickfont=dict(size=9, color=T["muted"]), tickformat="+.0f", fixedrange=True,
+                       hoverformat="+.2f"),
             hovermode="x unified", dragmode=False,
         )
 
