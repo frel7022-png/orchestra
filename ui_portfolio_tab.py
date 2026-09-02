@@ -579,7 +579,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         )
                     st.markdown("".join(parts), unsafe_allow_html=True)
                     st.caption(f"{vol_basis}({'평균 대비' if vol_basis == '누적' else '어제 대비'}) "
-                               f"거래량 {vol_dir} 큰 순 · 총 {len(ranked)}종목 중 상위 15개")
+                               f"거래량 {vol_dir} 큰 순 · 상위 15개 표시 "
+                               f"(추적 {len(vol_flags)}종목 중 {vol_dir} {len(ranked)}종목)")
 
     with st.expander("Foreigner", expanded=False):
         if st.button("새로고침", key="foreigner_refresh", use_container_width=True):
@@ -633,7 +634,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     st.markdown("".join(parts), unsafe_allow_html=True)
                     st.caption(f"종목명 옆은 현재 외국인 보유율 · "
                                f"{fx_basis}({'평균 대비' if fx_basis == '누적' else '어제 대비'}) "
-                               f"보유율 {fx_dir} 큰 순 · 총 {len(ranked)}종목 중 상위 20개")
+                               f"보유율 {fx_dir} 큰 순 · 상위 20개 표시 "
+                               f"(추적 {len(fx_flags)}종목 중 {fx_dir} {len(ranked)}종목)")
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",

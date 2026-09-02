@@ -67,6 +67,16 @@ def main():
     core.snapshot_history(total_assets, total_assets + unrealized_loss, on_date=trade_date)
     core.snapshot_sector_history(core.compute_sector_weights(df), on_date=trade_date)
 
+    # 관심종목(watchlist) 밖의 신규 보유종목이 있으면 Supabase에 자동 편입 (§6-16) — 안 그러면
+    # 그 종목이 Fishing/Volume/Foreigner 스크리너에 계속 안 나온다. 실패해도(시크릿 없음/네트워크
+    # 오류 등) 매매일지 반영 자체는 성공으로 두고 경고만 남긴다.
+    try:
+        import backfill_watchlist_from_holdings as bw
+        print("---- 관심종목(watchlist) 밖 신규 보유종목 자동 편입 ----")
+        bw.main()
+    except Exception as e:
+        print(f"[경고] watchlist 자동 편입 실패(매매일지 반영은 정상 완료됨): {e}")
+
     print(f"[완료] {trade_date} 매매일지 반영: 신규 거래 {n_new}건"
           + (f" (기존 {n_replaced}건 교체)" if n_replaced else ""))
     print("---- 반영 후 상태 (실제 메리츠 앱 화면과 대조하세요) ----")
