@@ -6,7 +6,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from constants import UP_COLOR, DOWN_COLOR
+import streamlit.components.v1 as components
+
+from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, _index_day_moves,
@@ -187,10 +189,13 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         def _s(v):
             return "—" if v is None else f"{v:+.2f}"
 
+        # 이 줄의 누적/5일/당일 색이 곧 아래 민감도 그래프(2번째 슬라이드) 선 색 = 범례 겸용
         st.markdown(
             f"<div style='font-size:11px;color:{T['muted']};margin:0 0 6px'>"
             f"민감도 <span style='color:{T['muted2']}'>({basis})</span>  "
-            f"누적 <b>{_s(s_all)}</b> · 최근5 <b>{_s(s_rec)}</b> · 당일 <b>{_s(s_tod)}</b></div>",
+            f"<b style='color:{T['text']}'>누적 {_s(s_all)}</b> · "
+            f"<b style='color:{NEW_COLOR}'>5일 {_s(s_rec)}</b> · "
+            f"<b style='color:{UP_COLOR}'>당일 {_s(s_tod)}</b></div>",
             unsafe_allow_html=True,
         )
 
@@ -227,14 +232,14 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             hovertemplate=HT,
         ))
         fig2.add_trace(go.Scatter(
-            x=me["날짜"], y=me["주식수익"], name="내 주식", mode="lines+markers",
+            x=me["날짜"], y=me["주식수익"], name="주식", mode="lines+markers",
             line=dict(color=T["text"], width=2.8), marker=dict(size=5),
             customdata=[[_cell(cr, br), _cell(dr, bd)] for cr, dr, br, bd
                         in zip(me["주식수익"], me["주식당일"], me["벤치누적"], me["벤치당일"])],
             hovertemplate=HT,
         ))
         fig2.add_trace(go.Scatter(
-            x=me["날짜"], y=me["계좌수익"], name="내 계좌", mode="lines",
+            x=me["날짜"], y=me["계좌수익"], name="계좌", mode="lines",
             line=dict(color=T["muted2"], width=1.8, dash="dot"),
             customdata=[[_cell(cr, br), _cell(dr, bd)] for cr, dr, br, bd
                         in zip(me["계좌수익"], me["계좌당일"], me["벤치누적"], me["벤치당일"])],
@@ -242,24 +247,95 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         ))
         fig2.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig2.update_layout(
-            height=290,
-            margin=dict(l=10, r=10, t=10, b=45),
+            height=252,
+            margin=dict(l=40, r=8, t=8, b=30),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11),
-            legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5,
-                        bgcolor="rgba(0,0,0,0)"),
+            showlegend=False,  # 위 4줄 표(●코스피 ●코스닥 ●내 주식 ┈내 계좌)가 곧 범례
             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
             yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False,
                        tickfont=dict(size=9, color=T["muted"]), tickformat=".1%", fixedrange=True),
             hovermode="x unified",
             dragmode=False,
         )
-        st.plotly_chart(fig2, width="stretch", config={
-            "displayModeBar": False,
-            "scrollZoom": False,
-            "doubleClick": False,
-        })
+        # ---- 민감도 그래프 (누적 검정 / 5일 녹색 / 당일 빨강, y축 0 중심) ----
+        # 당일 민감도는 Δ벤치가 0에 가까운 날 발산(±3~4)해서 y축을 ±1.6으로 고정 — 그 밖으로
+        # 나간 스파이크는 위/아래로 잘려 보이고(진짜 값은 hover에), 누적·5일은 잘 읽힘.
+        #  1.0 = 시장과 1:1, 0 = 무관, 음수 = 역행 이라는 눈금이 항상 같은 자리에 있게 됨.
+        fig_s = go.Figure()
+        for col, nm, color, w in (
+            ("민감도누적", "누적", T["text"], 2.6),
+            ("민감도최근", "5일", NEW_COLOR, 2.0),
+            ("민감도당일", "당일", UP_COLOR, 1.4),
+        ):
+            fig_s.add_trace(go.Scatter(
+                x=me["날짜"], y=me[col], name=nm, mode="lines+markers",
+                line=dict(color=color, width=w), marker=dict(size=4),
+                connectgaps=True,
+                hovertemplate="%{x}<br>" + nm + " 민감도 %{y:+.2f}<extra></extra>",
+            ))
+        fig_s.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
+        fig_s.update_layout(
+            height=252,
+            margin=dict(l=40, r=8, t=8, b=30),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=T["text"], size=11),
+            showlegend=False,  # 위 "민감도 누적·5일·당일" 줄이 같은 색이라 범례 겸용
+            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=True,
+                       zerolinecolor=T["muted2"], zerolinewidth=1, range=[-1.6, 1.6], dtick=0.5,
+                       tickfont=dict(size=9, color=T["muted"]), tickformat="+.1f", fixedrange=True),
+            hovermode="x unified", dragmode=False,
+        )
+
+        # ---- 두 그래프를 스와이프 캐러셀로 (밑에 점, 옆으로 밀면 전환) ----
+        cfg = {"displayModeBar": False, "responsive": True, "scrollZoom": False, "doubleClick": False}
+        h1 = fig2.to_html(include_plotlyjs="cdn", full_html=False, config=cfg, default_width="100%")
+        h2 = fig_s.to_html(include_plotlyjs=False, full_html=False, config=cfg, default_width="100%")
+        components.html(
+            f"""
+<div id="cwrap">
+  <div class="track">
+    <div class="slide">{h1}</div>
+    <div class="slide">{h2}</div>
+  </div>
+  <div class="dots"><span class="dot on"></span><span class="dot"></span></div>
+</div>
+<style>
+  body {{ margin:0; background:transparent; }}
+  #cwrap .track {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
+  #cwrap .track::-webkit-scrollbar {{ display:none; }}
+  #cwrap .slide {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; }}
+  #cwrap .dots {{ display:flex; justify-content:center; gap:7px; padding:4px 0 0; }}
+  #cwrap .dot {{ width:7px; height:7px; border-radius:50%; background:{T['muted2']};
+    opacity:.3; transition:opacity .18s, background .18s; }}
+  #cwrap .dot.on {{ opacity:1; background:{T['text']}; }}
+</style>
+<script>
+  (function() {{
+    var track = document.querySelector('#cwrap .track');
+    var dots = document.querySelectorAll('#cwrap .dot');
+    function sync() {{
+      var i = Math.round(track.scrollLeft / Math.max(track.clientWidth, 1));
+      dots.forEach(function(d, j) {{ d.classList.toggle('on', j === i); }});
+    }}
+    track.addEventListener('scroll', sync, {{passive: true}});
+    function rz() {{
+      var w = document.querySelector('#cwrap .track').clientWidth;
+      if (!w) return;
+      document.querySelectorAll('#cwrap .plotly-graph-div').forEach(function(g) {{
+        if (window.Plotly) window.Plotly.relayout(g, {{width: w, height: 252}});
+      }});
+    }}
+    window.addEventListener('resize', rz);
+    setTimeout(rz, 50); setTimeout(rz, 250); setTimeout(rz, 700);
+  }})();
+</script>
+""",
+            height=290,
+        )
 
     st.divider()
 

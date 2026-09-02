@@ -723,6 +723,19 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   "-0.20"은 "벤치 -1%일 때 내 주식은 오히려 +0.2% (역행/방어)", 1.0이면 시장과 똑같이,
   0이면 무관, 음수면 반대. **벤치 = 혼합 지수**(`kospi_weight` 없으면 코스피 단독,
   `sensitivity_basis`가 `"코스피"`). 표본 3구간 미만(당일은 1구간)이면 그 값만 None.
+  이 줄의 **누적=검정 / 5일=녹색 / 당일=빨강** 색이 곧 아래 민감도 그래프 선 색 = 범례 겸용.
+- **그래프 = 2장짜리 스와이프 캐러셀** (사용자 요청 2026-09-02, "옆으로 밀면 다음, 밑에 점"):
+  1장 = 지수 대비 계좌(위 4선), 2장 = **민감도 그래프**(누적 검정 / 5일 녹색 / 당일 빨강 3선,
+  y축 0 중심, `range=[-1.6,1.6]` 고정 — 당일 베타는 Δ벤치≈0인 날 ±3~4로 발산해서 그 밖은
+  위아래로 잘려 보이고 진짜 값은 hover에). `compute_index_vs_account`가 `me`에
+  `민감도누적/민감도최근/민감도당일` **시계열** 컬럼을 채워서 그림(스칼라 `sens_*`는 그 마지막
+  값). 캐러셀은 `st.components.v1.html`(iframe)에 두 `fig.to_html()` 조각을 CSS `scroll-snap`
+  트랙으로 넣고, 밑에 점(`.dot`)은 작은 JS(스크롤 위치 → `.on` 토글)로 현재 장 표시 +
+  `Plotly.relayout`으로 iframe 폭 맞춤. 두 그래프 다 plotly 범례는 끔(1장은 위 4줄 표가,
+  2장은 위 민감도 색 줄이 범례). **주의**: 로컬에서 `streamlit run`을 `pkill -f`로 못 죽이고
+  중복 실행되면(Windows) 옛 코드가 계속 뜸 — `netstat -ano | grep :PORT` + `taskkill //F //PID`로
+  전부 정리하고 하나만 띄울 것(이번에 삽질함). Playwright 시각 검증은 `channel="chrome"` +
+  CDP `Network.setCacheDisabled`로.
 - **혼합 지수 가중치**는 `ui_transactions_tab.py`가 `holdings`의 종목별 평가금액을
   `load_market_cache()`(§1-3 캐시 `stock_market_cache.csv`)로 코스피/코스닥으로 갈라
   `wk = 코스피평가금액 / (코스피+코스닥)`로 계산해 넘긴다. 시장 캐시는 `fetch_quotes`와 같은
@@ -749,8 +762,8 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   `_cash_on`, `_index_cum_returns`, `_index_day_moves`, `compute_index_vs_account`,
   `load/update_market_cache`, `fetch_stock_markets`, `refresh_market_cache`. 회귀 테스트 7개
   (`tests/test_portfolio_core.py`: 예수금 비중으로 de-lever되는지, 추가매수 flow가 Rs에서
-  빠지는지, 지수 누적, latest의 누적/당일, 혼합 벤치·민감도 기준, 민감도 3종(누적/최근/당일),
-  시장 캐시 왕복).
+  빠지는지, 지수 누적, latest의 누적/당일, 혼합 벤치·민감도 기준, 민감도 3종(누적/최근/당일)
+  + 시계열 컬럼, 시장 캐시 왕복).
   ("물타기 성적표" v2 — 지수 하락일 물타기별 종목수익 vs 그 종목 시장 지수 초과수익 표 —
   는 2026-09-01에 만들었다가 같은 날 사용자 요청으로 제거함. `get_watering_events` /
   `get_dip_watering_events` / `score_watering_events`와 그 테스트도 같이 삭제. 다시 필요하면

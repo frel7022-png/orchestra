@@ -770,6 +770,12 @@ def test_compute_index_vs_account_three_sensitivities():
     assert r["sens_recent"] == pytest.approx(0.5, abs=1e-6)
     assert r["sens_all"] == pytest.approx(0.5, abs=1e-6)
     assert r["sensitivity"] == r["sens_recent"]  # 하위호환
+    # 시계열 컬럼: 스칼라는 마지막 행 값과 같아야, 그리고 매 구간이 0.5라 시계열도 전부 0.5
+    me = r["me"]
+    assert me["민감도당일"].iloc[-1] == pytest.approx(r["sens_today"])
+    assert me["민감도누적"].iloc[-1] == pytest.approx(r["sens_all"])
+    assert me["민감도누적"].dropna().apply(lambda v: round(v, 6)).eq(0.5).all()
+    assert pd.isna(me["민감도누적"].iloc[0])  # 첫 행은 구간이 없음
 
 
 def test_market_cache_roundtrip(tmp_path, monkeypatch):

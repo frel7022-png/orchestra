@@ -1381,9 +1381,11 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
       (종목별 상장시장을 반영한 전체 벤치마크 — 사용자 요청 2026-09-01). None이면 코스피 기준.
 
     반환 dict:
-      me:     DataFrame[날짜, 계좌수익, 주식수익, 주식당일, 계좌당일, 벤치누적, 벤치당일]
+      me:     DataFrame[날짜, 계좌수익, 주식수익, 주식당일, 계좌당일, 벤치누적, 벤치당일,
+                        민감도누적, 민감도최근, 민감도당일]
               (asset_hist 스냅샷 날짜. 누적은 anchor 대비, 당일은 직전 스냅샷 대비 diff.
-               벤치 = 혼합 지수(wk 없으면 코스피)를 그 스냅샷 날짜에 정렬한 값.)
+               벤치 = 혼합 지수(wk 없으면 코스피)를 그 스냅샷 날짜에 정렬한 값.
+               민감도* = 그 날까지의 원점회귀 베타 시계열 — 민감도 그래프용.)
       index:  DataFrame[날짜, 코스피, 코스닥]  (index_hist의 모든 거래일, 누적)
       latest: {"코스피"/"코스닥"/"주식"/"계좌"/"벤치": (누적, 당일)} — 최신 시점 값.
               지수 당일 = 마지막 거래일 등락, 주식/계좌/벤치 당일 = 마지막 스냅샷 구간 변화.
@@ -1472,21 +1474,31 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         latest["계좌"] = (_last(me["계좌수익"]), _last(me["계좌당일"]))
         latest["벤치"] = (_last(me["벤치누적"]), _last(me["벤치당일"]))  # 주식·계좌 색칠 기준
 
-    # ---- 민감도(원점회귀 베타 = ΣΔ주식·Δ벤치 / ΣΔ벤치²) 3종 ----
-    #  누적 = 전체 스냅샷 구간 / 최근 = 마지막 beta_window구간 / 당일 = 마지막 1구간(=Δ주식/Δ벤치)
-    dme_all = me["주식수익"].diff().dropna().values
-    dbe_all = me["벤치누적"].diff().dropna().values
-    k = min(len(dme_all), len(dbe_all))
-    dme_all, dbe_all = dme_all[-k:], dbe_all[-k:]
-
+    # ---- 민감도(원점회귀 베타 = ΣΔ주식·Δ벤치 / ΣΔ벤치²) 3종 — 스냅샷 날짜별 시계열 ----
+    #  누적 = 첫 구간부터 그 날까지 / 최근 = 그 날 기준 뒤 beta_window구간 / 당일 = 그 한 구간(=Δ주식/Δ벤치)
     def _beta(a, b, min_n):
         if len(b) < min_n or (b ** 2).sum() <= 1e-12:
             return None
         return float((a * b).sum() / (b ** 2).sum())
 
-    sens_all = _beta(dme_all, dbe_all, 3)
-    sens_recent = _beta(dme_all[-beta_window:], dbe_all[-beta_window:], 3)
-    sens_today = _beta(dme_all[-1:], dbe_all[-1:], 1)
+    dme = me["주식수익"].diff().values   # index 0은 NaN
+    dbe = me["벤치당일"].values           # = 벤치누적.diff()
+    s_all_col, s_rec_col, s_tod_col = [None], [None], [None]  # 첫 행(구간 없음)
+    for i in range(1, len(me)):
+        a = dme[1:i + 1]
+        b = dbe[1:i + 1]
+        ok = ~(pd.isna(a) | pd.isna(b))
+        a, b = a[ok], b[ok]
+        s_all_col.append(_beta(a, b, 3))
+        s_rec_col.append(_beta(a[-beta_window:], b[-beta_window:], 3))
+        s_tod_col.append(_beta(a[-1:], b[-1:], 1))
+    me["민감도누적"] = s_all_col
+    me["민감도최근"] = s_rec_col
+    me["민감도당일"] = s_tod_col
+
+    sens_all = s_all_col[-1] if len(s_all_col) else None
+    sens_recent = s_rec_col[-1] if len(s_rec_col) else None
+    sens_today = s_tod_col[-1] if len(s_tod_col) else None
 
     return {"me": me, "index": idx_cum, "latest": latest,
             "sensitivity": sens_recent,  # 하위호환(예전 단일 값 = 최근)
