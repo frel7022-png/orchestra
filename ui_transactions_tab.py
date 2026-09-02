@@ -199,8 +199,9 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             unsafe_allow_html=True,
         )
 
-        # hover: 각 줄 앞을 "누적"으로 통일(어느 선인지는 색점으로 구분). 지수는 그대로,
-        # 내 주식·내 계좌는 누적/당일 각각을 벤치(혼합지수)와 비교해 이겼으면 빨강/졌으면 파랑.
+        # hover(x unified): 실현손익 그래프와 같은 방식 — 날짜를 누르면 한 박스에 선별로
+        # "이름  누적 X · 당일 Y" 한 줄씩. 내 주식·내 계좌 값은 벤치(혼합지수) 대비 이겼으면
+        # 빨강 / 졌으면 파랑으로 칠함.
         moves = _index_day_moves(idx_hist).set_index("날짜")
         kd_map = moves["코스피d"].to_dict()
         qd_map = moves["코스닥d"].to_dict()
@@ -216,34 +217,37 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 return s
             return f"<span style='color:{UP_COLOR if v >= ref else DOWN_COLOR}'>{s}</span>"
 
-        HT = "%{x}<br>누적 %{customdata[0]}  ·  당일 %{customdata[1]}<extra></extra>"
+        def _ht(label):
+            # x-unified라 날짜는 박스 제목으로 이미 뜸 → %{x} 안 넣음(넣으면 줄마다 날짜 반복)
+            return ("<b>" + label + "</b>  누적 %{customdata[0]} · 당일 %{customdata[1]}"
+                    "<extra></extra>")
 
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(
             x=idxc["날짜"], y=idxc["코스피"], name="코스피", mode="lines",
             line=dict(color=KOSPI_COLOR, width=1.6),
             customdata=[[_fmt(c), _fmt(kd_map.get(d))] for c, d in zip(idxc["코스피"], idxc["날짜"])],
-            hovertemplate=HT,
+            hovertemplate=_ht("코스피"),
         ))
         fig2.add_trace(go.Scatter(
             x=idxc["날짜"], y=idxc["코스닥"], name="코스닥", mode="lines",
             line=dict(color=KOSDAQ_COLOR, width=1.6),
             customdata=[[_fmt(c), _fmt(qd_map.get(d))] for c, d in zip(idxc["코스닥"], idxc["날짜"])],
-            hovertemplate=HT,
+            hovertemplate=_ht("코스닥"),
         ))
         fig2.add_trace(go.Scatter(
-            x=me["날짜"], y=me["주식수익"], name="주식", mode="lines+markers",
+            x=me["날짜"], y=me["주식수익"], name="내 주식", mode="lines+markers",
             line=dict(color=T["text"], width=2.8), marker=dict(size=5),
             customdata=[[_cell(cr, br), _cell(dr, bd)] for cr, dr, br, bd
                         in zip(me["주식수익"], me["주식당일"], me["벤치누적"], me["벤치당일"])],
-            hovertemplate=HT,
+            hovertemplate=_ht("내 주식"),
         ))
         fig2.add_trace(go.Scatter(
-            x=me["날짜"], y=me["계좌수익"], name="계좌", mode="lines",
+            x=me["날짜"], y=me["계좌수익"], name="내 계좌", mode="lines",
             line=dict(color=T["muted2"], width=1.8, dash="dot"),
             customdata=[[_cell(cr, br), _cell(dr, bd)] for cr, dr, br, bd
                         in zip(me["계좌수익"], me["계좌당일"], me["벤치누적"], me["벤치당일"])],
-            hovertemplate=HT,
+            hovertemplate=_ht("내 계좌"),
         ))
         fig2.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig2.update_layout(
@@ -270,11 +274,14 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             ("민감도최근", "5일", NEW_COLOR, 2.0),
             ("민감도당일", "당일", UP_COLOR, 1.4),
         ):
+            # 값은 파이썬에서 미리 "+0.53" 문자열로 만들어 customdata로 넘김 — x-unified에서
+            # plotly의 %{y:+.2f} 포맷이 안 먹혀 원시 float이 찍히던 문제 회피(2026-09-02).
+            cd = ["—" if pd.isna(v) else f"{v:+.2f}" for v in me[col]]
             fig_s.add_trace(go.Scatter(
                 x=me["날짜"], y=me[col], name=nm, mode="lines+markers",
                 line=dict(color=color, width=w), marker=dict(size=4),
-                connectgaps=True,
-                hovertemplate=nm + " 민감도 <b>%{y:+.2f}</b><extra></extra>",
+                connectgaps=True, customdata=cd,
+                hovertemplate="<b>" + nm + "</b> 민감도 %{customdata}<extra></extra>",
             ))
         fig_s.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig_s.update_layout(
@@ -289,7 +296,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                        zerolinecolor=T["muted2"], zerolinewidth=1, range=[-1.6, 1.6], dtick=0.5,
                        tickfont=dict(size=9, color=T["muted"]), tickformat="+.1f", fixedrange=True,
                        hoverformat="+.2f"),
-            hovermode="closest", dragmode=False,
+            hovermode="x unified", dragmode=False,
         )
 
         # ---- 두 그래프를 스와이프 캐러셀로 (밑에 점, 옆으로 밀면 전환) ----
