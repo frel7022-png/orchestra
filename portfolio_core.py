@@ -1492,9 +1492,11 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         s_all_col.append(_beta(a, b, 3))
         s_rec_col.append(_beta(a[-beta_window:], b[-beta_window:], 3))
         s_tod_col.append(_beta(a[-1:], b[-1:], 1))
-    me["민감도누적"] = s_all_col
-    me["민감도최근"] = s_rec_col
-    me["민감도당일"] = s_tod_col
+    # float64로 못박음 — None+float 혼합이면 object dtype이 돼서 plotly가 %{y:.2f} 포맷을
+    # 못 걸고 원시 float(0.96187…)을 그대로 hover에 찍는다(2026-09-02 실제로 겪음).
+    me["민감도누적"] = pd.Series(s_all_col, index=me.index, dtype="float64")
+    me["민감도최근"] = pd.Series(s_rec_col, index=me.index, dtype="float64")
+    me["민감도당일"] = pd.Series(s_tod_col, index=me.index, dtype="float64")
 
     sens_all = s_all_col[-1] if len(s_all_col) else None
     sens_recent = s_rec_col[-1] if len(s_rec_col) else None

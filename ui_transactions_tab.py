@@ -247,12 +247,13 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         ))
         fig2.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig2.update_layout(
-            height=252,
+            height=275,
             margin=dict(l=40, r=8, t=8, b=30),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11),
             showlegend=False,  # 위 4줄 표(●코스피 ●코스닥 ●내 주식 ┈내 계좌)가 곧 범례
+            hoverlabel=dict(font=dict(size=10)),
             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
             yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False,
                        tickfont=dict(size=9, color=T["muted"]), tickformat=".1%", fixedrange=True),
@@ -273,20 +274,22 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 x=me["날짜"], y=me[col], name=nm, mode="lines+markers",
                 line=dict(color=color, width=w), marker=dict(size=4),
                 connectgaps=True,
-                hovertemplate="%{x}<br>" + nm + " 민감도 %{y:+.2f}<extra></extra>",
+                hovertemplate=nm + " 민감도 <b>%{y:+.2f}</b><extra></extra>",
             ))
         fig_s.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig_s.update_layout(
-            height=252,
+            height=275,
             margin=dict(l=40, r=8, t=8, b=30),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11),
             showlegend=False,  # 위 "민감도 누적·5일·당일" 줄이 같은 색이라 범례 겸용
+            hoverlabel=dict(font=dict(size=10)),
             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
             yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=True,
                        zerolinecolor=T["muted2"], zerolinewidth=1, range=[-1.6, 1.6], dtick=0.5,
-                       tickfont=dict(size=9, color=T["muted"]), tickformat="+.1f", fixedrange=True),
-            hovermode="x unified", dragmode=False,
+                       tickfont=dict(size=9, color=T["muted"]), tickformat="+.1f", fixedrange=True,
+                       hoverformat="+.2f"),
+            hovermode="closest", dragmode=False,
         )
 
         # ---- 두 그래프를 스와이프 캐러셀로 (밑에 점, 옆으로 밀면 전환) ----
@@ -304,10 +307,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
 </div>
 <style>
   body {{ margin:0; background:transparent; }}
-  #cwrap .track {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory;
+  #cwrap .track {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
     -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
   #cwrap .track::-webkit-scrollbar {{ display:none; }}
-  #cwrap .slide {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; }}
+  #cwrap .slide {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always; }}
   #cwrap .dots {{ display:flex; justify-content:center; gap:7px; padding:4px 0 0; }}
   #cwrap .dot {{ width:7px; height:7px; border-radius:50%; background:{T['muted2']};
     opacity:.3; transition:opacity .18s, background .18s; }}
@@ -326,7 +329,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
       var w = document.querySelector('#cwrap .track').clientWidth;
       if (!w) return;
       document.querySelectorAll('#cwrap .plotly-graph-div').forEach(function(g) {{
-        if (window.Plotly) window.Plotly.relayout(g, {{width: w, height: 252}});
+        if (window.Plotly) window.Plotly.relayout(g, {{width: w, height: 275}});
       }});
     }}
     window.addEventListener('resize', rz);
@@ -334,7 +337,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
   }})();
 </script>
 """,
-            height=290,
+            height=315,
         )
 
     st.divider()
