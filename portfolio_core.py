@@ -1388,13 +1388,16 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
       latest: {"코스피"/"코스닥"/"주식"/"계좌"/"벤치": (누적, 당일)} — 최신 시점 값.
               지수 당일 = 마지막 거래일 등락, 주식/계좌/벤치 당일 = 마지막 스냅샷 구간 변화.
               "벤치"는 주식·계좌의 누적/당일을 "지수 이겼나"로 색칠할 때의 기준선.
-      sensitivity: 최근 beta_window개 스냅샷 구간의 원점회귀 기울기 ΣΔ주식·Δ벤치 / ΣΔ벤치²
-                   ("벤치 -1%일 때 내 주식 약 -x%") — 구간 3개 미만이면 None
+      sens_all / sens_recent / sens_today: 원점회귀 베타 ΣΔ주식·Δ벤치 / ΣΔ벤치²
+                   ("벤치 -1%일 때 내 주식 약 -x%"). 누적=전체 구간, 최근=마지막
+                   beta_window(기본 5)구간, 당일=마지막 1구간(=Δ주식/Δ벤치). 표본 부족/
+                   벤치 미동이면 None. sensitivity = sens_recent(하위호환).
       sensitivity_basis: "혼합" | "코스피" (민감도가 어느 벤치 기준인지)
     """
     empty = {"me": pd.DataFrame(columns=["날짜", "계좌수익", "주식수익"]),
              "index": pd.DataFrame(columns=["날짜", "코스피", "코스닥"]),
              "latest": {}, "sensitivity": None,
+             "sens_all": None, "sens_recent": None, "sens_today": None,
              "sensitivity_basis": "혼합" if kospi_weight is not None else "코스피"}
     if asset_hist is None or asset_hist.empty or index_hist is None or index_hist.empty:
         return empty
@@ -1469,17 +1472,25 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         latest["계좌"] = (_last(me["계좌수익"]), _last(me["계좌당일"]))
         latest["벤치"] = (_last(me["벤치누적"]), _last(me["벤치당일"]))  # 주식·계좌 색칠 기준
 
-    # ---- 민감도(rolling beta): Δ주식수익 vs Δ벤치 ----
-    sensitivity = None
-    if me["벤치누적"].notna().sum() >= 3:
-        dme = me["주식수익"].diff().dropna()
-        dbe = me["벤치누적"].diff().dropna()
-        n = min(len(dme), len(dbe), beta_window)
-        dme, dbe = dme.iloc[-n:].values, dbe.iloc[-n:].values
-        if n >= 3 and (dbe ** 2).sum() > 1e-12:
-            sensitivity = float((dme * dbe).sum() / (dbe ** 2).sum())
+    # ---- 민감도(원점회귀 베타 = ΣΔ주식·Δ벤치 / ΣΔ벤치²) 3종 ----
+    #  누적 = 전체 스냅샷 구간 / 최근 = 마지막 beta_window구간 / 당일 = 마지막 1구간(=Δ주식/Δ벤치)
+    dme_all = me["주식수익"].diff().dropna().values
+    dbe_all = me["벤치누적"].diff().dropna().values
+    k = min(len(dme_all), len(dbe_all))
+    dme_all, dbe_all = dme_all[-k:], dbe_all[-k:]
 
-    return {"me": me, "index": idx_cum, "latest": latest, "sensitivity": sensitivity,
+    def _beta(a, b, min_n):
+        if len(b) < min_n or (b ** 2).sum() <= 1e-12:
+            return None
+        return float((a * b).sum() / (b ** 2).sum())
+
+    sens_all = _beta(dme_all, dbe_all, 3)
+    sens_recent = _beta(dme_all[-beta_window:], dbe_all[-beta_window:], 3)
+    sens_today = _beta(dme_all[-1:], dbe_all[-1:], 1)
+
+    return {"me": me, "index": idx_cum, "latest": latest,
+            "sensitivity": sens_recent,  # 하위호환(예전 단일 값 = 최근)
+            "sens_all": sens_all, "sens_recent": sens_recent, "sens_today": sens_today,
             "sensitivity_basis": "혼합" if wk is not None else "코스피"}
 
 

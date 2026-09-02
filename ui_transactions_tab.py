@@ -162,14 +162,34 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             unsafe_allow_html=True,
         )
 
-        sens, basis = iva["sensitivity"], iva["sensitivity_basis"]
-        if sens is not None:
-            wtxt = "" if wk is None else f" (보유비중 코스피 {wk * 100:.0f}%·코스닥 {(1 - wk) * 100:.0f}% 반영)"
-            st.markdown(
-                f"<div style='font-size:11px;color:{T['muted']};margin:0 0 6px'>"
-                f"최근 민감도 <b>{sens:+.2f}</b>{wtxt} — {basis} 지수 -1%면 내 주식 약 {-sens:+.2f}%</div>",
-                unsafe_allow_html=True,
-            )
+        # 혼합지수(코스피·코스닥 합친) vs 내 주식 — 당일 한 줄
+        b_cum, b_day = latest.get("벤치", (None, None))
+        my_cum, my_day = latest.get("주식", (None, None))
+
+        def _p(v):
+            return "—" if v is None or pd.isna(v) else f"{v * 100:+.2f}%"
+
+        st.markdown(
+            f"<div style='font-size:11px;color:{T['muted']};margin:0 0 2px'>"
+            f"당일  혼합지수 <b>{_p(b_day)}</b>  /  내 주식 <b>{_p(my_day)}</b>"
+            f"<span style='color:{T['muted2']}'> · 누적 {_p(b_cum)} / {_p(my_cum)}</span></div>",
+            unsafe_allow_html=True,
+        )
+
+        # 민감도 3종: 누적(전체 구간) / 최근(최근 5구간) / 당일(마지막 1구간)
+        basis = iva["sensitivity_basis"]
+        s_all, s_rec, s_tod = iva["sens_all"], iva["sens_recent"], iva["sens_today"]
+
+        def _s(v):
+            return "—" if v is None else f"{v:+.2f}"
+
+        wtxt = "" if wk is None else f" · 보유비중 코스피 {wk * 100:.0f}%·코스닥 {(1 - wk) * 100:.0f}%"
+        st.markdown(
+            f"<div style='font-size:11px;color:{T['muted']};margin:0 0 6px'>"
+            f"민감도  누적 <b>{_s(s_all)}</b> · 최근5 <b>{_s(s_rec)}</b> · 당일 <b>{_s(s_tod)}</b>"
+            f"<span style='color:{T['muted2']}'> ({basis}지수 -1% → 내 주식 그만큼){wtxt}</span></div>",
+            unsafe_allow_html=True,
+        )
 
         # hover: 각 줄 앞을 "누적"으로 통일(어느 선인지는 색점으로 구분). 지수는 그대로,
         # 내 주식·내 계좌는 누적/당일 각각을 벤치(혼합지수)와 비교해 이겼으면 빨강/졌으면 파랑.

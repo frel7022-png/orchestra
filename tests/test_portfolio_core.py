@@ -754,6 +754,24 @@ def test_compute_index_vs_account_blended_benchmark():
     assert r2["sensitivity_basis"] == "코스피"
 
 
+def test_compute_index_vs_account_three_sensitivities():
+    """민감도 3종: 당일 = 마지막 1구간의 Δ주식/Δ벤치, 최근 = 마지막 5구간, 누적 = 전체.
+    주식이 벤치의 딱 0.5배로 움직이게 데이터를 만들면 셋 다 +0.5여야 한다."""
+    dates = ["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09",
+             "2026-01-12", "2026-01-13"]
+    kospi = [100.0, 99.0, 98.0, 97.0, 96.0, 95.0, 94.0]  # 매 구간 -1%p, 코스닥 고정
+    idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates, kospi)])
+    # 첫날 전액 매수(예수금 0) → 이후 주식평가액=총자산. 총자산이 코스피 등락의 절반만 따라가게.
+    tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])  # 100만원어치
+    asset = [1_000_000.0 * (1 + 0.5 * (k / 100 - 1)) for k in kospi]
+    asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, asset)])
+    r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
+    assert r["sens_today"] == pytest.approx(0.5, abs=1e-6)
+    assert r["sens_recent"] == pytest.approx(0.5, abs=1e-6)
+    assert r["sens_all"] == pytest.approx(0.5, abs=1e-6)
+    assert r["sensitivity"] == r["sens_recent"]  # 하위호환
+
+
 def test_market_cache_roundtrip(tmp_path, monkeypatch):
     f = tmp_path / "mkt.csv"
     monkeypatch.setattr(core, "MARKET_CACHE_FILE", f)

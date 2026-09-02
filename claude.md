@@ -712,12 +712,17 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   변화와 비교). 색만으로 시장 대비 잘하고 있는지 즉시 보이게 한 것(사용자 요청).
   `compute_index_vs_account`가 `me`에 `주식당일/계좌당일/벤치누적/벤치당일` 컬럼을 붙이고,
   `latest` dict로 `{"코스피"/"코스닥"/"주식"/"계좌"/"벤치": (누적, 당일)}`을 반환한다.
-- **민감도(rolling beta)**: 그 표 밑 한 줄. 최근 5개 스냅샷 구간의 `ΣΔ주식·Δ벤치 / ΣΔ벤치²`
-  원점회귀 기울기(단일일 `rs/Δidx`는 지수가 거의 안 움직인 날 발산해서 rolling으로). "-0.20"은
-  "벤치 지수가 1% 빠질 때 내 주식은 오히려 +0.2% 움직였다 = 역행/방어" 정도의 뜻(1.0이면
-  시장과 똑같이, 0이면 무관, 음수면 반대). **벤치는 코스피 단독이 아니라 혼합 지수** —
-  `compute_index_vs_account(kospi_weight=보유 코스피비중)`. 없으면 코스피 기준으로 폴백하고
-  `sensitivity_basis`가 `"코스피"`로 옴. 구간 3개 미만이면 None.
+- **혼합지수 vs 내 주식 (당일 한 줄)**: 표 밑에 `당일  혼합지수 -2.6%  /  내 주식 -1.6% · 누적
+  -5.5% / -1.2%` 형식. "코스피·코스닥 합친 지수랑 내 지수를 한 줄로"라는 사용자 요청
+  (2026-09-02). `latest["벤치"]`·`latest["주식"]`의 (누적, 당일)을 그대로.
+- **민감도 3종 (한 줄)**: `민감도  누적 +0.09 · 최근5 +0.19 · 당일 +0.59`. 전부 원점회귀 베타
+  `ΣΔ주식·Δ벤치 / ΣΔ벤치²` (Δ = 스냅샷 구간 변화). **누적** = 전체 구간, **최근5** = 마지막
+  `beta_window`(기본 5)구간, **당일** = 마지막 1구간(=Δ주식/Δ벤치, 단일 비율). 사용자 요청
+  (2026-09-02) — 원래 "최근 민감도" 하나만 있었음. `compute_index_vs_account`가
+  `sens_all`/`sens_recent`/`sens_today`로 반환(`sensitivity` = `sens_recent`, 하위호환).
+  "-0.20"은 "벤치 -1%일 때 내 주식은 오히려 +0.2% (역행/방어)", 1.0이면 시장과 똑같이,
+  0이면 무관, 음수면 반대. **벤치 = 혼합 지수**(`kospi_weight` 없으면 코스피 단독,
+  `sensitivity_basis`가 `"코스피"`). 표본 3구간 미만(당일은 1구간)이면 그 값만 None.
 - **혼합 지수 가중치**는 `ui_transactions_tab.py`가 `holdings`의 종목별 평가금액을
   `load_market_cache()`(§1-3 캐시 `stock_market_cache.csv`)로 코스피/코스닥으로 갈라
   `wk = 코스피평가금액 / (코스피+코스닥)`로 계산해 넘긴다. 시장 캐시는 `fetch_quotes`와 같은
@@ -742,9 +747,10 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
     구간 전체로 합산.
 - **함수** (`portfolio_core.py`): `load/save/snapshot_index_history`, `_cash_by_date`,
   `_cash_on`, `_index_cum_returns`, `_index_day_moves`, `compute_index_vs_account`,
-  `load/update_market_cache`, `fetch_stock_markets`, `refresh_market_cache`. 회귀 테스트 6개
+  `load/update_market_cache`, `fetch_stock_markets`, `refresh_market_cache`. 회귀 테스트 7개
   (`tests/test_portfolio_core.py`: 예수금 비중으로 de-lever되는지, 추가매수 flow가 Rs에서
-  빠지는지, 지수 누적, latest의 누적/당일, 혼합 벤치·민감도 기준, 시장 캐시 왕복).
+  빠지는지, 지수 누적, latest의 누적/당일, 혼합 벤치·민감도 기준, 민감도 3종(누적/최근/당일),
+  시장 캐시 왕복).
   ("물타기 성적표" v2 — 지수 하락일 물타기별 종목수익 vs 그 종목 시장 지수 초과수익 표 —
   는 2026-09-01에 만들었다가 같은 날 사용자 요청으로 제거함. `get_watering_events` /
   `get_dip_watering_events` / `score_watering_events`와 그 테스트도 같이 삭제. 다시 필요하면
