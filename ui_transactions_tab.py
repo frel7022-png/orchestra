@@ -105,8 +105,6 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     #  · 내 계좌(점선)  = 총자산/최초자본 - 1 (요약카드 값, 예수금이 눌러주는 완충선)
     #  위에 4줄 표로 각 선의 "누적 / 당일"을 같이 보여주고, 내 주식·내 계좌 값은 보유비중을
     #  반영한 혼합 지수(코스피·코스닥 가중평균)보다 높으면 빨강 / 낮으면 파랑으로 칠한다.
-    st.markdown("##### 지수 대비 계좌")
-
     idx_hist = load_index_history()
 
     # 내 보유주식의 코스피/코스닥 평가금액 비중 → 혼합 지수 가중치
@@ -118,6 +116,12 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     ks_val = float(hv.loc[hv["_m"] == "KOSPI", "_v"].sum())
     kq_val = float(hv.loc[hv["_m"] == "KOSDAQ", "_v"].sum())
     wk = ks_val / (ks_val + kq_val) if (ks_val + kq_val) > 0 else None
+
+    _wtag = "" if wk is None else (
+        f" <span style='font-size:11px;font-weight:400;color:{T['muted']}'>"
+        f"보유비중 코스피 {wk * 100:.0f}% · 코스닥 {(1 - wk) * 100:.0f}%</span>"
+    )
+    st.markdown(f"##### 지수 대비 계좌{_wtag}", unsafe_allow_html=True)
 
     iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
                                     state.get("fee_rate", 0.0), kospi_weight=wk)
@@ -183,11 +187,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         def _s(v):
             return "—" if v is None else f"{v:+.2f}"
 
-        wtxt = "" if wk is None else f" · 보유비중 코스피 {wk * 100:.0f}%·코스닥 {(1 - wk) * 100:.0f}%"
         st.markdown(
             f"<div style='font-size:11px;color:{T['muted']};margin:0 0 6px'>"
-            f"민감도  누적 <b>{_s(s_all)}</b> · 최근5 <b>{_s(s_rec)}</b> · 당일 <b>{_s(s_tod)}</b>"
-            f"<span style='color:{T['muted2']}'> ({basis}지수 -1% → 내 주식 그만큼){wtxt}</span></div>",
+            f"민감도 <span style='color:{T['muted2']}'>({basis})</span>  "
+            f"누적 <b>{_s(s_all)}</b> · 최근5 <b>{_s(s_rec)}</b> · 당일 <b>{_s(s_tod)}</b></div>",
             unsafe_allow_html=True,
         )
 
