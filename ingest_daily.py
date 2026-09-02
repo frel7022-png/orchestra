@@ -67,6 +67,23 @@ def main():
     core.snapshot_history(total_assets, total_assets + unrealized_loss, on_date=trade_date)
     core.snapshot_sector_history(core.compute_sector_weights(df), on_date=trade_date)
 
+    # 신규 종목은 아직 종목코드가 비어있을 수 있는데(코드 캐시에 없던 이름), 그러면 바로 아래
+    # watchlist 자동 편입이 걸러버린다. 백필 전에 코드 없는 종목만 네이버로 가볍게 조회해 채운다
+    # (시세는 안 받음 — 시세/등락률 보충은 §6-2대로 세션이 refresh_all_prices로 따로 함).
+    missing_code = holdings2[holdings2["종목코드"].astype(str).str.len() < 6]
+    if not missing_code.empty:
+        code_cache = core.load_code_cache()
+        resolved = {}
+        for nm in missing_code["종목명"].tolist():
+            c = core.resolve_code(nm, code_cache)
+            if c:
+                resolved[nm] = c
+                holdings2.loc[holdings2["종목명"] == nm, "종목코드"] = c
+        if resolved:
+            core.update_code_cache(resolved)
+            core.save_holdings(holdings2)
+            print("[코드보충] " + ", ".join(f"{n}={c}" for n, c in resolved.items()))
+
     # 관심종목(watchlist) 밖의 신규 보유종목이 있으면 Supabase에 자동 편입 (§6-16) — 안 그러면
     # 그 종목이 Fishing/Volume/Foreigner 스크리너에 계속 안 나온다. 실패해도(시크릿 없음/네트워크
     # 오류 등) 매매일지 반영 자체는 성공으로 두고 경고만 남긴다.
