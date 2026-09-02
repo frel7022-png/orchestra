@@ -476,11 +476,20 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   Fishing과 같은 아코디언 패턴). 둘 다 새로고침 버튼 → `load_investor_flow_db`/
   `load_market_flow_db`로 DB 조회 → `st.session_state["flow_hist"]`/`["market_hist"]`에
   캐싱(Fishing과 동일 패턴, 매 rerun마다 DB 재조회 안 하려고).
-  - **Volume**: 상단에 코스피/코스닥 시장 전체 거래량 평균대비 %(캡션), 그 밑에
-    `compute_volume_flags()` 결과 상위 15개(종목명 + vs평균% + "전일 ±% 주가 ±%").
-  - **Foreigner**: 상단에 코스피/코스닥 시장 전체 외국인 순매수(오늘/평균, 억원) 캡션,
-    그 밑에 `compute_foreign_flags()` 결과 상위 15개(종목명 + vs평균%p + "전일 ±%p
-    주가 ±%").
+  - **Volume/Foreigner 둘 다 Fishing식 컨트롤 (2026-09-02, 사용자 요청)**: `기준`(누적=평균
+    대비 / 전일=어제 대비) + `방향`(DOWN/UP) 라디오 2개. `rank_flow_flags(flags, basis_key,
+    direction)`가 그 부호로 거르고 |값| 큰 순으로 정렬(Fishing과 같은 로직, `FLOW_BASIS_KEY`
+    dict 참고). 줄마다 **순위 번호 + 전일 대비 순위 변동 배지**(▲N/▼N/-/NEW) —
+    `get_flow_prev_day_ranks(hist, "volume"|"foreign", basis, direction, today)`가
+    "오늘 이전 가장 최근 거래일"까지만 잘라 flags를 재계산해 그날 순위를 냄(Fishing의
+    `get_watchlist_prev_day_ranks`와 같은 방식). 순위 변동 배지 HTML은
+    `ui_portfolio_tab._rank_delta_html()` 공용(Fishing도 이걸로 통일). 줄 형식은
+    `{순위}{▲▼} 종목명 [보유율%(Foreigner만)] {선택 기준값} 주가±%` — 두 기준값을 다
+    보여주던 걸 선택된 것 하나만 보여주게 바꿈(모바일 폭).
+  - **Volume 상위 15개 / Foreigner 상위 20개** (Foreigner는 2026-09-02에 15→20).
+  - **Foreigner 종목명 옆에 현재 외국인 보유율**(`오늘보유율`, 예 "실리콘투 11.8%") — 사용자
+    요청. `.updown-row .hold` CSS(width 44px), `.flow-row .name`은 ellipsis 처리.
+  - 상단 캡션(시장 전체 거래량 평균대비 % / 외국인 순매수 억원)은 그대로.
   - **원시 수량(거래량/외국인순매수 주식수)은 화면에 안 보여줌** — DB엔 그대로 쌓지만(나중에
     DB 필터로 검색할 때 쓸 것), 화면엔 "평균 대비 %(메인 pct)" → "전일 대비 %(p)" → "그날
     실제 주가 등락률"만 보여줌. 수급 지표만 보고는 판단하기 어려워서,

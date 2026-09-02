@@ -96,8 +96,10 @@ st.markdown(f"""
     .updown-row .name {{ font-weight:700; color:{T['text']}; flex:1; }}
     .updown-row .pct {{ font-weight:700; font-family: ui-monospace, monospace; width:62px; text-align:right; }}
     .updown-row .detail {{ font-size:11px; color:{T['muted']}; font-family: ui-monospace, monospace; width:118px; text-align:right; }}
-    .updown-row.flow-row .detail {{ width:150px; }}
-    .updown-row.flow-row .pct {{ width:56px; }}
+    .updown-row.flow-row .detail {{ width:66px; }}
+    .updown-row.flow-row .pct {{ width:58px; }}
+    .updown-row.flow-row .name {{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+    .updown-row .hold {{ font-size:11px; color:{T['muted']}; font-family: ui-monospace, monospace; width:44px; text-align:right; flex-shrink:0; }}
 
 
     .stock-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:12px; padding:10px 16px; margin-bottom:7px; }}

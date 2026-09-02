@@ -721,6 +721,40 @@ def compute_foreign_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = 
     return results
 
 
+# Volume/Foreigner 화면의 "기준"(누적=평균 대비 / 전일=어제 대비) 라디오 → flags dict의 어느 키를 쓸지
+FLOW_BASIS_KEY = {
+    "volume": {"누적": "vs평균pct", "전일": "vs어제pct"},
+    "foreign": {"누적": "vs평균pp", "전일": "vs어제pp"},
+}
+
+
+def rank_flow_flags(flags: list[dict], basis_key: str, direction: str) -> list[dict]:
+    """compute_volume_flags/compute_foreign_flags 결과를 Fishing과 같은 방식으로 정렬 —
+    방향(DOWN=그 값이 음수, UP=양수)으로 거른 뒤 |값| 큰 순. basis_key는 FLOW_BASIS_KEY 참고."""
+    sign = -1.0 if direction == "DOWN" else 1.0
+    picked = [f for f in flags if f.get(basis_key) is not None and sign * f[basis_key] > 0]
+    picked.sort(key=lambda f: -abs(f[basis_key]))
+    return picked
+
+
+def get_flow_prev_day_ranks(hist: pd.DataFrame, kind: str, basis: str, direction: str,
+                             today: str) -> dict:
+    """Volume/Foreigner 순위 변동(▲▼) 표시용 — Fishing의 get_watchlist_prev_day_ranks와 같은 목적.
+    hist(load_investor_flow_db 결과)에서 today 이전 가장 최근 거래일까지만 잘라 flags를 다시
+    계산하고, 지금 화면과 같은 기준(basis)·방향(direction)으로 순위를 매긴다.
+    kind: "volume" | "foreign". 반환: {종목명: 순위(1부터)}."""
+    if hist is None or hist.empty:
+        return {}
+    past = hist[hist["날짜"] < today]
+    if past.empty or past["날짜"].nunique() < 2:
+        return {}
+    prev_date = past["날짜"].max()
+    trimmed = past[past["날짜"] <= prev_date]
+    flags = compute_volume_flags(trimmed) if kind == "volume" else compute_foreign_flags(trimmed)
+    ranked = rank_flow_flags(flags, FLOW_BASIS_KEY[kind][basis], direction)
+    return {f["종목명"]: i for i, f in enumerate(ranked, 1)}
+
+
 def compute_market_flow_baseline(mkt_hist: pd.DataFrame) -> dict:
     """코스피/코스닥 시장 전체의 오늘 거래량 vs 평균(%), 오늘 외국인순매수(참고용, 억원).
     반환: {"KOSPI": {...}, "KOSDAQ": {...}} — 데이터가 하루뿐인 시장은 빠짐."""

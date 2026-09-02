@@ -15,7 +15,21 @@ from portfolio_core import (
     get_holding_trade_points, get_holding_avg_price_path,
     load_investor_flow_db, load_market_flow_db, load_watchlist_history_db,
     compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline,
+    FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
 )
+
+
+def _rank_delta_html(prev_rank, cur_rank) -> str:
+    """전일 대비 순위 변동 배지 HTML — Fishing/Volume/Foreigner 공용.
+    prev_rank None(어제 목록에 없었음) → NEW, 그 외 ▲N/▼N/- ."""
+    if prev_rank is None:
+        return f'<span class="rank-delta" style="color:{NEW_COLOR}">NEW</span>'
+    delta = prev_rank - cur_rank
+    if delta == 0:
+        return '<span class="rank-delta">-</span>'
+    color = UP_COLOR if delta > 0 else DOWN_COLOR
+    arrow = "▲" if delta > 0 else "▼"
+    return f'<span class="rank-delta" style="color:{color}">{arrow}{abs(delta)}</span>'
 
 
 def _dividend_badge_html(code: str, dividend_cache: dict, show_period: bool = True) -> str:
@@ -536,19 +550,36 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             if not vol_flags:
                 st.caption("비교할 데이터가 아직 부족합니다(최소 이틀치 필요).")
             else:
-                rows_html = "".join(
-                    f'<div class="updown-row flow-row"><span class="name">{r["종목명"]}</span>'
-                    f'<span class="pct" style="color:{UP_COLOR if r["vs평균pct"] >= 0 else DOWN_COLOR}">'
-                    f'{"+" if r["vs평균pct"] >= 0 else ""}{r["vs평균pct"]:.0f}%</span>'
-                    f'<span class="detail">전일 '
-                    f'{"+" if (r["vs어제pct"] or 0) >= 0 else ""}{r["vs어제pct"]:.0f}% 주가 '
-                    + (f'{"+" if r["오늘등락률"] >= 0 else ""}{r["오늘등락률"]:.1f}%'
-                       if r["오늘등락률"] is not None else "-")
-                    + '</span></div>'
-                    for r in vol_flags[:15]
-                )
-                st.markdown(rows_html, unsafe_allow_html=True)
-                st.caption(f"평균 대비 변화가 큰 순 · 총 {len(vol_flags)}종목 중 상위 15개")
+                vb1, vb2 = st.columns(2)
+                with vb1:
+                    vol_basis = st.radio("기준", ["누적", "전일"], horizontal=True,
+                                          label_visibility="collapsed", key="vol_basis")
+                with vb2:
+                    vol_dir = st.radio("방향", ["DOWN", "UP"], horizontal=True,
+                                        label_visibility="collapsed", key="vol_dir")
+                bkey = FLOW_BASIS_KEY["volume"][vol_basis]
+                ranked = rank_flow_flags(vol_flags, bkey, vol_dir)
+                prev_ranks = get_flow_prev_day_ranks(flow_hist, "volume", vol_basis, vol_dir,
+                                                      today_kst_str())
+                if not ranked:
+                    st.caption(f"{vol_basis} 기준 {vol_dir}으로 움직인 종목이 없습니다.")
+                else:
+                    parts = []
+                    for i, r in enumerate(ranked[:15], 1):
+                        v = r[bkey]
+                        chg = r["오늘등락률"]
+                        chg_s = (f'{"+" if chg >= 0 else ""}{chg:.1f}%') if chg is not None else "-"
+                        parts.append(
+                            f'<div class="updown-row flow-row"><span class="rank">{i}</span>'
+                            f'{_rank_delta_html(prev_ranks.get(r["종목명"]), i)}'
+                            f'<span class="name">{r["종목명"]}</span>'
+                            f'<span class="pct" style="color:{UP_COLOR if v >= 0 else DOWN_COLOR}">'
+                            f'{"+" if v >= 0 else ""}{v:.0f}%</span>'
+                            f'<span class="detail">주가 {chg_s}</span></div>'
+                        )
+                    st.markdown("".join(parts), unsafe_allow_html=True)
+                    st.caption(f"{vol_basis}({'평균 대비' if vol_basis == '누적' else '어제 대비'}) "
+                               f"거래량 {vol_dir} 큰 순 · 총 {len(ranked)}종목 중 상위 15개")
 
     with st.expander("Foreigner", expanded=False):
         if st.button("새로고침", key="foreigner_refresh", use_container_width=True):
@@ -571,19 +602,38 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             if not fx_flags:
                 st.caption("비교할 데이터가 아직 부족합니다(최소 이틀치 필요).")
             else:
-                rows_html = "".join(
-                    f'<div class="updown-row flow-row"><span class="name">{r["종목명"]}</span>'
-                    f'<span class="pct" style="color:{UP_COLOR if r["vs평균pp"] >= 0 else DOWN_COLOR}">'
-                    f'{"+" if r["vs평균pp"] >= 0 else ""}{r["vs평균pp"]:.2f}%p</span>'
-                    f'<span class="detail">전일 '
-                    f'{"+" if r["vs어제pp"] >= 0 else ""}{r["vs어제pp"]:.2f}%p 주가 '
-                    + (f'{"+" if r["오늘등락률"] >= 0 else ""}{r["오늘등락률"]:.1f}%'
-                       if r["오늘등락률"] is not None else "-")
-                    + '</span></div>'
-                    for r in fx_flags[:15]
-                )
-                st.markdown(rows_html, unsafe_allow_html=True)
-                st.caption(f"평균 대비 보유율 변화(%p)가 큰 순 · 총 {len(fx_flags)}종목 중 상위 15개")
+                fb1, fb2 = st.columns(2)
+                with fb1:
+                    fx_basis = st.radio("기준", ["누적", "전일"], horizontal=True,
+                                         label_visibility="collapsed", key="fx_basis")
+                with fb2:
+                    fx_dir = st.radio("방향", ["DOWN", "UP"], horizontal=True,
+                                       label_visibility="collapsed", key="fx_dir")
+                fkey = FLOW_BASIS_KEY["foreign"][fx_basis]
+                ranked = rank_flow_flags(fx_flags, fkey, fx_dir)
+                prev_ranks = get_flow_prev_day_ranks(flow_hist, "foreign", fx_basis, fx_dir,
+                                                      today_kst_str())
+                if not ranked:
+                    st.caption(f"{fx_basis} 기준 {fx_dir}으로 움직인 종목이 없습니다.")
+                else:
+                    parts = []
+                    for i, r in enumerate(ranked[:20], 1):
+                        v = r[fkey]
+                        chg = r["오늘등락률"]
+                        chg_s = (f'{"+" if chg >= 0 else ""}{chg:.1f}%') if chg is not None else "-"
+                        parts.append(
+                            f'<div class="updown-row flow-row"><span class="rank">{i}</span>'
+                            f'{_rank_delta_html(prev_ranks.get(r["종목명"]), i)}'
+                            f'<span class="name">{r["종목명"]}</span>'
+                            f'<span class="hold">{r["오늘보유율"]:.1f}%</span>'
+                            f'<span class="pct" style="color:{UP_COLOR if v >= 0 else DOWN_COLOR}">'
+                            f'{"+" if v >= 0 else ""}{v:.2f}%p</span>'
+                            f'<span class="detail">주가 {chg_s}</span></div>'
+                        )
+                    st.markdown("".join(parts), unsafe_allow_html=True)
+                    st.caption(f"종목명 옆은 현재 외국인 보유율 · "
+                               f"{fx_basis}({'평균 대비' if fx_basis == '누적' else '어제 대비'}) "
+                               f"보유율 {fx_dir} 큰 순 · 총 {len(ranked)}종목 중 상위 20개")
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",
