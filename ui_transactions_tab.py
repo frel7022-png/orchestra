@@ -182,20 +182,26 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             unsafe_allow_html=True,
         )
 
-        # 민감도 3종: 누적(전체 구간) / 최근(최근 5구간) / 당일(마지막 1구간)
+        # 민감도 3종(누적=전체 구간 / 5일=최근 5구간 / 당일=마지막 1구간)을 두 줄로:
+        #  내 주식(Rs, 예수금 제외) — 아래 민감도 그래프가 그리는 그 값 (누적/5일/당일 색 = 그래프 선 색)
+        #  내 계좌(예수금 포함)     — 예수금 쿠션까지 포함한 계좌 전체가 지수에 얼마나 반응하나
         basis = iva["sensitivity_basis"]
-        s_all, s_rec, s_tod = iva["sens_all"], iva["sens_recent"], iva["sens_today"]
 
         def _s(v):
             return "—" if v is None else f"{v:+.2f}"
 
-        # 이 줄의 누적/5일/당일 색이 곧 아래 민감도 그래프(2번째 슬라이드) 선 색 = 범례 겸용
+        def _sens_line(label, a, r, t):
+            return (
+                f"<div style='font-size:11px;color:{T['muted']};margin:0 0 3px'>"
+                f"민감도·{label} <span style='color:{T['muted2']}'>({basis})</span>  "
+                f"<b style='color:{T['text']}'>누적 {_s(a)}</b> · "
+                f"<b style='color:{NEW_COLOR}'>5일 {_s(r)}</b> · "
+                f"<b style='color:{UP_COLOR}'>당일 {_s(t)}</b></div>"
+            )
+
         st.markdown(
-            f"<div style='font-size:11px;color:{T['muted']};margin:0 0 6px'>"
-            f"민감도 <span style='color:{T['muted2']}'>({basis})</span>  "
-            f"<b style='color:{T['text']}'>누적 {_s(s_all)}</b> · "
-            f"<b style='color:{NEW_COLOR}'>5일 {_s(s_rec)}</b> · "
-            f"<b style='color:{UP_COLOR}'>당일 {_s(s_tod)}</b></div>",
+            _sens_line("내 주식", iva["sens_all"], iva["sens_recent"], iva["sens_today"])
+            + _sens_line("내 계좌", iva["acct_sens_all"], iva["acct_sens_recent"], iva["acct_sens_today"]),
             unsafe_allow_html=True,
         )
 

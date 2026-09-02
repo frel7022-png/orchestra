@@ -1416,10 +1416,11 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
 
     반환 dict:
       me:     DataFrame[날짜, 계좌수익, 주식수익, 주식당일, 계좌당일, 벤치누적, 벤치당일,
-                        민감도누적, 민감도최근, 민감도당일]
+                        민감도누적/최근/당일, 계좌민감도누적/최근/당일]
               (asset_hist 스냅샷 날짜. 누적은 anchor 대비, 당일은 직전 스냅샷 대비 diff.
                벤치 = 혼합 지수(wk 없으면 코스피)를 그 스냅샷 날짜에 정렬한 값.
-               민감도* = 그 날까지의 원점회귀 베타 시계열 — 민감도 그래프용.)
+               민감도* = Δ주식수익 vs Δ벤치 원점회귀 베타 시계열(민감도 그래프용),
+               계좌민감도* = 같은 걸 Δ계좌수익으로 — 예수금 쿠션까지 포함한 계좌 전체 반응.)
       index:  DataFrame[날짜, 코스피, 코스닥]  (index_hist의 모든 거래일, 누적)
       latest: {"코스피"/"코스닥"/"주식"/"계좌"/"벤치": (누적, 당일)} — 최신 시점 값.
               지수 당일 = 마지막 거래일 등락, 주식/계좌/벤치 당일 = 마지막 스냅샷 구간 변화.
@@ -1428,12 +1429,15 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
                    ("벤치 -1%일 때 내 주식 약 -x%"). 누적=전체 구간, 최근=마지막
                    beta_window(기본 5)구간, 당일=마지막 1구간(=Δ주식/Δ벤치). 표본 부족/
                    벤치 미동이면 None. sensitivity = sens_recent(하위호환).
+      acct_sens_all / acct_sens_recent / acct_sens_today: 같은 걸 내 계좌수익(예수금 포함)
+                   기준으로 — 보통 내 주식보다 작게 나온다(예수금이 완충하므로).
       sensitivity_basis: "혼합" | "코스피" (민감도가 어느 벤치 기준인지)
     """
     empty = {"me": pd.DataFrame(columns=["날짜", "계좌수익", "주식수익"]),
              "index": pd.DataFrame(columns=["날짜", "코스피", "코스닥"]),
              "latest": {}, "sensitivity": None,
              "sens_all": None, "sens_recent": None, "sens_today": None,
+             "acct_sens_all": None, "acct_sens_recent": None, "acct_sens_today": None,
              "sensitivity_basis": "혼합" if kospi_weight is not None else "코스피"}
     if asset_hist is None or asset_hist.empty or index_hist is None or index_hist.empty:
         return empty
@@ -1515,30 +1519,38 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
             return None
         return float((a * b).sum() / (b ** 2).sum())
 
-    dme = me["주식수익"].diff().values   # index 0은 NaN
-    dbe = me["벤치당일"].values           # = 벤치누적.diff()
-    s_all_col, s_rec_col, s_tod_col = [None], [None], [None]  # 첫 행(구간 없음)
-    for i in range(1, len(me)):
-        a = dme[1:i + 1]
-        b = dbe[1:i + 1]
-        ok = ~(pd.isna(a) | pd.isna(b))
-        a, b = a[ok], b[ok]
-        s_all_col.append(_beta(a, b, 3))
-        s_rec_col.append(_beta(a[-beta_window:], b[-beta_window:], 3))
-        s_tod_col.append(_beta(a[-1:], b[-1:], 1))
+    dbe = me["벤치당일"].values           # = 벤치누적.diff() (index 0은 NaN)
+
+    def _sens_cols(dser):
+        """dser(주식수익.diff() 또는 계좌수익.diff())로 누적/최근/당일 베타 시계열 3개."""
+        dm = dser.values
+        all_c, rec_c, tod_c = [None], [None], [None]
+        for i in range(1, len(me)):
+            a, b = dm[1:i + 1], dbe[1:i + 1]
+            ok = ~(pd.isna(a) | pd.isna(b))
+            a, b = a[ok], b[ok]
+            all_c.append(_beta(a, b, 3))
+            rec_c.append(_beta(a[-beta_window:], b[-beta_window:], 3))
+            tod_c.append(_beta(a[-1:], b[-1:], 1))
+        return all_c, rec_c, tod_c
+
+    s_all_col, s_rec_col, s_tod_col = _sens_cols(me["주식수익"].diff())        # 내 주식(Rs)
+    a_all_col, a_rec_col, a_tod_col = _sens_cols(me["계좌수익"].diff())        # 내 계좌(예수금 포함)
+
     # float64로 못박음 — None+float 혼합이면 object dtype이 돼서 plotly가 %{y:.2f} 포맷을
     # 못 걸고 원시 float(0.96187…)을 그대로 hover에 찍는다(2026-09-02 실제로 겪음).
-    me["민감도누적"] = pd.Series(s_all_col, index=me.index, dtype="float64")
-    me["민감도최근"] = pd.Series(s_rec_col, index=me.index, dtype="float64")
-    me["민감도당일"] = pd.Series(s_tod_col, index=me.index, dtype="float64")
+    for col, data in (("민감도누적", s_all_col), ("민감도최근", s_rec_col), ("민감도당일", s_tod_col),
+                       ("계좌민감도누적", a_all_col), ("계좌민감도최근", a_rec_col), ("계좌민감도당일", a_tod_col)):
+        me[col] = pd.Series(data, index=me.index, dtype="float64")
 
-    sens_all = s_all_col[-1] if len(s_all_col) else None
-    sens_recent = s_rec_col[-1] if len(s_rec_col) else None
-    sens_today = s_tod_col[-1] if len(s_tod_col) else None
+    def _tail(x):
+        return x[-1] if len(x) else None
 
     return {"me": me, "index": idx_cum, "latest": latest,
-            "sensitivity": sens_recent,  # 하위호환(예전 단일 값 = 최근)
-            "sens_all": sens_all, "sens_recent": sens_recent, "sens_today": sens_today,
+            "sensitivity": _tail(s_rec_col),  # 하위호환(예전 단일 값 = 내 주식 최근)
+            "sens_all": _tail(s_all_col), "sens_recent": _tail(s_rec_col), "sens_today": _tail(s_tod_col),
+            "acct_sens_all": _tail(a_all_col), "acct_sens_recent": _tail(a_rec_col),
+            "acct_sens_today": _tail(a_tod_col),
             "sensitivity_basis": "혼합" if wk is not None else "코스피"}
 
 
