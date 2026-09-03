@@ -162,6 +162,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             "<th style='text-align:right'>당일</th></tr>"
             + _row("코스피", KOSPI_COLOR, False, "코스피", False)
             + _row("코스닥", KOSDAQ_COLOR, False, "코스닥", False)
+            + _row("혼합지수", DOWN_COLOR, False, "벤치", False)
             + _row("내 주식", T["text"], False, "주식", True)
             + _row("내 계좌", T["muted2"], True, "계좌", True)
             + "</table>",
@@ -257,6 +258,22 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             customdata=[[_fmt(c), _fmt(qd_map.get(d))] for c, d in zip(idxc["코스닥"], idxc["날짜"])],
             hovertemplate=_ht("코스닥"),
         ))
+        # 혼합지수 = wk·코스피 + (1−wk)·코스닥 (보유비중 가중). wk 없으면 코스피 단독.
+        _bw = wk if wk is not None else 1.0
+        _blend_cum = [_bw * k + (1 - _bw) * q for k, q in zip(idxc["코스피"], idxc["코스닥"])]
+
+        def _blend_day(d):
+            k, q = kd_map.get(d), qd_map.get(d)
+            if k is None or q is None or pd.isna(k) or pd.isna(q):
+                return None
+            return _bw * k + (1 - _bw) * q
+
+        fig2.add_trace(go.Scatter(
+            x=idxc["날짜"], y=_blend_cum, name="혼합지수", mode="lines",
+            line=dict(color=DOWN_COLOR, width=1.6),
+            customdata=[[_fmt(c), _fmt(_blend_day(d))] for c, d in zip(_blend_cum, idxc["날짜"])],
+            hovertemplate=_ht("혼합지수"),
+        ))
         fig2.add_trace(go.Scatter(
             x=me["날짜"], y=me["주식수익"], name="내 주식", mode="lines+markers",
             line=dict(color=T["text"], width=2.8), marker=dict(size=5),
@@ -278,7 +295,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11),
-            showlegend=False,  # 위 4줄 표(●코스피 ●코스닥 ●내 주식 ┈내 계좌)가 곧 범례
+            showlegend=False,  # 위 표(●코스피 ●코스닥 ●혼합지수 ●내 주식 ┈내 계좌)가 곧 범례
             hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], align="left",
                             font=dict(size=11, color=T["text"])),
             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
