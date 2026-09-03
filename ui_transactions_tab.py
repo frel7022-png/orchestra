@@ -191,20 +191,26 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         def _s(v):
             return "—" if v is None else f"{v:+.2f}"
 
-        def _sens_line(label, a, r, t):
+        def _sens_line(label, a, r, t, t_pct):
+            # 당일 RP 뒤에 그게 실제 몇 %인지 = 그 구간 내 실제 수익률(당일값). 누적/5일은
+            # 구간별 median이라 단일 %가 안 나와서 안 붙임.
+            pct = "" if t is None or t_pct is None or pd.isna(t_pct) else \
+                f" <span style='color:{T['muted2']};font-weight:400'>({t_pct * 100:+.2f}%)</span>"
             return (
                 f"<div style='font-size:11px;color:{T['muted']};margin:0 0 3px'>"
                 f"RP·{label} <span style='color:{T['muted2']}'>({basis})</span>  "
                 f"<b style='color:{T['text']}'>누적 {_s(a)}</b> · "
                 f"<b style='color:{NEW_COLOR}'>5일 {_s(r)}</b> · "
-                f"<b style='color:{UP_COLOR}'>당일 {_s(t)}</b></div>"
+                f"<b style='color:{UP_COLOR}'>당일 {_s(t)}</b>{pct}</div>"
             )
 
+        _my_day = latest.get("주식", (None, None))[1]
+        _ac_day = latest.get("계좌", (None, None))[1]
         st.markdown(
             "<div style='font-size:10px;color:" + T["muted2"] + ";margin:2px 0 1px'>"
-            "RP (relative performance) — 0=시장과 동일, 양수=시장보다 잘함</div>"
-            + _sens_line("내 주식", iva["sens_all"], iva["sens_recent"], iva["sens_today"])
-            + _sens_line("내 계좌", iva["acct_sens_all"], iva["acct_sens_recent"], iva["acct_sens_today"]),
+            "RP (relative performance) — 0=시장과 동일, 양수=시장보다 잘함. 당일 뒤 (%)는 그날 실제 수익률</div>"
+            + _sens_line("내 주식", iva["sens_all"], iva["sens_recent"], iva["sens_today"], _my_day)
+            + _sens_line("내 계좌", iva["acct_sens_all"], iva["acct_sens_recent"], iva["acct_sens_today"], _ac_day),
             unsafe_allow_html=True,
         )
 
