@@ -16,6 +16,7 @@ from portfolio_core import (
     load_investor_flow_db, load_market_flow_db, load_watchlist_history_db,
     compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
+    study_foreign_buy_forward_returns, load_index_history, load_market_cache,
 )
 
 
@@ -161,6 +162,86 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
         f"<span>현재가는 최초진입가 대비 <span style='color:{cur_c}'>{pct_current:+.1f}%</span></span>"
         f"<span>내 평단가는 최초진입가 대비 <span style='color:{avg_c}'>{pct_avg:+.1f}%</span></span>"
         f"</div>", unsafe_allow_html=True)
+
+
+# 포리너 프로젝트(포프) 패널 잠금 비밀번호 (사용자 지정 2026-09-03). 개인용 앱의 소프트
+# 게이트 — check_password()의 앱 전체 로그인과는 별개로 이 실험 패널만 추가로 가림.
+FOP_PASSWORD = "653715"
+
+
+def _render_fop_panel(flow_hist, price_hist_flow, T):
+    """포리너 프로젝트 초안 패널 — 외인 매수 스파이크 후 T+1~T+5 주가 반응 이벤트 스터디.
+    관찰 전용. portfolio_core.study_foreign_buy_forward_returns()가 계산, 여기선 표시만."""
+    st.caption("외국인 보유율이 하루 새 크게 뛴 날, 그 뒤 1~5거래일 주가가 어땠는지 모아본 것. "
+               "**관찰용이지 매매 신호가 아님** · 표본이 아직 얇음(포리너 프로젝트 초안).")
+    pb1, pb2 = st.columns(2)
+    with pb1:
+        fop_basis = st.radio("기준", ["평균", "전일"], horizontal=True,
+                              label_visibility="collapsed", key="fop_basis")
+    with pb2:
+        fop_thr = st.radio("문턱", [0.2, 0.3, 0.5], horizontal=True,
+                            label_visibility="collapsed", key="fop_thr",
+                            format_func=lambda x: f"+{x}%p")
+    study = study_foreign_buy_forward_returns(
+        flow_hist, price_hist_flow, load_index_history(), load_market_cache(),
+        basis=fop_basis, threshold_pp=float(fop_thr))
+
+    if study["n_events"] == 0:
+        st.caption(f"'{fop_basis} 대비 +{fop_thr}%p 이상' 이벤트가 아직 없습니다.")
+        return
+
+    def _pcell(v, suf="%"):
+        if v is None:
+            return "<td style='text-align:right'>—</td>"
+        col = UP_COLOR if v >= 0 else DOWN_COLOR
+        return f"<td style='text-align:right;color:{col}'>{v * 100:+.2f}{suf}</td>"
+
+    hrows = ""
+    for h in (1, 2, 3, 5):
+        d = study["horizons"].get(h)
+        if not d or not d.get("n"):
+            continue
+        hit = d.get("exc_hit")
+        hit_s = f"{hit * 100:.0f}%" if hit is not None else "—"
+        hrows += (f"<tr><td>T+{h}</td><td style='text-align:right'>{d['n']}</td>"
+                  f"{_pcell(d.get('exc_mean'))}<td style='text-align:right'>{hit_s}</td>"
+                  f"{_pcell(d.get('edge_mean'), '%p')}</tr>")
+    st.markdown(
+        "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:2px 0 4px'>"
+        f"<tr style='color:{T['muted2']};font-size:10px'>"
+        "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>건수</th>"
+        "<th style='text-align:right'>평균 시장초과</th><th style='text-align:right'>상승률</th>"
+        "<th style='text-align:right'>vs 평상시</th></tr>"
+        + hrows + "</table>",
+        unsafe_allow_html=True,
+    )
+
+    def _r(rets, h):
+        v = rets.get(h)
+        if v is None:
+            return "<td style='text-align:right'>—</td>"
+        col = UP_COLOR if v >= 0 else DOWN_COLOR
+        return f"<td style='text-align:right;color:{col}'>{v * 100:+.1f}%</td>"
+
+    ev_rows = ""
+    for ev in study["recent_events"]:
+        ev_rows += (f"<tr><td>{ev['종목명']}</td>"
+                    f"<td style='text-align:right;color:{T['muted']}'>{ev['날짜'][5:]}</td>"
+                    f"<td style='text-align:right;color:{UP_COLOR}'>+{ev['신호pp']:.2f}%p</td>"
+                    f"{_r(ev['rets'], 1)}{_r(ev['rets'], 2)}{_r(ev['rets'], 3)}</tr>")
+    st.markdown(
+        "<table style='width:100%;font-size:11px;border-collapse:collapse'>"
+        f"<tr style='color:{T['muted2']};font-size:10px'><th style='text-align:left'>최근 이벤트</th>"
+        "<th style='text-align:right'>날짜</th><th style='text-align:right'>신호</th>"
+        "<th style='text-align:right'>T+1</th><th style='text-align:right'>T+2</th>"
+        "<th style='text-align:right'>T+3</th></tr>"
+        + ev_rows + "</table>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"이벤트 {study['n_events']}건 · 표본 {study['sample_start']}~{study['as_of']} · "
+        "'평균 시장초과'=종목 수익−그 종목 지수(코스피/코스닥) 수익 · "
+        "'vs 평상시'=이벤트 평균−전체 종목·전체일 평균(대조군) · 양수면 신호에 의미가 있다는 쪽")
 
 
 def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets, unrealized_loss, T):
@@ -636,6 +717,24 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                                f"{fx_basis}({'평균 대비' if fx_basis == '누적' else '어제 대비'}) "
                                f"보유율 {fx_dir} 큰 순 · 상위 20개 표시 "
                                f"(추적 {len(fx_flags)}종목 중 {fx_dir} {len(ranked)}종목)")
+
+    # ---- 포리너 프로젝트(포프) 초안: 외인 매수 스파이크 → 이후 주가 반응 이벤트 스터디 ----
+    # 관찰 전용. 외국인보유율이 평균/전일 대비 +문턱(%p) 이상 뛴 날 이후 T+1~T+5 거래일
+    # 종가수익률을 시장초과(그 종목 지수 차감) + 대조군(전체 종목·전체일 평균) 대비로 집계.
+    # 프로젝트용이라 이 패널만 비밀번호(FOP_PASSWORD)로 잠가둠 — 한 번 풀면 세션 동안 유지.
+    with st.expander("외인 매수 → 이후 주가 (실험)", expanded=False):
+        if not st.session_state.get("fop_unlocked", False):
+            _pw = st.text_input("비밀번호", type="password", key="fop_pw",
+                                 label_visibility="collapsed", placeholder="비밀번호")
+            if _pw == FOP_PASSWORD:
+                st.session_state["fop_unlocked"] = True
+                st.rerun()
+            elif _pw:
+                st.caption("비밀번호가 틀렸습니다.")
+        elif flow_hist is None or price_hist_flow is None or price_hist_flow.empty:
+            st.caption("위 Foreigner의 '새로고침'을 먼저 눌러 데이터를 불러오세요.")
+        else:
+            _render_fop_panel(flow_hist, price_hist_flow, T)
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",

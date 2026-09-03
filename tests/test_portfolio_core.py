@@ -845,3 +845,84 @@ def test_get_flow_prev_day_ranks_uses_day_before_today():
     now = core.rank_flow_flags(core.compute_foreign_flags(hist),
                                 core.FLOW_BASIS_KEY["foreign"]["누적"], "UP")
     assert now[0]["종목명"] == "종목A"
+
+
+# --- 포리너 프로젝트(포프) 초안: study_foreign_buy_forward_returns --- #
+def _price_df(rows):
+    """rows: [(종목코드, 날짜, 종가)] → load_watchlist_history_db 형태."""
+    return pd.DataFrame(
+        [{"종목코드": c, "종목명": f"종목{c}", "섹터": "미분류", "날짜": d, "종가": p, "등락률": 0.0}
+         for c, d, p in rows],
+        columns=["종목코드", "종목명", "섹터", "날짜", "종가", "등락률"],
+    )
+
+
+def test_fop_detects_event_and_computes_forward_market_excess():
+    dates = ["2026-08-20", "2026-08-21", "2026-08-22", "2026-08-23", "2026-08-24", "2026-08-25"]
+    # A: 08-22에 외인보유율 +0.9%p 급등(전일 기준) → 이벤트. 이후 주가 100→100→103→106.
+    # B: 노이즈(보유율 거의 안 움직임), 주가 고정.
+    flow = _flow_df(
+        [("A", d, 1000, 10.0 + (0.9 if d == "2026-08-22" else 0.0)) for d in dates]
+        + [("B", d, 1000, 12.0 + 0.01 * i) for i, d in enumerate(dates)]
+    )
+    apx = [100, 101, 100, 100, 103, 106]
+    price = _price_df(
+        [("A", d, apx[i]) for i, d in enumerate(dates)]
+        + [("B", d, 50) for d in dates]
+    )
+    idx = pd.DataFrame({"날짜": dates, "KOSPI": [2000, 2000, 2000, 2000, 2010, 2010],
+                        "KOSDAQ": [800] * 6})
+    market_map = {"종목A": "KOSPI", "종목B": "KOSDAQ"}
+
+    r = core.study_foreign_buy_forward_returns(flow, price, idx, market_map,
+                                              basis="전일", threshold_pp=0.3, min_history=0)
+    assert r["n_events"] == 1
+    ev = r["recent_events"][0]
+    assert ev["종목명"] == "종목A" and ev["날짜"] == "2026-08-22"
+    # T+2 = 08-24: A 100→103(+3%), 코스피 2000→2010(+0.5%) → 시장초과 +2.5%
+    assert r["horizons"][2]["n"] == 1
+    assert r["horizons"][2]["exc_mean"] == pytest.approx(0.025, abs=1e-6)
+    # 대조군(전체 종목·전체일)도 같이 잡힘 → edge_mean 계산 가능
+    assert r["horizons"][2]["base_n"] >= 1
+    assert r["horizons"][2]["edge_mean"] is not None
+
+
+def test_fop_average_basis_uses_expanding_mean_like_screener():
+    # 보유율 10,10,10,11 → 평균 기준 마지막날 delta = 11 - mean(10,10,10,11)=10.25 → +0.75%p
+    dates = ["2026-08-20", "2026-08-21", "2026-08-22", "2026-08-23", "2026-08-24"]
+    flow = _flow_df([("A", d, 1000, v) for d, v in zip(dates, [10, 10, 10, 11, 11])])
+    price = _price_df([("A", d, 100) for d in dates])
+    idx = pd.DataFrame({"날짜": dates, "KOSPI": [2000] * 5, "KOSDAQ": [800] * 5})
+
+    hi = core.study_foreign_buy_forward_returns(flow, price, idx, {"종목A": "KOSPI"},
+                                               basis="평균", threshold_pp=0.7, min_history=0)
+    lo = core.study_foreign_buy_forward_returns(flow, price, idx, {"종목A": "KOSPI"},
+                                               basis="평균", threshold_pp=0.8, min_history=0)
+    assert hi["n_events"] == 1   # +0.75%p ≥ 0.7 문턱
+    assert lo["n_events"] == 0   # +0.75%p < 0.8 문턱
+
+
+def test_fop_min_history_skips_warmup_events():
+    # 8일치. A는 매일 보유율 +1%p씩 계단 상승 → 전일 기준 매일 이벤트 후보.
+    dates = [f"2026-08-{20 + i:02d}" for i in range(8)]
+    flow = _flow_df([("A", d, 1000, 10.0 + i) for i, d in enumerate(dates)])
+    price = _price_df([("A", d, 100) for d in dates])
+    idx = pd.DataFrame({"날짜": dates, "KOSPI": [2000] * 8, "KOSDAQ": [800] * 8})
+
+    warm5 = core.study_foreign_buy_forward_returns(flow, price, idx, {"종목A": "KOSPI"},
+                                                  basis="전일", threshold_pp=0.5, min_history=5)
+    warm0 = core.study_foreign_buy_forward_returns(flow, price, idx, {"종목A": "KOSPI"},
+                                                  basis="전일", threshold_pp=0.5, min_history=0)
+    # min_history=0이면 2번째 날부터 매일(7건), =5면 6번째 관측(i=5)부터만(i=5,6,7 → 3건)
+    assert warm0["n_events"] == 7
+    assert warm5["n_events"] == 3
+
+
+def test_fop_empty_inputs_return_zero_events():
+    empty_flow = _flow_df([])
+    empty_price = _price_df([])
+    r = core.study_foreign_buy_forward_returns(empty_flow, empty_price,
+                                              pd.DataFrame(columns=["날짜", "KOSPI", "KOSDAQ"]), {})
+    assert r["n_events"] == 0
+    assert r["recent_events"] == []
+    assert all(h["n"] == 0 for h in r["horizons"].values())

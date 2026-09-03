@@ -775,6 +775,163 @@ def compute_market_flow_baseline(mkt_hist: pd.DataFrame) -> dict:
     return result
 
 
+# ------------------------------------------------------------------ #
+# 포리너 프로젝트(포프) — 외인 매수 스파이크 후 주가 반응 이벤트 스터디 (2026-09-03 초안)
+# 관찰 전용, 매매 신호 아님. Foreigner 스크리너와 같은 신호(외국인보유율 %p 변화)로
+# 이벤트를 잡고, 그 뒤 T+1..T+5 거래일 종가수익률을 raw / 시장초과(그 종목이 속한
+# 코스피·코스닥 지수 차감) / 전체 종목·전체일 평균(대조군) 대비로 집계한다.
+# MEMORY: project_foreigner_fop.
+# ------------------------------------------------------------------ #
+def _forward_return_table(price_hist: pd.DataFrame, index_hist: pd.DataFrame,
+                           market_map: dict, horizons: tuple) -> dict:
+    """price_hist의 모든 (종목, 날짜 T)에 대해 T+h 거래일 종가수익률과, 그 종목 지수의
+    같은 구간 수익률을 뺀 시장초과 수익률을 구한다. T+h는 달력이 아니라 그 종목
+    price_history에 실제로 있는 h번째 다음 행. 반환:
+        {종목코드: {"종목명": str, "by_date": {날짜: {"raw": {h: r}, "exc": {h: r}}}}}
+    이벤트 검출/대조군이 공유하는 내부 헬퍼."""
+    idx = index_hist if index_hist is not None else pd.DataFrame()
+    kospi, kosdaq = {}, {}
+    if not idx.empty:
+        idx = idx.sort_values("날짜")
+        kospi = dict(zip(idx["날짜"], pd.to_numeric(idx["KOSPI"], errors="coerce")))
+        kosdaq = dict(zip(idx["날짜"], pd.to_numeric(idx["KOSDAQ"], errors="coerce")))
+
+    out = {}
+    for code, g in price_hist.groupby("종목코드"):
+        g = g.sort_values("날짜")
+        dates = list(g["날짜"])
+        closes = list(pd.to_numeric(g["종가"], errors="coerce"))
+        name = g["종목명"].iloc[-1] if "종목명" in g else code
+        mk = (market_map or {}).get(name)
+        imap = kospi if mk == "KOSPI" else kosdaq if mk == "KOSDAQ" else None
+        by_date = {}
+        for i, d0 in enumerate(dates):
+            c0 = closes[i]
+            if not c0 or pd.isna(c0) or c0 <= 0:
+                continue
+            rec = {"raw": {}, "exc": {}}
+            for h in horizons:
+                j = i + h
+                if j >= len(dates):
+                    continue
+                c1 = closes[j]
+                if not c1 or pd.isna(c1) or c1 <= 0:
+                    continue
+                raw = c1 / c0 - 1.0
+                rec["raw"][h] = raw
+                if imap is not None:
+                    i0, i1 = imap.get(d0), imap.get(dates[j])
+                    if i0 and i1 and not pd.isna(i0) and not pd.isna(i1) and i0 > 0:
+                        rec["exc"][h] = raw - (i1 / i0 - 1.0)
+            if rec["raw"]:
+                by_date[d0] = rec
+        out[code] = {"종목명": name, "by_date": by_date}
+    return out
+
+
+def study_foreign_buy_forward_returns(flow_hist: pd.DataFrame, price_hist: pd.DataFrame,
+                                       index_hist: pd.DataFrame, market_map: dict,
+                                       basis: str = "평균", threshold_pp: float = 0.30,
+                                       horizons=(1, 2, 3, 5), min_history: int = 5) -> dict:
+    """외국인보유율이 basis 기준으로 +threshold_pp(퍼센트포인트) 이상 뛴 (종목, 날짜)를
+    '이벤트'로 잡고, 이후 T+h 거래일 종가수익률을 집계한다.
+      basis="전일": 직전 거래일 보유율 대비 상승폭.
+      basis="평균": 그 시점까지(자신 포함) 보유율 확장평균 대비 — compute_foreign_flags의
+                    'vs평균pp'와 같은 정의라 Foreigner 스크리너 신호와 일치.
+    min_history: 그 종목 관측이 이만큼 쌓이기 전(초반 며칠)은 평균/전일 비교가 불안정해
+                 이벤트에서 제외(기본 5). 특히 '평균' 기준이 확장평균 lag 때문에 초반에
+                 아무 날이나 터지는 걸 막는다.
+    반환 dict(ui_portfolio_tab.py '외인 매수 → 이후 주가' 섹션용):
+      n_events, sample_start, as_of, basis, threshold_pp,
+      horizons: {h: {n, raw_mean, raw_hit, exc_mean, exc_hit,
+                     base_n, base_exc_mean, base_exc_hit, edge_mean}},
+      recent_events: [{종목명, 날짜, 신호pp, rets:{h: 시장초과수익 or raw fallback}}] (최근순 12개).
+    edge_mean = 이벤트 평균 시장초과 − 대조군(전체 종목·전체일) 평균 시장초과.
+    관찰 전용. MEMORY: project_foreigner_fop."""
+    horizons = tuple(sorted({int(h) for h in horizons}))
+    empty = {"basis": basis, "threshold_pp": threshold_pp, "n_events": 0,
+             "sample_start": None, "as_of": None,
+             "horizons": {h: {"n": 0} for h in horizons}, "recent_events": []}
+    if flow_hist is None or flow_hist.empty or price_hist is None or price_hist.empty:
+        return empty
+
+    fwd = _forward_return_table(price_hist, index_hist, market_map or {}, horizons)
+
+    # --- 이벤트 검출 ---
+    events = []
+    for code, g in flow_hist.groupby("종목코드"):
+        g = g.sort_values("날짜")
+        dts = list(g["날짜"])
+        vals = list(pd.to_numeric(g["외국인보유율"], errors="coerce"))
+        run_sum, run_n = 0.0, 0
+        seen = 0  # 이 종목에서 지금까지 본 유효 관측 수(자신 제외)
+        for i, v in enumerate(vals):
+            if v is None or pd.isna(v):
+                continue
+            if basis == "전일":
+                prev = vals[i - 1] if i > 0 else None
+                delta = (v - prev) if (prev is not None and not pd.isna(prev)) else None
+            else:
+                run_sum += v
+                run_n += 1
+                delta = v - (run_sum / run_n)
+            enough = seen >= min_history
+            seen += 1
+            if enough and delta is not None and delta >= threshold_pp:
+                events.append({"종목코드": code, "종목명": g["종목명"].iloc[-1],
+                               "날짜": dts[i], "신호pp": float(delta)})
+
+    # --- 이벤트별 forward 수익률 ---
+    hz = {h: {"raw": [], "exc": []} for h in horizons}
+    enriched = []
+    for ev in events:
+        rec = fwd.get(ev["종목코드"], {}).get("by_date", {}).get(ev["날짜"])
+        row = dict(ev, rets={})
+        if rec:
+            for h in horizons:
+                if h in rec["raw"]:
+                    hz[h]["raw"].append(rec["raw"][h])
+                if h in rec["exc"]:
+                    hz[h]["exc"].append(rec["exc"][h])
+                row["rets"][h] = rec["exc"].get(h, rec["raw"].get(h))
+        enriched.append(row)
+
+    # --- 대조군: 전체 (종목, 날짜)의 같은 forward 분포 ---
+    base = {h: {"raw": [], "exc": []} for h in horizons}
+    for info in fwd.values():
+        for rec in info["by_date"].values():
+            for h in horizons:
+                if h in rec["raw"]:
+                    base[h]["raw"].append(rec["raw"][h])
+                if h in rec["exc"]:
+                    base[h]["exc"].append(rec["exc"][h])
+
+    def _mean(xs):
+        return sum(xs) / len(xs) if xs else None
+
+    def _hit(xs):
+        return sum(1 for x in xs if x > 0) / len(xs) if xs else None
+
+    hzout = {}
+    for h in horizons:
+        em, bm = _mean(hz[h]["exc"]), _mean(base[h]["exc"])
+        hzout[h] = {
+            "n": len(hz[h]["raw"]),
+            "raw_mean": _mean(hz[h]["raw"]), "raw_hit": _hit(hz[h]["raw"]),
+            "exc_mean": em, "exc_hit": _hit(hz[h]["exc"]),
+            "base_n": len(base[h]["raw"]),
+            "base_exc_mean": bm, "base_exc_hit": _hit(base[h]["exc"]),
+            "edge_mean": (em - bm) if (em is not None and bm is not None) else None,
+        }
+
+    enriched.sort(key=lambda r: r["날짜"], reverse=True)
+    return {
+        "basis": basis, "threshold_pp": threshold_pp, "n_events": len(events),
+        "sample_start": str(flow_hist["날짜"].min()), "as_of": str(flow_hist["날짜"].max()),
+        "horizons": hzout, "recent_events": enriched[:12],
+    }
+
+
 def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
     """네이버 실시간 시세 API는 한 번에 너무 많은 종목코드를 요청하면 일부만 응답하는
     경우가 있어(대략 20개 안팎에서 잘림), 20개씩 나눠서 요청한 뒤 결과를 합친다.

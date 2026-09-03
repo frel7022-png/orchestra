@@ -801,3 +801,39 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   는 2026-09-01에 만들었다가 같은 날 사용자 요청으로 제거함. `get_watering_events` /
   `get_dip_watering_events` / `score_watering_events`와 그 테스트도 같이 삭제. 다시 필요하면
   git에서 이 날짜 커밋을 찾아볼 것.)
+
+### 6-18. 포리너 프로젝트(포프) 초안 — 외인 매수 → 이후 주가 이벤트 스터디 (2026-09-03 착수)
+- **성격**: 별도로 관리하는 실험 프로젝트. 사용자가 "소환 - 포리너 프로젝트" 또는 "포프"라고
+  하면 설계 논의를 이어감(MEMORY `project_foreigner_fop`). 관찰 전용 — **이걸로 매매 판단
+  안 함**, 가설("외인이 사면 하루~며칠 안에 오른다")이 데이터로 보이는지만 지켜봄.
+- **위치/잠금**: 포트폴리오 탭 Foreigner expander 밑에 `외인 매수 → 이후 주가 (실험)`
+  expander. **이 패널만 추가 비밀번호로 가림**(`ui_portfolio_tab.FOP_PASSWORD`, 사용자 지정
+  값) — `check_password()`의 앱 전체 로그인과 별개. `st.session_state["fop_unlocked"]`로
+  세션당 1회만 입력. 프로젝트용이라 아직 완성 전이라서 걸어둔 소프트 게이트.
+- **계산**: `portfolio_core.study_foreign_buy_forward_returns(flow_hist, price_hist,
+  index_hist, market_map, basis, threshold_pp, horizons=(1,2,3,5), min_history=5)`.
+  - **이벤트**: 종목별 `외국인보유율` 시계열에서 `basis`("전일"=직전 거래일 대비 /
+    "평균"=그 시점까지 확장평균 대비, compute_foreign_flags의 vs평균pp와 같은 정의) 상승폭이
+    `+threshold_pp`(%p) 이상인 (종목, 날짜). `min_history`일 미만으로 쌓인 초반은 제외
+    (특히 "평균"이 확장평균 lag 때문에 초반에 아무 날이나 터지는 것 방지).
+  - **forward 수익률**: 이벤트일 T의 종가 대비 T+h 거래일(달력 아님, price_history에 실제
+    있는 h번째 다음 행) 종가수익률. **시장초과** = 그 종목이 속한 지수(코스피/코스닥,
+    `stock_market_cache` + `index_history`) 같은 구간 수익률을 뺀 값.
+  - **대조군(baseline)**: 전체 (종목, 날짜)의 같은 forward 분포. `edge_mean` = 이벤트 평균
+    시장초과 − 대조군 평균 시장초과. **양수여야 신호에 의미**가 있는 것(주식은 어차피 절반
+    이상 확률로 오르므로 무조건부 대비 비교가 핵심).
+  - 반환 dict: `n_events`, `sample_start`/`as_of`, `horizons`{h:{n, raw/exc mean·hit,
+    base_*, edge_mean}}, `recent_events`(최근 12개). 회귀 테스트 4개(`test_fop_*`).
+- **UI 컨트롤**: `기준`(평균/전일) + `문턱`(+0.2/+0.3/+0.5 %p) 라디오. 표 2개(호라이즌별
+  평균 시장초과·상승률·vs 평상시 / 최근 이벤트별 T+1~T+3) — `_render_fop_panel()`.
+- **알려진 한계 (다음 포프 세션에서 다룰 것)**: (1) "평균" 기준이 여전히 헐거움 — 확장평균
+  lag 때문에 외인 비중이 완만히 우상향인 종목은 거의 매일 이벤트로 잡힘(2026-09-03 라이브:
+  평균/0.3에서 552건). trailing/rolling 평균이나 다른 정의 검토 필요. (2) `price_history`가
+  `investor_flow`보다 커버리지가 얇음(종목당 median 10일 vs 28일, 시작일도 8/04 vs 7/24) —
+  초기 이벤트 상당수가 forward 수익률을 못 붙임. (3) 표본 4주 + 하락장이라 현재 edge는
+  대부분 음수(전일/0.5 T+1만 +1.16%p). "지켜본다"는 취지라 지금 수치로 결론 X. (4)
+  **패널 위쪽에 "외국인 코스피/코스닥 혼합 순매수 변화율" 기준선 추가**(2026-09-03 사용자
+  요청) — 종목 외인 매수가 +1%여도 시장 전체 외인 매수가 +1%면 그 종목 신호는 무의미.
+  이벤트를 "종목 외인flow − 시장 외인flow" 초과분으로 바꾸거나 시장 수치를 나란히 표시.
+  `market_flow` + `compute_market_flow_baseline` 재사용, 혼합 비중은 §6-17 혼합지수 방식.
+- **new1 전용** — meritz엔 안 넣음(포프는 new1의 153+ 관심종목/Supabase 파이프라인에 묶임).
