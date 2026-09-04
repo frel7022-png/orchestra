@@ -123,6 +123,9 @@ db_fetch_daily_prices.py       # watchlist 종목 전체 시세/거래량/수급
 backfill_watchlist_from_holdings.py  # watchlist 밖의 보유종목을 찾아 자동 편입+시세 백필 (§6-16, 2026-09-01 신설).
 backfill_bigcap_history.py           # 삼성전자/삼성전자우/SK하이닉스 일별 종가 백필 — SamHynix extracted용 (§6-19, 2026-09-04 신설).
 tests/                            # pytest 회귀 테스트 (§6-11 참고).
+report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML + PDF). 날짜_제목.html/.pdf. git에 커밋됨.
+                                  #   HTML은 아티팩트로도 발행, PDF는 Playwright(headless chrome, emulate_media print)로 렌더.
+
 ```
 
 `portfolio.py`/`storage.py`/`market_data.py`/`csv_import.py`로의 추가 분리는 하지 않기로
