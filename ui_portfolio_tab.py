@@ -755,7 +755,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     with st.container(key="holdings_title_row"):
         col_title2, col_change_toggle, col_updated = st.columns(3)
         with col_title2:
-            st.markdown("##### holdings")
+            st.markdown("##### Holdings")
         with col_change_toggle:
             # 매일 가장 먼저 확인하는 기준이라 아래 "정렬 기준" 라디오까지 안 내려가도 타이틀
             # 옆에서 바로 토글할 수 있게 함(2026-08-28 사용자 요청). 텍스트 라벨("등락률순")을
