@@ -448,7 +448,7 @@ if refresh_clicked_top or auto_refresh_triggered:
 # 두 탭이 동일한 holdings/cash로 각자 compute_metrics를 다시 부르던 걸 여기서 한 번만 계산해서 공유
 df, stock_valuation, total_assets, unrealized_loss = compute_metrics(holdings, state["cash"])
 
-tab_port, tab_tx = st.tabs(["포트폴리오", "거래 기록"])
+tab_port, tab_tx = st.tabs(["Portfolio", "Analysis"])
 
 with tab_port:
     render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets, unrealized_loss, T)

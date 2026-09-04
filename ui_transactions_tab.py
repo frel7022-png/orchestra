@@ -516,7 +516,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("##### 거래 내역")
+    st.markdown("##### History Calendar")
 
     if "cal_year" not in st.session_state:
         st.session_state.cal_year = now_kst().year
