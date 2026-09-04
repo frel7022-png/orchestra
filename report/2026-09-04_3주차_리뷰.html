@@ -61,20 +61,32 @@
   .muted{ color:var(--ink-soft) }
   .gain{ color:var(--gain) } .loss{ color:var(--loss) }
 
-  /* 핵심 리스트 */
-  ul.finds{ list-style:none; margin:0 0 8px; padding:0; }
-  ul.finds > li{
-    border-left:2px solid var(--rule); padding:2px 0 2px 18px; margin:16px 0;
-    max-width:62ch;
+  /* 바벨 프레임 */
+  .barbell{
+    display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--rule);
+    border:1px solid var(--rule); border-radius:12px; overflow:hidden;
+    box-shadow:var(--shadow); margin:32px 0 10px;
   }
+  @media(max-width:560px){ .barbell{ grid-template-columns:1fr } }
+  .bcell{ background:var(--card); padding:20px 22px }
+  .bcell .tag{
+    font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 8px;
+  }
+  .bcell.def .tag{ color:var(--loss) }
+  .bcell h4{ font-size:1rem; font-weight:600; margin:0 0 8px }
+  .bcell p{ font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin:0 }
+  .bcell .n{ font-family:"IBM Plex Mono",monospace; color:var(--ink); font-variant-numeric:tabular-nums }
+
+  ul.finds{ list-style:none; margin:0 0 8px; padding:0 }
+  ul.finds > li{ border-left:2px solid var(--rule); padding:2px 0 2px 18px; margin:16px 0; max-width:62ch }
   ul.finds > li.key{ border-left-color:var(--accent) }
   ul.finds .h{ font-weight:600; display:block; margin-bottom:2px }
   ul.finds .n{ font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums }
 
   .note{
     font-size:14.5px; color:var(--ink-soft); line-height:1.66;
-    background:var(--rule-soft); border-radius:10px; padding:16px 20px; margin:20px 0;
-    max-width:64ch;
+    background:var(--rule-soft); border-radius:10px; padding:16px 20px; margin:20px 0; max-width:64ch;
   }
   .note b{ color:var(--ink); font-weight:600 }
 
@@ -84,28 +96,21 @@
     padding:2px 0 2px 22px; margin:28px 0; max-width:52ch;
   }
 
-  /* 도넛 + 범례 */
   .viz{
     display:flex; gap:26px; align-items:center; flex-wrap:wrap;
     border:1px solid var(--rule); border-radius:12px; background:var(--card);
     padding:22px 24px; margin:24px 0; box-shadow:var(--shadow);
   }
   .donut{
-    --a:75; --b:93;
     flex:0 0 auto; width:132px; height:132px; border-radius:50%;
     background:conic-gradient(var(--accent) 0 calc(var(--a)*1%),
               var(--gain) calc(var(--a)*1%) calc(var(--b)*1%),
               var(--loss) calc(var(--b)*1%) 100%);
     position:relative;
   }
-  .donut::after{
-    content:""; position:absolute; inset:26px; border-radius:50%;
-    background:var(--card);
-  }
-  .donut .mid{
-    position:absolute; inset:0; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; text-align:center; z-index:1;
-  }
+  .donut::after{ content:""; position:absolute; inset:26px; border-radius:50%; background:var(--card) }
+  .donut .mid{ position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; z-index:1 }
   .donut .mid b{ font-family:"IBM Plex Mono",monospace; font-size:1.5rem; line-height:1 }
   .donut .mid span{ font-size:11px; color:var(--ink-faint); margin-top:3px }
   .legend{ display:flex; flex-direction:column; gap:9px; font-size:13.5px }
@@ -113,7 +118,6 @@
   .legend i{ width:11px; height:11px; border-radius:3px; flex:0 0 auto; position:relative; top:1px }
   .legend .v{ font-family:"IBM Plex Mono",monospace; color:var(--ink-soft); margin-left:auto; padding-left:14px }
 
-  /* 가로 막대 */
   .bars{
     border:1px solid var(--rule); border-radius:12px; background:var(--card);
     padding:20px 24px 16px; margin:24px 0; box-shadow:var(--shadow);
@@ -126,16 +130,14 @@
   .brow .bf{ height:100%; border-radius:3px }
   .brow .bn{ font-family:"IBM Plex Mono",monospace; font-size:12.5px; text-align:right; color:var(--ink-soft) }
 
-  /* 데이터 테이블 */
   .twrap{ overflow-x:auto; margin:22px 0 10px; -webkit-overflow-scrolling:touch }
   table{ border-collapse:collapse; width:100%; min-width:460px;
-    font-family:"IBM Plex Mono",monospace; font-size:13px; font-variant-numeric:tabular-nums; }
+    font-family:"IBM Plex Mono",monospace; font-size:13px; font-variant-numeric:tabular-nums }
   caption{ text-align:left; font-family:"IBM Plex Sans KR",sans-serif; font-size:13px;
     color:var(--ink-faint); margin-bottom:10px; line-height:1.5 }
   th,td{ padding:9px 14px 9px 0; text-align:right; white-space:nowrap }
   th:first-child,td:first-child{ text-align:left; padding-right:18px }
-  thead th{ font-weight:500; color:var(--ink-faint); font-size:12px; letter-spacing:.02em;
-    border-bottom:1px solid var(--rule) }
+  thead th{ font-weight:500; color:var(--ink-faint); font-size:12px; letter-spacing:.02em; border-bottom:1px solid var(--rule) }
   tbody td{ border-bottom:1px solid var(--rule-soft) }
   tbody tr:last-child td{ border-bottom:1px solid var(--rule) }
   td .name{ font-family:"IBM Plex Sans KR",sans-serif; font-size:13.5px }
@@ -143,6 +145,7 @@
 
   code{ font-family:"IBM Plex Mono",monospace; font-size:.87em; background:var(--rule-soft);
     padding:1px 5px; border-radius:4px; color:var(--ink) }
+  a{ color:var(--accent); text-underline-offset:2px }
 
   footer{ margin-top:70px; padding-top:22px; border-top:1px solid var(--rule);
     font-size:12.5px; color:var(--ink-faint); line-height:1.65 }
@@ -152,148 +155,189 @@
     @page{ margin:16mm 14mm }
     body{ background:#fff; font-size:10.5pt; line-height:1.58 }
     .wrap{ padding:0; max-width:none }
-    .viz,.bars{ box-shadow:none }
-    section,.viz,.bars,.twrap,table,.note,.pull{ break-inside:avoid }
+    .viz,.bars,.barbell{ box-shadow:none }
+    section,.viz,.bars,.barbell,.twrap,table,.note,.pull{ break-inside:avoid }
     h2{ break-after:avoid }
+    a{ color:var(--ink); text-decoration:none }
   }
 </style>
 
 <div class="wrap">
 
-  <p class="eyebrow">new1 · 3주차 관찰 · 2026‑09‑04 · v2</p>
+  <p class="eyebrow">국내 방어 계좌 · 3주차 관찰 · 2026‑09‑04 · v3</p>
   <h1>의도대로 가고 있나</h1>
-  <p class="standfirst">코어 계좌를 본다. 시작 이후 22거래일, 시장이 한 방향(하락)으로 흐른 국면 하나. 네 관점 — 지수에 대한 움직임, <em class="term">물타기</em>, 청산 규율, 그리고 3주 소감.</p>
-  <p class="standfirst muted">여기 적힌 건 "옳다"가 아니라 "지금까지 이렇게 움직였다"이다.</p>
+  <p class="standfirst">국내 두 계좌(new1·meritz)를 함께 본다. 이건 더 큰 그림의 <strong>방어 다리</strong>다 — 공격은 1년째 굴리는 나스닥 계좌가 맡는다.</p>
+  <p class="standfirst muted">시작 이후 22거래일(meritz 15), 시장이 한 방향(하락)으로 흐른 국면 하나. 표본은 짧고, 여기 적힌 건 "옳다"가 아니라 "지금까지 이렇게 움직였다"이다.</p>
+
+  <div class="barbell">
+    <div class="bcell">
+      <p class="tag">공격 · 1년째</p>
+      <h4>나스닥 <span class="n">~1.4억</span></h4>
+      <p>S&amp;P 500 상위주(엔비디아·구글·메타·코카콜라·스페이스X 등)를 국내와 <strong>같은 물타기 방식</strong>으로. 1년 이익 <span class="n">약 2,000만</span> — 그중 1,000만으로 meritz 계좌를 만들어 3주 전 시작.</p>
+    </div>
+    <div class="bcell def">
+      <p class="tag">방어 · 3주째</p>
+      <h4>국내 <span class="n">new1 + meritz</span></h4>
+      <p>원금 각 1,000만. 저부채·업계상위·필수재. <strong>빅테크·반도체를 일부러 뺀다</strong> — 그것들은 나스닥과 같이 움직여 헷지가 안 되기 때문. 오르면 나스닥에서 먹고, 내리면 여기서 버틴다.</p>
+    </div>
+  </div>
+  <p class="muted" style="font-size:13.5px;margin-top:12px">이 리포트는 방어 다리 3주치 + 두 계좌의 관계 + 앞으로의 전망을 다룬다. 나스닥 계좌 수치는 이 리포트 범위 밖이고, meritz 안의 레드와이어(소액 미국 위성)는 제외했다.</p>
 
   <hr class="rule">
 
   <section>
     <p class="snum">1</p>
     <h2>지수에 따라 어떻게 움직였나</h2>
-    <p class="lede">스냅샷 사이 구간을 혼합지수가 오른 날/내린 날로 갈라 봤다.</p>
+    <p class="lede">스냅샷 사이 구간을 혼합지수가 오른 날/내린 날로 갈라, 두 계좌를 함께 봤다.</p>
 
     <ul class="finds">
       <li class="key">
-        <span class="h">하락 구간 — 8개 중 8개에서 시장을 이겼다</span>
-        <span class="n">혼합지수 평균 −1.8% → 내 주식 −0.4% <span class="muted">(초과 <span class="gain">+1.4%p</span>)</span></span>
+        <span class="h">하락 구간 — 두 계좌 모두 시장을 앞섰다</span>
+        <span class="n">new1: 8구간 중 8개 이김 (혼합 −1.8% → 내 주식 −0.4%) · meritz: 7/8, 계좌 <span class="gain">−0.0%</span> (예수금 58%가 거의 다 흡수)</span>
       </li>
       <li>
-        <span class="h">상승 구간 — 6개 중 2개만 이겼다</span>
-        <span class="n">혼합지수 평균 +1.6% → 내 주식 +0.5% <span class="muted">(초과 <span class="loss">−1.2%p</span>)</span></span>
+        <span class="h">상승 구간 — 둘 다 지수에 못 미쳤다</span>
+        <span class="n">new1: 6구간 중 2개만 이김 (혼합 +1.6% → 내 주식 +0.5%, 초과 <span class="loss">−1.2%p</span>) · meritz: 2/6, 계좌 +0.1%</span>
       </li>
       <li class="key">
-        <span class="h">삼성·하이닉스를 뺀 지수로 보면 상승장 열세가 거의 사라진다</span>
-        <span class="n">상승장 내 주식 초과: 헤드라인 <span class="loss">−1.2%p</span> → 제외 <span class="loss">−0.3%p</span></span>
-      </li>
-      <li>
-        <span class="h">그 두 종목이 상승장 지수를 혼자 +0.9%p 더 끌어올린다</span>
-        <span class="n">상승장 혼합지수: 헤드라인 +1.6% · 삼·닉 제외 +0.7%</span>
+        <span class="h">삼성·하이닉스를 뺀 지수로 보면 그림이 뒤집힌다</span>
+        <span class="n">new1 상승장 초과: <span class="loss">−1.2%p</span> → <span class="loss">−0.3%p</span> · meritz는 상승 8구간 중 <span class="gain">5개</span>를 이겨 초과 <span class="gain">+0.4%p</span></span>
       </li>
     </ul>
 
     <div class="note">
-      <p style="margin:0"><b>왜 이런가 (네 해석대로다).</b> 하락장에서 앞선 건 당연하다 — 삼성·하이닉스가 하락을 앞장서 쏟아내며 지수를 더 끌어내리는데, 내 종목들은 그 낙폭 밖에 있다. 상승장에서 뒤진 것도 당연하다 — 큰 놈들이 지수를 끌고 나가는데, 나는 삼성·하이닉스만 없는 게 아니라 삼성전기·삼성바이오로직스·현대차도 없다. <b>삼·닉 제외 탑20에 드는 종목이 하나도 없다.</b> 그러니 대형주가 견인하는 상승장에서 힘을 못 내는 게 맞다.</p>
+      <p style="margin:0"><b>상승장 열세는 결함이 아니라 설계다.</b> 상승장 수익은 나스닥이 담당하기로 되어 있다. 국내 계좌는 대장주를 일부러 뺐으니, 대형주가 지수를 끌고 나가는 랠리에서 뒤처지는 게 당연하고, 그게 바로 <em class="term">나스닥과의 상관관계를 끊는 대가이자 목적</em>이다. 8/20 같은 날(시장 +4.5%, 계좌 −0.6%)은 "국내가 못한 날"이 아니라 "나스닥이 벌었을 날"이다. 공정한 벤치(삼·닉 제외)로 재면 국내도 상승장에서 지수 근처에 붙어 있고, 특히 meritz는 오히려 앞선다 — 늦게·낮게 들어간 종목이 되돌아올 때 더 세게 튀기 때문.</p>
     </div>
-    <p>그래서 <strong>삼성·하이닉스를 뺀 벤치로 볼수록 내 상대성과가 정당하게 보인다.</strong> 그 두 종목을 제외하니 상승장 열세가 −1.2%p에서 −0.3%p로 줄었다 — 즉 <em class="term">이 포트폴리오가 실제로 노는 시장</em>(대형 반도체를 뺀)에 대고 재면, 상승장에서도 거의 지수만큼은 따라갔다는 뜻이다. 제외 대상을 삼·닉 제외 탑20까지 넓히면 상승장 성적은 더 올라갈 것으로 본다(아직 안 해봄 — 다음 리포트).</p>
-
-    <p><strong>판정.</strong> 하락장 방어율이 높고, 상승장에서도 (공정한 벤치 기준) 지수에 붙어간다면 — 이건 생각보다 선전하는 것이다. 상승장에서 지수와 비슷한 모습이면 상대적으로 잘한 것이고, 3주치는 그 근처에 있다.</p>
-    <p class="muted" style="font-size:14.5px">※ RP 누적은 헤드라인 +0.71 / 제외 +0.30으로 오히려 낮게 나오는데, 이건 제외 지수의 변동성이 약 2배로 커지며 같은 초과폭이 "시장 변동의 배수"로는 작아지는 계산상 특성이다. 상승장 성적을 제대로 재려면 <strong>상승장 전용 RP 같은 개념</strong>이 따로 필요하다 — 다음에 만들 것.</p>
+    <p class="muted" style="font-size:14.5px">※ RP 누적은 헤드라인 기준 new1 +0.71 / meritz +0.80. 삼·닉 제외 기준으론 +0.30 / +0.46으로 낮아지는데, 제외 지수의 변동성이 약 2배 커지며 같은 초과폭이 "시장 변동의 배수"로는 작아지는 계산상 특성이다. 상승장 성적을 제대로 재려면 별도 지표가 필요하다 — 다음에 만든다.</p>
   </section>
 
   <section>
     <p class="snum">2</p>
     <h2>물타기는 돌아가는가</h2>
-    <p class="lede">지금 물타는 중인 것뿐 아니라 <strong>물타서 이미 청산한 것까지</strong> 합쳐, 전체 물타기 에피소드를 본다.</p>
+    <p class="lede">두 계좌 합쳐, 지금 물타는 중인 것과 이미 청산한 것을 모두 본다.</p>
 
     <div class="viz">
-      <div class="donut" style="--a:75; --b:93">
-        <div class="mid"><b>44</b><span>물타기 에피소드</span></div>
+      <div class="donut" style="--a:82; --b:95">
+        <div class="mid"><b>60</b><span>물타기 에피소드</span></div>
       </div>
       <div class="legend">
-        <div><i style="background:var(--accent)"></i>보유 중 (대기)<span class="v">33 · 75%</span></div>
-        <div><i style="background:var(--gain)"></i>청산 — 이익<span class="v">8 · 18%</span></div>
-        <div><i style="background:var(--loss)"></i>청산 — 손실<span class="v">3 · 7%</span></div>
+        <div><i style="background:var(--accent)"></i>보유 중 (대기)<span class="v">49 · 82%</span></div>
+        <div><i style="background:var(--gain)"></i>청산 — 이익<span class="v">8 · 13%</span></div>
+        <div><i style="background:var(--loss)"></i>청산 — 손실<span class="v">3 · 5%</span></div>
       </div>
     </div>
-    <p>전체 매매 시도 111건 중 <strong>40%가 물타기</strong>(사이클 안에서 2회 이상 분할매수). 나머지 60%는 한 번 사고 끝낸 것.</p>
+    <p>두 계좌 전체 매매 시도 약 150건 중 <strong>40%가 물타기</strong>(사이클 안 2회 이상 분할매수). 나머지는 한 번 사고 끝낸 것.</p>
 
     <div class="bars">
       <h4>시드가 얼마나 커졌나 — 첫 매수 대비 총 투입 배수</h4>
-      <p class="cap">물타기 44건. 평균 <strong>2.2배</strong>, 중앙값 1.8배, 최대 12.1배(서흥).</p>
-      <div class="brow"><span class="bl">1.0–1.5×</span><span class="bt"><span class="bf" style="width:88%;background:var(--accent)"></span></span><span class="bn">16</span></div>
-      <div class="brow"><span class="bl">1.5–2.0×</span><span class="bt"><span class="bf" style="width:77%;background:var(--accent)"></span></span><span class="bn">14</span></div>
-      <div class="brow"><span class="bl">2.0–3.0×</span><span class="bt"><span class="bf" style="width:39%;background:var(--accent)"></span></span><span class="bn">7</span></div>
-      <div class="brow"><span class="bl">3.0×+</span><span class="bt"><span class="bf" style="width:39%;background:var(--accent)"></span></span><span class="bn">7</span></div>
+      <p class="cap">물타기 60건. 평균 <strong>2.2배</strong>, 중앙값 1.9배. new1·meritz 거의 동일.</p>
+      <div class="brow"><span class="bl">1.0–1.5×</span><span class="bt"><span class="bf" style="width:88%;background:var(--accent)"></span></span><span class="bn">21</span></div>
+      <div class="brow"><span class="bl">1.5–2.0×</span><span class="bt"><span class="bf" style="width:88%;background:var(--accent)"></span></span><span class="bn">21</span></div>
+      <div class="brow"><span class="bl">2.0–3.0×</span><span class="bt"><span class="bf" style="width:42%;background:var(--accent)"></span></span><span class="bn">10</span></div>
+      <div class="brow"><span class="bl">3.0×+</span><span class="bt"><span class="bf" style="width:34%;background:var(--accent)"></span></span><span class="bn">8</span></div>
     </div>
 
-    <h3>보유 중 33건 — 평단은 현재가를 얼마나 따라갔나</h3>
-    <div class="twrap">
-      <table>
-        <caption>최초진입가 기준. "추적갭"이 작을수록 물타기가 현재가를 바짝 따라간 것. 시드 = 첫 매수 대비 총 투입 배수.</caption>
-        <thead><tr><th>종목</th><th>매수</th><th>시드</th><th>평단 개선</th><th>현재가</th><th>추적갭</th><th>현 손익</th></tr></thead>
-        <tbody>
-          <tr><td><span class="name">서흥</span></td><td>14회</td><td>12.1×</td><td class="loss">−19.0%</td><td class="loss">−29.5%</td><td>10.4</td><td class="loss">−12.9%</td></tr>
-          <tr><td><span class="name">코오롱티슈진</span></td><td>7회</td><td>4.1×</td><td class="loss">−10.4%</td><td class="loss">−21.6%</td><td>11.2</td><td class="loss">−12.5%</td></tr>
-          <tr><td><span class="name">신세계인터내셔날</span></td><td>12회</td><td>5.3×</td><td class="loss">−5.1%</td><td class="loss">−10.2%</td><td>5.1</td><td class="loss">−5.4%</td></tr>
-          <tr><td><span class="name">비츠로셀</span></td><td>3회</td><td>1.9×</td><td class="loss">−7.7%</td><td class="loss">−0.7%</td><td class="gain">−7.1</td><td class="gain">+7.7%</td></tr>
-          <tr><td><span class="name">삼립</span></td><td>3회</td><td>1.9×</td><td class="gain">+1.6%</td><td class="gain">+2.5%</td><td class="gain">−1.0</td><td class="gain">+0.9%</td></tr>
-        </tbody>
-        <tfoot><tr><td>33건 평균</td><td>—</td><td>2.2×</td><td class="loss">−3.1%</td><td class="loss">−7.0%</td><td>+3.9</td><td class="loss">−4.1%</td></tr></tfoot>
-      </table>
-    </div>
-    <p>평단가는 평균 <strong>3.1%</strong> 내려갔고 현재가는 <strong>7.0%</strong> 빠졌다 — 추적갭 +3.9%p. 물타기가 <strong>하락의 약 40%를 평단 인하로 흡수</strong>했다. 나머지는 미실현손실로 대기 중(33건 중 27건 마이너스, 평균 −4.1%). 깊게 물린 서흥·코오롱티슈진은 추적갭이 10%p 넘게 벌어졌다 — 그만큼 빠진 종목은 분할매수로 평단을 못 따라잡는다.</p>
-
-    <h3>청산한 물타기 11건 — 얕게 수확</h3>
     <ul class="finds">
-      <li><span class="h">실현수익률 평균 <span class="gain">+2.6%</span> · 이익 8 / 손실 3 · 실현손익 합 +50,180원</span></li>
-      <li><span class="h">성공: 성광벤드 시드 2.4× → <span class="gain">+13.2%</span>, HK이노엔 3.1× → <span class="gain">+8.3%</span></span></li>
-      <li><span class="h">경계: 한켐 시드 <span class="n">7.0×</span>까지 물탔지만 <span class="loss">−5.3%</span>로 손절 — 깊이 타도 안 될 땐 안 된다</span></li>
+      <li><span class="h">평단이 현재가를 따라간 정도(추적갭): new1 <span class="n">+3.9%p</span> · meritz <span class="n">+2.3%p</span></span> <span class="muted">— meritz가 더 촘촘하다. 늦게 들어가 따라잡을 거리가 짧았다.</span></li>
+      <li><span class="h">보유 중 물타기의 평균 미실현: new1 <span class="loss">−4.1%</span> · meritz <span class="loss">−2.4%</span></span> <span class="muted">— 하락의 약 40%(new1)~55%(meritz)를 평단 인하로 흡수한 상태.</span></li>
+      <li><span class="h">청산한 물타기 11건: 평균 <span class="gain">+2.6%</span>, 이익 8 / 손실 3</span> <span class="muted">— 성광벤드 시드 2.4× → <span class="gain">+13.2%</span>. 한켐 시드 7×까지 물탔지만 <span class="loss">−5.3%</span> 손절(경계 사례).</span></li>
     </ul>
 
-    <p class="pull">물타기의 목적은 "이번에 조금 먹기"가 아니다. 2.2배로 커진 시드로 다음 섹터 순환을 기다리는 것 — 지금의 미실현 −4.1%가 그 대기 비용이다.</p>
+    <p class="pull">물타기의 목적은 "이번에 조금 먹기"가 아니다. 2.2배로 커진 시드로 다음 섹터 순환을 기다리는 것 — 지금의 미실현이 그 대기 비용이다.</p>
   </section>
 
   <section>
     <p class="snum">3</p>
     <h2>청산 규율 — 조용한 엔진</h2>
-    <p class="lede">사서 물 안 타고 조금씩 먹고 나온 것들. 3주간 27건.</p>
+    <p class="lede">사서 물 안 타고 조금씩 먹고 나온 것들. 두 계좌 합쳐 34건.</p>
 
     <ul class="finds">
-      <li class="key"><span class="h">이익 26 / 손실 0 / 본전 1 <span class="muted">— 승률 96%</span></span></li>
-      <li><span class="h">평균 실현수익률 <span class="gain">+4.7%</span> · 실현손익 합 +142,120원</span></li>
+      <li class="key"><span class="h">이익 33 / 손실 0 / 본전 1 <span class="muted">— 승률 97%</span></span></li>
+      <li><span class="h">평균 실현수익률 <span class="gain">+6.0%</span> · 실현손익 합 +209,720원</span></li>
+      <li><span class="h">new1 28건 <span class="gain">+4.8%</span> · meritz 6건 <span class="gain">+11.6%</span></span> <span class="muted">— meritz가 더 높은 건 진입가가 낮아 청산 시점 회복폭이 크기 때문. 단 건수는 아직 적다(축적 단계).</span></li>
     </ul>
 
     <div class="bars">
       <h4>몇 % 먹고 나왔나</h4>
-      <p class="cap">물 안 타고 청산한 27건의 실현수익률 구간별 분포.</p>
+      <p class="cap">물 안 타고 청산한 34건의 실현수익률 구간별 분포.</p>
       <div class="brow"><span class="bl">손실</span><span class="bt"><span class="bf" style="width:1%;background:var(--loss)"></span></span><span class="bn">0</span></div>
-      <div class="brow"><span class="bl">0–3%</span><span class="bt"><span class="bf" style="width:92%;background:var(--gain)"></span></span><span class="bn">10</span></div>
-      <div class="brow"><span class="bl">3–5%</span><span class="bt"><span class="bf" style="width:64%;background:var(--gain)"></span></span><span class="bn">7</span></div>
-      <div class="brow"><span class="bl">5–10%</span><span class="bt"><span class="bf" style="width:55%;background:var(--gain)"></span></span><span class="bn">6</span></div>
-      <div class="brow"><span class="bl">10%+</span><span class="bt"><span class="bf" style="width:37%;background:var(--gain)"></span></span><span class="bn">4</span></div>
+      <div class="brow"><span class="bl">0–3%</span><span class="bt"><span class="bf" style="width:100%;background:var(--gain)"></span></span><span class="bn">10</span></div>
+      <div class="brow"><span class="bl">3–5%</span><span class="bt"><span class="bf" style="width:70%;background:var(--gain)"></span></span><span class="bn">7</span></div>
+      <div class="brow"><span class="bl">5–10%</span><span class="bt"><span class="bf" style="width:80%;background:var(--gain)"></span></span><span class="bn">8</span></div>
+      <div class="brow"><span class="bl">10%+</span><span class="bt"><span class="bf" style="width:90%;background:var(--gain)"></span></span><span class="bn">9</span></div>
     </div>
-    <p>최고는 한국콜마 <span class="gain">+16.9%</span>, 원익홀딩스 <span class="gain">+11.3%</span>, 코메론 <span class="gain">+10.5%</span>. 손실로 끝난 건 하나도 없다.</p>
-
-    <h3>물타기 후 청산과 비교</h3>
-    <p>물타서 나간 11건은 평균 +2.6%, 이익 8 / 손실 3 — 물 안 탄 27건(+4.7%, 손실 0)보다 성적이 낮다. <strong>당연하다.</strong> 물타는 종목은 더 깊이 빠진 종목이라 청산 시점 회복폭도 얕다. 이 11건은 "큰 수익"이 목표가 아니라 회복한 것만 털어낸 것이고, 진짜 기대치는 §2의 보유 중 33건에 걸려 있다.</p>
 
     <div class="note">
-      <p style="margin:0"><b>돈이 어디서 나왔나.</b> 3주 누적 실현손익 +389,851원 = 청산분 +192,300 (물 안 탄 청산 +142,120 · 물타기 청산 +50,180) + 보유 종목 부분매도분 +197,551. <b>이 27건의 잔잔한 회전이 코어의 현금흐름</b>이고, 물타기 보유분은 아직 실현 전이다.</p>
+      <p style="margin:0"><b>돈이 어디서 나왔나.</b> 두 계좌 3주 누적 실현손익 +481,550원(new1 +389,851 · meritz +91,699). 이 잔잔한 회전이 방어 계좌의 현금흐름이고, §2의 물타기 보유분 49건은 아직 실현 전이다.</p>
     </div>
   </section>
 
   <section>
     <p class="snum">4</p>
+    <h2>new1과 meritz — 두 계좌의 관계</h2>
+    <p class="lede">meritz는 자체 발굴이 없다. new1의 보유종목이 −5% 선을 넘으면, 그때 같은 종목을 얕게 따라 산다. new1이 meritz의 발굴기다.</p>
+
+    <ul class="finds">
+      <li class="key"><span class="h">meritz 국내 35종목 중 33개(94%)가 new1에도 있고, 공유하는 33종목 <strong>전부</strong> meritz가 얕다</span>
+        <span class="n">평균 손익: new1 −5.5% · meritz −0.8% (meritz가 <span class="gain">+4.7%p</span> 유리)</span></li>
+    </ul>
+
+    <h3>아쉬운 점</h3>
+    <p>new1처럼 잦은 "물 안 타고 청산" 회전이 아직 적다(6건 vs 28건). meritz는 매도 자체가 3주간 9건뿐 — 회전보다 <strong>축적</strong>에 무게가 실려 있다. 현금흐름 기여도가 낮고, 시드를 계속 태우는 중이라 예수금 비중이 58%로 무겁다.</p>
+
+    <h3>대신 얻는 것 — 안정성</h3>
+    <ul class="finds">
+      <li><span class="h">진입가가 낮아 미실현손실이 얕다</span> <span class="n">물타기 보유분 −2.4% vs new1 −4.1%</span></li>
+      <li><span class="h">청산 수익률이 높다</span> <span class="n">+11.6% vs new1 +4.8%</span></li>
+      <li><span class="h">하락에 거의 미동이 없다</span> <span class="n">하락 8구간 계좌 평균 −0.01% (예수금 쿠션)</span></li>
+      <li><span class="h">공정 벤치(삼·닉 제외)로는 상승장도 이긴다</span> <span class="n">상승 8구간 중 5개, 초과 +0.4%p</span></li>
+      <li><span class="h">원금이 아니라 나스닥 이익금으로 굴린다</span> <span class="muted">— 손실이 원금을 훼손하지 않는 구조</span></li>
+    </ul>
+
+    <h3>서로 돕는가</h3>
+    <p>역할이 갈린다. <strong>new1</strong>은 먼저 물려 낙폭을 흡수하고, 잦은 청산으로 현금흐름을 만든다. <strong>meritz</strong>는 그 −5% 지점부터 더 좋은 자리에서 같은 이름을 받아 시드를 쌓는다. new1이 발굴·완충, meritz가 저가 축적 — 같은 파이프라인의 앞뒤 단계다. 33/33이 그 분업을 보여줬다.</p>
+  </section>
+
+  <section>
+    <p class="snum">5</p>
+    <h2>왜 국장에 "외국인"인가 — 포프의 근거</h2>
+    <p class="lede">외국인 흐름을 심층 분석하는 <em class="term">포프</em>를 만든 이유는 하나다. 나스닥에는 없고 국장에만 있는 데이터 우위.</p>
+
+    <ul class="finds">
+      <li><span class="h">나스닥엔 "외국인"을 하나로 묶을 수 없다</span> <span class="muted">— 블랙록·뱅가드에 세계 여러 기관, 수많은 중소형 펀드와 개인이 주류다. 외국인이 있긴 하지만 주도가 아니다.</span></li>
+      <li><span class="h">그 많은 기관이 하루 얼마씩 담았는지 알아낼 방법이 없다</span> <span class="muted">— <code>13F</code> 공시는 분기에 한 번, 4개월이나 지나서 나온다.</span></li>
+      <li class="key"><span class="h">국장은 외국인을 뭉뚱그려 하나로 묶어, 매일 얼마 샀는지 업데이트한다</span> <span class="muted">— 삼성전자만 해도 외인이 46%다. 유일하게 매일 추적 가능한 스마트머니 프록시이고, 꽤 의미 있는 자료다.</span></li>
+    </ul>
+    <p>포프는 이 일일 집계를 신호로 쓸 수 있는지 — 특히 "가격은 빠지는데 외국인은 담는" 국면 이후를 총체적으로 검증하는 연구다. 설계 초안은 <a href="https://claude.ai/code/artifact/aadfe87b-9ee4-4cd7-82ec-ed32852c919f">외국인은 무엇을 아는가</a>에 있고, 실행은 최소 3개월치 데이터가 쌓인 뒤 2027년을 위한 준비다.</p>
+  </section>
+
+  <section>
+    <p class="snum">6</p>
+    <h2>전망 — 앞으로 누가 유리한가</h2>
+    <p class="lede">국면별로 두 계좌의 상대적 우위가 갈린다.</p>
+
+    <ul class="finds">
+      <li><span class="h">상승장이 길게 이어지면 → new1</span> <span class="muted">국내 두 계좌 다 지수엔 뒤처지지만(정상 — 상승 수익은 나스닥 몫), meritz는 예수금 58%라 참여도가 더 낮다. 국내 안에서는 new1이 낫다.</span></li>
+      <li><span class="h">하락·조정장에서는 → meritz</span> <span class="muted">방어 다리가 빛나는 국면. meritz는 두꺼운 예수금 쿠션과 낮은 진입가로 new1보다 덜 무너진다(하락 8구간 −0.01%).</span></li>
+      <li><span class="h">섹터 순환 반등에서는 → 둘 다, 성격만 다르게</span> <span class="muted">커진 시드(둘 다 ~2.2×)가 실릴 때. new1은 더 깊이 물려 반등폭이 크고, meritz는 얕아 더 안정적으로 먹는다.</span></li>
+    </ul>
+
+    <div class="note">
+      <p style="margin:0"><b>종합.</b> new1 = 국내 방어의 주력이자 현금흐름 엔진(잦은 청산, 깊은 배치). meritz = 나스닥 이익으로 굴리는 저위험 2차 완충 + 섹터 순환 옵션(낮은 진입가, 두꺼운 쿠션). 둘의 우열을 가리기보다, <b>상승 국면엔 new1이, 조정 국면엔 meritz가 상대적으로 낫고</b>, 그 둘이 합쳐져야 "오르면 나스닥·내리면 국내"라는 바벨의 국내 쪽이 완성된다. 표본은 3주, 하락 국면 하나 — 이 전망은 방향일 뿐이다.</p>
+    </div>
+  </section>
+
+  <section>
+    <p class="snum">7</p>
     <h2>3주 소감</h2>
-    <p>표본은 22거래일, 국면은 하나(하락). 여기서 "전략이 옳다"고 말할 단계가 아니다. 다만 <strong>방어적 노력이 되고 있느냐</strong>는 물음에는 3주치로도 꽤 분명하게 답이 된다.</p>
-    <p>시장이 4~6% 빠지는 동안 계좌는 +0.9%, 최저점이 −0.6%였다. 하락 구간 8개 중 8개에서 시장을 앞섰고, 청산 규율은 96% 승률로 잔잔한 현금흐름을 만들었고, 물타기는 하락의 40%를 평단 인하로 흡수하며 커진 시드로 대기 중이다. 아직 안 겪은 건 상승 반전이 길게 이어지는 국면 — 8/20 하루(시장 +4.5%, 계좌 −0.6%)가 그 예고편이었다.</p>
-    <p>앱 자체의 3주도 남길 만하다(아직 이르지만). 상대성과 지표는 원점회귀 베타로 시작했다가 상승·하락을 못 가른다는 걸 화면으로 확인하고 세 번 고쳐 <code>(Δ내수익 − Δ벤치)/|Δ벤치|</code> 한 줄로 수렴했다. 삼성·하이닉스가 코스피 시총의 절반이라는 걸 확인하고 "반도체 제외 코스피"를 벤치로 따로 만들었고, 물타기가 반등해 본전 위로 온 종목은 카드가 옅은 녹색으로 바뀐다. 외국인 흐름을 심층 분석하는 포프 연구 설계도 이번 주에 착수했다. <strong>도구를 완성해놓고 쓰는 게 아니라 매일 보면서 안 맞는 부분을 깎아내는 방식</strong> — 3주치 관찰이 지표 자체를 다듬은 셈이다.</p>
-    <p>비전공자 출발로 3주는, "설계한 대로 작동하고 있다"가 꽤 선명하게 보인다. 9월은 계속 돌려볼 만하다.</p>
+    <p>표본은 22거래일(meritz 15), 국면은 하나. "전략이 옳다"고 말할 단계가 아니다. 다만 <strong>방어 다리가 제 일을 하고 있느냐</strong>는 물음에는 3주치로도 답이 된다 — 시장이 4~6% 빠지는 동안 두 계좌 다 원금을 지켰고, 하락 구간에서 시장을 앞섰고, 청산은 97% 승률로 잔잔한 현금흐름을 냈고, 물타기는 하락의 절반 가까이를 평단 인하로 흡수하며 커진 시드로 대기 중이다.</p>
+    <p>아직 안 겪은 건 상승 반전이 길게 이어지는 국면 — 그때 국내가 얼마나 뒤처지고 나스닥이 얼마나 메우는지가 이 바벨의 진짜 시험이다.</p>
+    <p>앱 자체의 3주도 남길 만하다(아직 이르지만). 상대성과 지표는 세 번 고쳐 한 줄로 수렴했고, 삼성·하이닉스가 코스피 시총의 절반이라는 걸 확인하고 "반도체 제외 코스피"를 벤치로 따로 만들었고, 외국인 흐름을 심층 분석하는 포프 연구 설계도 이번 주에 착수했다. 도구를 완성해놓고 쓰는 게 아니라 매일 보면서 깎아내는 방식 — 3주치 관찰이 지표 자체를 다듬었다.</p>
   </section>
 
   <footer>
-    <p><strong>수치 출처.</strong> 2026‑09‑04 기준 커밋된 로컬 데이터에서 계산. 코어 계좌 단독. 물타기·청산은 "현재 보유 사이클"(전량매도 후 재진입이면 그 이후만) 및 청산 종목의 마지막 사이클 기준. "시드 배수" = 해당 사이클 첫 매수금액 대비 총 매수금액. 하락/상승 구간은 자산 스냅샷 사이 구간을 혼합지수 방향으로 분류.</p>
-    <p>혼합지수 = 보유주식의 코스피/코스닥 평가금액 비중 가중평균. "삼성·하이닉스 제외 코스피"는 삼성전자·삼성전자우·SK하이닉스의 지수 편입비중(≈52%)을 덜어낸 근사 합성지수로 KRX 공식 지수가 아니다.</p>
+    <p><strong>수치 출처.</strong> 2026‑09‑04 기준 커밋된 로컬 데이터에서 계산. 국내 두 계좌(new1·meritz)만 대상이며 meritz는 국내주식만(레드와이어 제외, 계좌수익 분모 D0 = 초기자본 − 레드와이어 순투입). 나스닥 계좌 수치는 사용자 제시값(운용 약 1.4억, 1년 이익 약 2,000만)으로 맥락 참고용이며 본 분석 대상이 아니다.</p>
+    <p>물타기·청산은 "현재 보유 사이클"(전량매도 후 재진입이면 그 이후만) 및 청산 종목의 마지막 사이클 기준. "시드 배수" = 해당 사이클 첫 매수금액 대비 총 매수금액. 하락/상승 구간은 자산 스냅샷 사이 구간을 혼합지수 방향으로 분류. "삼성·하이닉스 제외 코스피"는 삼성전자·삼성전자우·SK하이닉스의 지수 편입비중(≈52%)을 덜어낸 근사 합성지수로 KRX 공식 지수가 아니다.</p>
   </footer>
 
 </div>
