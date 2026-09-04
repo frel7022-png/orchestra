@@ -12,6 +12,7 @@ from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, _index_day_moves,
+    load_bigcap_history, synthetic_kospi_ex_bigcap,
 )
 
 KOSPI_COLOR = "#f59e0b"   # 지수 참조선(코스피) — 앰버
@@ -123,15 +124,15 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         f" <span style='font-size:11px;font-weight:400;color:{T['muted']}'>"
         f"보유비중 코스피 {wk * 100:.0f}% · 코스닥 {(1 - wk) * 100:.0f}%</span>"
     )
-    st.markdown(f"##### 지수 대비 계좌{_wtag}", unsafe_allow_html=True)
+    def _render_iva_panel(iva, idx_hist_local, kospi_label, carousel_id):
+        """'지수 대비 계좌' 한 벌(4줄 표 + RP 2줄 + 스와이프 캐러셀). 메인(코스피)과
+        'SamHynix extracted'(코스피 다리 = 반도체 제외)가 이 렌더러를 공유한다 —
+        표·그래프의 '코스피' 표시 라벨만 kospi_label로 바뀌고 dict 키는 '코스피' 그대로."""
+        me, idxc, latest = iva["me"], iva["index"], iva["latest"]
+        if me.empty or idxc.empty:
+            st.info("시세를 새로고침하면 지수·자산 스냅샷이 쌓여서 그래프가 그려집니다.")
+            return
 
-    iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
-                                    state.get("fee_rate", 0.0), kospi_weight=wk)
-    me, idxc, latest = iva["me"], iva["index"], iva["latest"]
-
-    if me.empty or idxc.empty:
-        st.info("시세를 새로고침하면 지수·자산 스냅샷이 쌓여서 그래프가 그려집니다.")
-    else:
         def _pct(v):
             return "—" if v is None else f"{v * 100:+.2f}%"
 
@@ -160,7 +161,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             f"<tr style='color:{T['muted2']};font-size:10px'>"
             "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>누적</th>"
             "<th style='text-align:right'>당일</th></tr>"
-            + _row("코스피", KOSPI_COLOR, False, "코스피", False)
+            + _row(kospi_label, KOSPI_COLOR, False, "코스피", False)
             + _row("코스닥", KOSDAQ_COLOR, False, "코스닥", False)
             + _row("혼합지수", DOWN_COLOR, False, "벤치", False)
             + _row("내 주식", T["text"], False, "주식", True)
@@ -225,7 +226,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         # hover(x unified): 실현손익 그래프와 같은 방식 — 날짜를 누르면 한 박스에 선별로
         # "이름  누적 X · 당일 Y" 한 줄씩. 내 주식·내 계좌 값은 벤치(혼합지수) 대비 이겼으면
         # 빨강 / 졌으면 파랑으로 칠함.
-        moves = _index_day_moves(idx_hist).set_index("날짜")
+        moves = _index_day_moves(idx_hist_local).set_index("날짜")
         kd_map = moves["코스피d"].to_dict()
         qd_map = moves["코스닥d"].to_dict()
 
@@ -247,10 +248,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
 
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(
-            x=idxc["날짜"], y=idxc["코스피"], name="코스피", mode="lines",
+            x=idxc["날짜"], y=idxc["코스피"], name=kospi_label, mode="lines",
             line=dict(color=KOSPI_COLOR, width=1.6),
             customdata=[[_fmt(c), _fmt(kd_map.get(d))] for c, d in zip(idxc["코스피"], idxc["날짜"])],
-            hovertemplate=_ht("코스피"),
+            hovertemplate=_ht(kospi_label),
         ))
         fig2.add_trace(go.Scatter(
             x=idxc["날짜"], y=idxc["코스닥"], name="코스닥", mode="lines",
@@ -345,7 +346,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         h2 = fig_s.to_html(include_plotlyjs=False, full_html=False, config=cfg, default_width="100%")
         components.html(
             f"""
-<div id="cwrap">
+<div id="{carousel_id}">
   <div class="track">
     <div class="slide">{h1}</div>
     <div class="slide">{h2}</div>
@@ -354,28 +355,28 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
 </div>
 <style>
   body {{ margin:0; background:transparent; }}
-  #cwrap .track {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
+  #{carousel_id} .track {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
     -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
-  #cwrap .track::-webkit-scrollbar {{ display:none; }}
-  #cwrap .slide {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always; }}
-  #cwrap .dots {{ display:flex; justify-content:center; gap:7px; padding:4px 0 0; }}
-  #cwrap .dot {{ width:7px; height:7px; border-radius:50%; background:{T['muted2']};
+  #{carousel_id} .track::-webkit-scrollbar {{ display:none; }}
+  #{carousel_id} .slide {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always; }}
+  #{carousel_id} .dots {{ display:flex; justify-content:center; gap:7px; padding:4px 0 0; }}
+  #{carousel_id} .dot {{ width:7px; height:7px; border-radius:50%; background:{T['muted2']};
     opacity:.3; transition:opacity .18s, background .18s; }}
-  #cwrap .dot.on {{ opacity:1; background:{T['text']}; }}
+  #{carousel_id} .dot.on {{ opacity:1; background:{T['text']}; }}
 </style>
 <script>
   (function() {{
-    var track = document.querySelector('#cwrap .track');
-    var dots = document.querySelectorAll('#cwrap .dot');
+    var track = document.querySelector('#{carousel_id} .track');
+    var dots = document.querySelectorAll('#{carousel_id} .dot');
     function sync() {{
       var i = Math.round(track.scrollLeft / Math.max(track.clientWidth, 1));
       dots.forEach(function(d, j) {{ d.classList.toggle('on', j === i); }});
     }}
     track.addEventListener('scroll', sync, {{passive: true}});
     function rz() {{
-      var w = document.querySelector('#cwrap .track').clientWidth;
+      var w = document.querySelector('#{carousel_id} .track').clientWidth;
       if (!w) return;
-      document.querySelectorAll('#cwrap .plotly-graph-div').forEach(function(g) {{
+      document.querySelectorAll('#{carousel_id} .plotly-graph-div').forEach(function(g) {{
         if (window.Plotly) window.Plotly.relayout(g, {{width: w, height: 275}});
       }});
     }}
@@ -386,6 +387,29 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
 """,
             height=315,
         )
+
+    # ---- 지수 대비 계좌 (메인: 코스피/코스닥) ----
+    st.markdown(f"##### 지수 대비 계좌{_wtag}", unsafe_allow_html=True)
+    iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
+                                    state.get("fee_rate", 0.0), kospi_weight=wk)
+    _render_iva_panel(iva, idx_hist, "코스피", "cwrap")
+
+    # ---- SamHynix extracted (§6-19): 혼합지수의 코스피 다리를 '삼성전자·삼성전자우·SK하이닉스
+    #      제외 코스피'로 바꾼 버전. 이 3종목이 코스피 시총의 ~52%라, 반도체를 안 담는
+    #      포트폴리오엔 헤드라인 코스피가 불리한 벤치 — 반도체 빼고 다시 비교한다. ----
+    with st.expander("SamHYnix extracted", expanded=False):
+        st.caption("혼합지수의 코스피 다리를 '삼성전자·삼성전자우·SK하이닉스 제외 코스피'로 "
+                   "바꾼 버전. 이 세 종목이 코스피 시총의 절반 안팎이라 헤드라인 코스피는 "
+                   "반도체를 안 담는 포트폴리오엔 불리한 벤치야.")
+        _bg = load_bigcap_history()
+        if _bg.empty:
+            st.caption("bigcap_history.csv가 비어있어요 — "
+                       "`python backfill_bigcap_history.py` 실행 후 다시 열어주세요.")
+        else:
+            _syn = synthetic_kospi_ex_bigcap(idx_hist, _bg)
+            _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
+                                                state.get("fee_rate", 0.0), kospi_weight=wk)
+            _render_iva_panel(_iva_ex, _syn, "코스피(반도체 제외)", "cwrap_ex")
 
     st.divider()
 

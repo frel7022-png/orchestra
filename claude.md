@@ -121,6 +121,7 @@ ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-
 fix_sector.py                  # 보유종목 섹터만 안전하게 고치는 스크립트 (§1-7 참고, 2026-08-28 신설).
 db_fetch_daily_prices.py       # watchlist 종목 전체 시세/거래량/수급을 매일 Supabase에 적재하는 cron 스크립트 (§6-9, §6-12 참고).
 backfill_watchlist_from_holdings.py  # watchlist 밖의 보유종목을 찾아 자동 편입+시세 백필 (§6-16, 2026-09-01 신설).
+backfill_bigcap_history.py           # 삼성전자/삼성전자우/SK하이닉스 일별 종가 백필 — SamHynix extracted용 (§6-19, 2026-09-04 신설).
 tests/                            # pytest 회귀 테스트 (§6-11 참고).
 ```
 
@@ -147,6 +148,7 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
 | `checkpoint_state.csv` | transactions 재생 체크포인트 — 현금/자본 스냅샷(§6-14) | 체크포인트날짜, 예수금, 초기자본, fee_rate |
 | `dividend_cache.csv` | 배당수익률 캐시, 최초 1회만 조회 후 영구 재사용(§6-15) | 종목코드, 배당수익률, 배당기준월, 조회일 |
 | `index_history.csv` | 날짜별 코스피/코스닥 종가 — "지수 대비 계좌" 그래프용(§6-17) | 날짜, KOSPI, KOSDAQ |
+| `bigcap_history.csv` | 삼성전자/삼성전자우/SK하이닉스 일별 종가 — "SamHynix extracted"(§6-19) 합성지수용 | 날짜, 삼성전자, 삼성전자우, SK하이닉스 |
 | `stock_market_cache.csv` | 종목명→상장시장(KOSPI/KOSDAQ) 영구 캐시 — 물타기 성적표에서 종목별 지수 비교용(§6-17) | 종목명, 시장 |
 
 **Supabase(DB) 스키마는 §6-9/§6-12에 별도로 있음** — 로컬 CSV가 아니라 클라우드 DB라 여기 표에는 안 넣음.
@@ -837,3 +839,43 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
   이벤트를 "종목 외인flow − 시장 외인flow" 초과분으로 바꾸거나 시장 수치를 나란히 표시.
   `market_flow` + `compute_market_flow_baseline` 재사용, 혼합 비중은 §6-17 혼합지수 방식.
 - **new1 전용** — meritz엔 안 넣음(포프는 new1의 153+ 관심종목/Supabase 파이프라인에 묶임).
+
+### 6-19. "SamHynix extracted" — 코스피에서 대형 반도체를 덜어낸 지수 대비 계좌 (2026-09-04)
+- **동기**: 삼성전자 + 삼성전자우 + SK하이닉스 세 종목이 코스피 시가총액의 **절반 안팎**
+  (2026-09-04 기준: 삼성 ~28% + 삼성우 ~3% + 하이닉스 ~22% = **~52%**, ETF/ETN 제외 지수
+  시총 기준). 이 앱의 포트폴리오는 저부채/필수재 위주라 대형 반도체를 안 담는데, 그런
+  포트폴리오를 헤드라인 코스피와 대보는 건 사실상 "반도체 절반 펀드"와 비교하는 셈이라
+  왜곡됨. → 혼합지수(§6-17)의 코스피 다리만 "코스피 ex-삼성·삼성우·하이닉스"로 갈아끼운
+  버전을 나란히 보여준다. **내 주식·내 계좌 선은 그대로**(삼성전자 1주뿐이라 무의미) —
+  바뀌는 건 벤치와 RP.
+- **위치**: 거래 기록 탭, "지수 대비 계좌" 바로 밑 `SamHYnix extracted` expander. 메인과
+  **완전히 같은 렌더러**(`ui_transactions_tab._render_iva_panel()`, 4줄 표 + RP 2줄 +
+  스와이프 캐러셀) 공유 — '코스피' 표시 라벨만 '코스피(반도체 제외)'로 바뀌고 dict 키·계산은
+  동일. 캐러셀 DOM id는 `cwrap`/`cwrap_ex`로 분리(둘 다 별도 iframe이라 사실 안 겹치지만
+  명시).
+- **합성 지수 계산** (`portfolio_core.synthetic_kospi_ex_bigcap(index_hist, bigcap_hist)`):
+  `index_hist`의 KOSPI 열을 아래 합성 레벨로 바꾼 사본을 돌려주고, 그 사본을 그냥
+  `compute_index_vs_account`에 넘기면 코스피 다리·혼합지수·RP가 전부 "반도체 제외"로 계산됨
+  (별도 계산기 안 만듦).
+  - 일별 `r_ex = (r_kospi − Σ wᵢ·rᵢ) / (1 − Σ wᵢ)`, `wᵢ(t) = sharesᵢ·closeᵢ(t) / TOTAL(t)`,
+    `TOTAL(t) = TOTAL0 · KOSPI(t)/KOSPI0`. 첫날 레벨 = 원본 KOSPI 첫날 값(누적 앵커 동일).
+  - 상수: `_BIGCAP_SHARES`(상장주식수), `_KOSPI_MKTCAP_ANCHOR = (6645.0, 5.40e15)` —
+    ETF/ETN 제외 추정 지수 시총. **증자/자사주 소각으로 주식수가 변하니 분기에 한 번
+    갱신 권장**(네이버에서 시총·상장주식수 다시 확인). 근사치라는 걸 전제로 씀(KRX 공식
+    "반도체 제외 지수"가 아님).
+  - bigcap_hist가 비면 원본 그대로 반환(폴백 = 그냥 코스피와 동일).
+- **데이터**: `bigcap_history.csv`(날짜, 삼성전자, 삼성전자우, SK하이닉스 종가). 백필
+  `python backfill_bigcap_history.py`(재실행 가능, index_history 시작일부터 빠진 날짜만).
+  일별 갱신은 `app.py` 새로고침 핸들러에서 `snapshot_bigcap_history(fetch_bigcap_quotes())`
+  — `snapshot_index_history` 바로 뒤. `index_history.csv`류와 같은 로컬 CSV라 세션이
+  git commit/push(다른 데이터 파일과 함께).
+- **읽는 법 / 주의**: 최근엔 반도체가 코스피를 떠받쳐서 "코스피 ex-반도체"가 헤드라인보다
+  **더 많이 빠져 있음**(2026-09-04: 코스피 -4.4% vs ex -6.2%) → 내 주식·내 계좌의
+  **초과수익(%p)과 4줄 표 빨강/파랑**은 이 버전에서 더 유리하게 나옴. 그런데 **RP는 오히려
+  더 낮게** 나올 수 있음 — ex 지수는 `1/(1−W)≈2.1x`로 변동성이 증폭돼서, 같은 절대
+  초과수익이라도 "시장 변동폭의 몇 배"로는 작아지기 때문(RP 정의상 정상. 판단은 %p·표 색을
+  같이 볼 것).
+- **함수**(`portfolio_core.py`): `load/save/snapshot_bigcap_history`, `fetch_bigcap_quotes`,
+  `synthetic_kospi_ex_bigcap`. 회귀 테스트 3개(`test_synthetic_kospi_ex_bigcap_*`: 앵커·폴백,
+  대형주 flat이면 나머지 증폭, 대형주가 지수와 똑같이 움직이면 ex 지수 불변).
+- **new1 전용** (meritz 미적용 — 요청 없었음).

@@ -926,3 +926,42 @@ def test_fop_empty_inputs_return_zero_events():
     assert r["n_events"] == 0
     assert r["recent_events"] == []
     assert all(h["n"] == 0 for h in r["horizons"].values())
+
+
+# --- SamHynix extracted (§6-19): synthetic_kospi_ex_bigcap --- #
+def _bigcap_df(rows):
+    """rows: [(날짜, 삼성전자, 삼성전자우, SK하이닉스)] → load_bigcap_history 형태."""
+    return pd.DataFrame(rows, columns=["날짜", "삼성전자", "삼성전자우", "SK하이닉스"])
+
+
+def test_synthetic_kospi_ex_bigcap_anchor_and_fallback():
+    idx = pd.DataFrame({"날짜": ["2026-08-14", "2026-08-18"],
+                        "KOSPI": [6900.0, 6800.0], "KOSDAQ": [800.0, 790.0]})
+    # bigcap 데이터 없음 → 원본 그대로
+    out = core.synthetic_kospi_ex_bigcap(idx, core.load_bigcap_history().iloc[0:0])
+    assert list(out["KOSPI"]) == [6900.0, 6800.0]
+    # 있어도 첫날 레벨은 원본 KOSPI 첫날 값에서 출발(누적 앵커 동일)
+    bg = _bigcap_df([("2026-08-14", 250000, 188000, 1600000),
+                     ("2026-08-18", 250000, 188000, 1600000)])
+    out2 = core.synthetic_kospi_ex_bigcap(idx, bg)
+    assert out2["KOSPI"].iloc[0] == 6900.0
+
+
+def test_synthetic_kospi_ex_bigcap_flat_bigcaps_amplify_the_rest():
+    # KOSPI +2%인데 삼성·삼성우·하이닉스는 그대로 → 나머지(=지수 ex-반도체)는 2%보다 더 올라야 함
+    idx = pd.DataFrame({"날짜": ["2026-08-14", "2026-08-18"],
+                        "KOSPI": [6000.0, 6120.0], "KOSDAQ": [800.0, 800.0]})
+    bg = _bigcap_df([("2026-08-14", 250000, 188000, 1600000),
+                     ("2026-08-18", 250000, 188000, 1600000)])
+    out = core.synthetic_kospi_ex_bigcap(idx, bg)
+    assert out["KOSPI"].iloc[1] > 6120.0
+
+
+def test_synthetic_kospi_ex_bigcap_identical_moves_leave_ex_index_unchanged():
+    # 3종목이 전부 KOSPI와 똑같이 +5% → 그 부분집합을 빼도 나머지 수익률은 그대로 +5%
+    idx = pd.DataFrame({"날짜": ["2026-08-14", "2026-08-18"],
+                        "KOSPI": [6000.0, 6300.0], "KOSDAQ": [800.0, 800.0]})
+    bg = _bigcap_df([("2026-08-14", 200000, 180000, 1600000),
+                     ("2026-08-18", 210000, 189000, 1680000)])  # 전부 ×1.05
+    out = core.synthetic_kospi_ex_bigcap(idx, bg)
+    assert out["KOSPI"].iloc[1] == pytest.approx(6300.0, rel=1e-6)
