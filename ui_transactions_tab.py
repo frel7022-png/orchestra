@@ -217,7 +217,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
 
         st.markdown(
             "<div style='font-size:10px;color:" + T["muted2"] + ";margin:2px 0 1px'>"
-            "RP (relative performance) — 0=시장과 동일, 양수=시장보다 잘함. 당일 뒤 (%p)는 혼합지수 대비 초과 수익</div>"
+            "RP (relative performance) — 0=시장과 동일, 양수=시장보다 잘함</div>"
             + _sens_line("내 주식", iva["sens_all"], iva["sens_recent"], iva["sens_today"], _excess("주식"))
             + _sens_line("내 계좌", iva["acct_sens_all"], iva["acct_sens_recent"], iva["acct_sens_today"], _excess("계좌")),
             unsafe_allow_html=True,
@@ -359,8 +359,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
   #{carousel_id} .track::-webkit-scrollbar {{ display:none; }}
   #{carousel_id} .slide {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always; }}
-  #{carousel_id} .dots {{ display:flex; justify-content:center; gap:7px; padding:4px 0 0; }}
-  #{carousel_id} .dot {{ width:7px; height:7px; border-radius:50%; background:{T['muted2']};
+  #{carousel_id} .dots {{ display:flex; justify-content:center; gap:10px; padding:5px 0 0; }}
+  #{carousel_id} .dot {{ width:9px; height:9px; border-radius:50%; background:{T['muted2']};
     opacity:.3; transition:opacity .18s, background .18s; }}
   #{carousel_id} .dot.on {{ opacity:1; background:{T['text']}; }}
 </style>
@@ -373,6 +373,19 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
       dots.forEach(function(d, j) {{ d.classList.toggle('on', j === i); }});
     }}
     track.addEventListener('scroll', sync, {{passive: true}});
+    // PC(마우스)에선 스와이프가 안 되므로 점을 눌러서 전환 + 좌우 화살표 키
+    dots.forEach(function(d, j) {{
+      d.style.cursor = 'pointer';
+      d.addEventListener('click', function() {{
+        track.scrollTo({{left: j * track.clientWidth, behavior: 'smooth'}});
+      }});
+    }});
+    track.setAttribute('tabindex', '0');
+    track.addEventListener('keydown', function(e) {{
+      var cur = Math.round(track.scrollLeft / Math.max(track.clientWidth, 1));
+      if (e.key === 'ArrowRight') track.scrollTo({{left: (cur + 1) * track.clientWidth, behavior: 'smooth'}});
+      if (e.key === 'ArrowLeft') track.scrollTo({{left: (cur - 1) * track.clientWidth, behavior: 'smooth'}});
+    }});
     function rz() {{
       var w = document.querySelector('#{carousel_id} .track').clientWidth;
       if (!w) return;
@@ -394,17 +407,45 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                                     state.get("fee_rate", 0.0), kospi_weight=wk)
     _render_iva_panel(iva, idx_hist, "코스피", "cwrap")
 
+    # ---- 코스피 추이: 일반(빨강) vs 삼성전자·삼성전자우·SK하이닉스 제외(파랑), 그래프 시작일 기준 ----
+    _bg_k = load_bigcap_history()
+    if not idx_hist.empty and not _bg_k.empty:
+        _ih = idx_hist.sort_values("날짜")
+        _sh = synthetic_kospi_ex_bigcap(idx_hist, _bg_k).sort_values("날짜")
+        _base_k = float(pd.to_numeric(_ih["KOSPI"], errors="coerce").iloc[0])
+        st.markdown("##### 코스피 추이", unsafe_allow_html=True)
+        fig_k = go.Figure()
+        fig_k.add_trace(go.Scatter(
+            x=_ih["날짜"], y=pd.to_numeric(_ih["KOSPI"], errors="coerce") / _base_k - 1.0,
+            name="코스피", mode="lines", line=dict(color=UP_COLOR, width=1.8),
+            hovertemplate="<b>코스피</b> %{y:+.2%}<extra></extra>"))
+        fig_k.add_trace(go.Scatter(
+            x=_sh["날짜"], y=pd.to_numeric(_sh["KOSPI"], errors="coerce") / _base_k - 1.0,
+            name="반도체 제외", mode="lines", line=dict(color=DOWN_COLOR, width=1.8),
+            hovertemplate="<b>반도체 제외</b> %{y:+.2%}<extra></extra>"))
+        fig_k.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
+        fig_k.update_layout(
+            height=210, margin=dict(l=42, r=8, t=6, b=24),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=T["text"], size=11),
+            legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0, font=dict(size=10)),
+            hovermode="x unified",
+            hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"],
+                            font=dict(size=11, color=T["text"])),
+            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=".1%",
+                       tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+            dragmode=False,
+        )
+        st.plotly_chart(fig_k, use_container_width=True, config={"displayModeBar": False})
+
     # ---- SamHynix extracted (§6-19): 혼합지수의 코스피 다리를 '삼성전자·삼성전자우·SK하이닉스
-    #      제외 코스피'로 바꾼 버전. 이 3종목이 코스피 시총의 ~52%라, 반도체를 안 담는
-    #      포트폴리오엔 헤드라인 코스피가 불리한 벤치 — 반도체 빼고 다시 비교한다. ----
+    #      제외 코스피'로 바꾼 버전. ----
     with st.expander("SamHYnix extracted", expanded=False):
-        st.caption("혼합지수의 코스피 다리를 '삼성전자·삼성전자우·SK하이닉스 제외 코스피'로 "
-                   "바꾼 버전. 이 세 종목이 코스피 시총의 절반 안팎이라 헤드라인 코스피는 "
-                   "반도체를 안 담는 포트폴리오엔 불리한 벤치야.")
+        st.caption("혼합지수의 '삼성전자, 삼성전자우, SK하이닉스 제외 코스피' 반영")
         _bg = load_bigcap_history()
         if _bg.empty:
-            st.caption("bigcap_history.csv가 비어있어요 — "
-                       "`python backfill_bigcap_history.py` 실행 후 다시 열어주세요.")
+            st.caption("bigcap_history.csv 비어있음 — `python backfill_bigcap_history.py` 먼저.")
         else:
             _syn = synthetic_kospi_ex_bigcap(idx_hist, _bg)
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
