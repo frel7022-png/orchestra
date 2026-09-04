@@ -20,6 +20,7 @@ from portfolio_core import (
     snapshot_bigcap_history, fetch_bigcap_quotes,
     refresh_all_prices, fetch_index_quotes, refresh_dividend_yields, refresh_market_cache,
     compute_metrics, compute_sector_weights,
+    compute_index_vs_account, load_index_history, load_history, append_capture_anomalies,
 )
 from ui_portfolio_tab import render_portfolio_tab
 from ui_transactions_tab import render_transactions_tab
@@ -435,6 +436,14 @@ if refresh_clicked_top or auto_refresh_triggered:
         if iq.get("KOSPI") and iq.get("KOSDAQ"):
             snapshot_index_history(iq["KOSPI"].get("price"), iq["KOSDAQ"].get("price"))
         snapshot_bigcap_history(fetch_bigcap_quotes())  # 삼성전자/삼성전자우/SK하이닉스 종가 (§6-19 SamHynix extracted)
+        # §6-17 국면막대: 시장이 사실상 안 움직인 날(|벤치당일|<0.001) → report/capture_anomalies.csv에
+        # 누적 기록(월단위 수동 검토용). 새로고침 때만, 매 렌더링 아님. 코스피 단독 기준으로 충분(무변동 판정).
+        try:
+            _iva_a = compute_index_vs_account(tx, load_history(), load_index_history(), state["initial"],
+                                              state.get("fee_rate", 0.0))
+            append_capture_anomalies(_iva_a.get("cap_anomalies", []))
+        except Exception:
+            pass
     if refresh_report["updated"]:
         st.toast(f"{refresh_report['updated']}개 종목 시세 갱신 완료")
     if refresh_report["unresolved"]:
