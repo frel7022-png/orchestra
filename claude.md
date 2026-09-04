@@ -878,4 +878,7 @@ tests/                            # pytest 회귀 테스트 (§6-11 참고).
 - **함수**(`portfolio_core.py`): `load/save/snapshot_bigcap_history`, `fetch_bigcap_quotes`,
   `synthetic_kospi_ex_bigcap`. 회귀 테스트 3개(`test_synthetic_kospi_ex_bigcap_*`: 앵커·폴백,
   대형주 flat이면 나머지 증폭, 대형주가 지수와 똑같이 움직이면 ex 지수 불변).
+- **"코스피 추이" 라인차트** (2026-09-04 추가): "지수 대비 계좌" 패널 바로 밑. 일반 코스피
+  (빨강) vs 반도체 제외 코스피(파랑), 그래프 시작일 기준 0. `SamHYnix extracted` expander는
+  그 밑. 캐러셀(§6-17)은 점 클릭 + 좌우 화살표 키로도 넘어감(PC는 스와이프 불가).
 - **new1 전용** (meritz 미적용 — 요청 없었음).
