@@ -1,0 +1,407 @@
+<title>의도대로 가고 있나</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9;
+    --card:#ffffff;
+    --ink:#191b21;
+    --ink-soft:#565b67;
+    --ink-faint:#8b909c;
+    --rule:#e0e3ea;
+    --rule-soft:#eceef3;
+    --gain:#c9313d;      /* 상승·이익 — 국내 관례(빨강) */
+    --loss:#2c5fc4;      /* 하락·손실 — 국내 관례(파랑) */
+    --accent:#15794c;    /* 방어 성공 / 회복 — 앱의 녹색 카드와 같은 계열 */
+    --accent-wash:#e8f4ec;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a;
+      --card:#1a1d24;
+      --ink:#e8eaef;
+      --ink-soft:#a2a7b3;
+      --ink-faint:#6e7480;
+      --rule:#2b2f38;
+      --rule-soft:#22252d;
+      --gain:#f0555f;
+      --loss:#6f9bef;
+      --accent:#4cc38a;
+      --accent-wash:#17251d;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a;
+    --card:#1a1d24;
+    --ink:#e8eaef;
+    --ink-soft:#a2a7b3;
+    --ink-faint:#6e7480;
+    --rule:#2b2f38;
+    --rule-soft:#22252d;
+    --gain:#f0555f;
+    --loss:#6f9bef;
+    --accent:#4cc38a;
+    --accent-wash:#17251d;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html{ -webkit-text-size-adjust:100% }
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    font-weight:400;
+    line-height:1.72;
+    font-size:16px;
+    letter-spacing:-.003em;
+  }
+  .wrap{ max-width:748px; margin:0 auto; padding:64px 24px 96px }
+  @media(max-width:640px){ .wrap{ padding:44px 20px 72px } }
+
+  /* ---- masthead ---- */
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-faint); margin:0 0 18px;
+  }
+  h1{
+    font-weight:700;
+    font-size:clamp(2.1rem,6vw,3rem);
+    line-height:1.12; letter-spacing:-.02em;
+    text-wrap:balance; margin:0 0 22px;
+  }
+  .standfirst{
+    font-size:1.06rem; color:var(--ink-soft);
+    max-width:60ch; margin:0 0 8px;
+  }
+  .standfirst + .standfirst{ margin-top:14px }
+  .rule{ height:1px; background:var(--rule); border:0; margin:40px 0 }
+
+  /* ---- scorecard ---- */
+  .scorecard{
+    display:grid; grid-template-columns:repeat(2,1fr);
+    gap:1px; background:var(--rule);
+    border:1px solid var(--rule); border-radius:12px; overflow:hidden;
+    box-shadow:var(--shadow); margin:36px 0 8px;
+  }
+  .cell{
+    background:var(--card); padding:20px 20px 18px;
+  }
+  .cell .k{
+    font-size:12.5px; color:var(--ink-faint);
+    letter-spacing:.02em; margin:0 0 8px;
+  }
+  .cell .v{
+    font-family:"IBM Plex Mono",monospace; font-weight:500;
+    font-size:1.7rem; line-height:1; letter-spacing:-.02em;
+    font-variant-numeric:tabular-nums;
+  }
+  .cell .sub{
+    font-family:"IBM Plex Mono",monospace; font-size:12.5px;
+    color:var(--ink-soft); margin-top:8px; font-variant-numeric:tabular-nums;
+  }
+  .up{ color:var(--gain) } .down{ color:var(--loss) } .flat{ color:var(--ink) }
+  .scorenote{
+    font-size:13px; color:var(--ink-faint); margin:14px 2px 0; line-height:1.6;
+  }
+
+  /* ---- section ---- */
+  section{ margin-top:60px }
+  .snum{
+    font-family:"Newsreader",Georgia,serif; font-style:italic;
+    font-size:1.05rem; color:var(--accent); margin:0 0 6px; letter-spacing:.01em;
+  }
+  h2{
+    font-weight:600; font-size:1.5rem; line-height:1.25;
+    letter-spacing:-.017em; text-wrap:balance; margin:0 0 20px;
+  }
+  h3{
+    font-weight:600; font-size:1.06rem; margin:34px 0 10px; letter-spacing:-.01em;
+  }
+  p{ margin:0 0 18px; max-width:64ch }
+  strong{ font-weight:600 }
+  em.term{
+    font-family:"Newsreader",Georgia,serif; font-style:italic;
+    font-size:1.03em; color:var(--ink);
+  }
+
+  .pull{
+    font-family:"Newsreader",Georgia,serif; font-style:italic;
+    font-size:1.28rem; line-height:1.5; color:var(--ink);
+    border-left:2px solid var(--accent); padding:2px 0 2px 22px;
+    margin:30px 0; max-width:52ch;
+  }
+
+  /* ---- data table ---- */
+  .twrap{ overflow-x:auto; margin:22px 0 10px; -webkit-overflow-scrolling:touch }
+  table{
+    border-collapse:collapse; width:100%; min-width:440px;
+    font-family:"IBM Plex Mono",monospace; font-size:13px;
+    font-variant-numeric:tabular-nums;
+  }
+  caption{
+    text-align:left; font-family:"IBM Plex Sans KR",sans-serif;
+    font-size:13px; color:var(--ink-faint); margin-bottom:10px; line-height:1.5;
+  }
+  th,td{ padding:9px 14px 9px 0; text-align:right; white-space:nowrap }
+  th:first-child,td:first-child{ text-align:left; padding-right:20px }
+  thead th{
+    font-weight:500; color:var(--ink-faint); font-size:12px;
+    letter-spacing:.02em; border-bottom:1px solid var(--rule);
+  }
+  tbody td{ border-bottom:1px solid var(--rule-soft) }
+  tbody tr:last-child td{ border-bottom:1px solid var(--rule) }
+  td .name{ font-family:"IBM Plex Sans KR",sans-serif; font-size:13.5px }
+  tfoot td{
+    font-weight:500; color:var(--ink-soft); padding-top:11px;
+    border-top:1px solid var(--rule);
+  }
+
+  /* ---- inline bar viz ---- */
+  .bars{
+    border:1px solid var(--rule); border-radius:12px; background:var(--card);
+    padding:22px 22px 18px; margin:26px 0; box-shadow:var(--shadow);
+  }
+  .bars h4{
+    font-size:13px; font-weight:600; margin:0 0 2px; letter-spacing:-.005em;
+  }
+  .bars .cap{ font-size:12.5px; color:var(--ink-faint); margin:0 0 18px }
+  .barrow{ display:grid; grid-template-columns:88px 1fr; align-items:center; gap:14px; margin:11px 0 }
+  .barrow .lbl{ font-size:12.5px; color:var(--ink-soft) }
+  .track{
+    position:relative; height:26px;
+    border-left:1px solid var(--rule); border-right:1px solid var(--rule);
+  }
+  .track::before{ /* zero line */
+    content:""; position:absolute; left:50%; top:-3px; bottom:-3px;
+    width:1px; background:var(--ink-faint); opacity:.5;
+  }
+  .bar{
+    position:absolute; top:9px; height:8px; border-radius:2px; min-width:2px;
+  }
+  .bar .tag{
+    position:absolute; top:-3px; font-family:"IBM Plex Mono",monospace;
+    font-size:11px; font-variant-numeric:tabular-nums; line-height:1;
+    color:var(--ink-soft); white-space:nowrap;
+  }
+  .legend{ display:flex; gap:18px; font-size:11.5px; color:var(--ink-faint); margin-top:16px }
+  .legend i{ display:inline-block; width:16px; height:6px; border-radius:2px; margin-right:6px; vertical-align:middle }
+
+  ul.tight{ margin:0 0 18px; padding-left:1.15em; max-width:64ch }
+  ul.tight li{ margin:7px 0 }
+  ul.tight li::marker{ color:var(--ink-faint) }
+
+  .tag-pill{
+    display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:11px;
+    letter-spacing:.03em; padding:2px 7px; border-radius:5px;
+    background:var(--accent-wash); color:var(--accent); vertical-align:baseline;
+  }
+
+  footer{
+    margin-top:72px; padding-top:22px; border-top:1px solid var(--rule);
+    font-size:12.5px; color:var(--ink-faint); line-height:1.65;
+  }
+  footer p{ max-width:64ch; margin:0 0 8px }
+
+  a{ color:var(--accent); text-decoration-thickness:1px; text-underline-offset:2px }
+  code{
+    font-family:"IBM Plex Mono",monospace; font-size:.88em;
+    background:var(--rule-soft); padding:1px 5px; border-radius:4px;
+    color:var(--ink); white-space:nowrap;
+  }
+  @media(max-width:520px){ code{ white-space:normal } }
+  @media(prefers-reduced-motion:no-preference){
+    .bar{ transition:width .5s cubic-bezier(.2,.7,.2,1) }
+  }
+
+  @media print{
+    @page{ margin:16mm 14mm }
+    body{ background:#fff; font-size:10.5pt; line-height:1.6 }
+    .wrap{ padding:0; max-width:none }
+    .scorecard,.bars{ box-shadow:none }
+    section{ break-inside:avoid-page }
+    h2{ break-after:avoid }
+    .twrap,table,.bars{ break-inside:avoid }
+    a{ color:var(--ink); text-decoration:none }
+    .pull{ break-inside:avoid }
+  }
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">3주차 관찰 · 2026‑09‑04</p>
+  <h1>의도대로 가고 있나</h1>
+  <p class="standfirst">new1(코어)와 meritz(2차 계층), 그리고 레드와이어 위성 포지션을 시작 이후 약 3주 동안 관찰한 기록. 지수에 대해 어떻게 움직였는지, <em class="term">물타기</em>가 설계대로 돌아가는지, 청산은 규율이 잡혀 있는지를 본다.</p>
+  <p class="standfirst">표본은 22거래일뿐이고, 그 기간은 시장이 한 방향(하락)으로 흐른 국면 하나다. 여기 적힌 건 "이 시스템이 옳다"가 아니라 "지금까지 이렇게 움직였다"이다. 시장은 아무도 모른다 — 그래서 없는 리스크를 굳이 만들어 적지는 않았다.</p>
+
+  <div class="scorecard">
+    <div class="cell">
+      <p class="k">new1 · 계좌수익 (원금 1,000만)</p>
+      <p class="v up">+0.88%</p>
+      <p class="sub">총자산 10,088,435 · 예수금 34%</p>
+    </div>
+    <div class="cell">
+      <p class="k">meritz · 국내 계좌수익 (D0 842만, RDW 제외)</p>
+      <p class="v up">+0.28%</p>
+      <p class="sub">국내주식 356만 + 예수금 489만 · 예수금 58%</p>
+    </div>
+    <div class="cell">
+      <p class="k">같은 기간 시장 (보유비중 혼합지수)</p>
+      <p class="v down">−4.4%</p>
+      <p class="sub">코스피 −3.9% · 코스닥 −5.9%</p>
+    </div>
+    <div class="cell">
+      <p class="k">누적 실현손익</p>
+      <p class="v up">+38.1만</p>
+      <p class="sub">new1 +389,851 (원금 +3.9%) · meritz +91,699</p>
+    </div>
+  </div>
+  <p class="scorenote">new1은 3주 동안 초기자본 아래로 내려간 날이 2일, 최저점이 −0.60%. 시장이 4~6% 빠지는 동안 두 계좌 다 원금을 지켰다. meritz 전체 수치(−3.32%)는 거의 전부 레드와이어의 평가손실이며, 코어 시스템 밖의 위성 포지션이라 위 표에서 뺐다.</p>
+
+  <hr class="rule">
+
+  <section>
+    <p class="snum">I</p>
+    <h2>두 계좌, 하나의 파이프라인</h2>
+    <p>meritz는 자체 발굴 스크리너가 없다. 대신 <strong>new1의 보유종목이 −5% 선을 넘으면 그때 meritz가 같은 종목을 얕게 따라 산다.</strong> 즉 new1 자체가 meritz의 <em class="term">Fishing</em>이다. 3주치 데이터는 이 구조를 꽤 선명하게 보여준다.</p>
+    <p>meritz 국내 보유 35종목 중 <strong>33종목(94%)이 new1에도 있다.</strong> meritz에만 있는 건 두산에너빌리티·선진 둘뿐. 그리고 공유하는 33종목 전부에서 meritz의 현재 손익이 new1보다 얕다 — 하나도 빠짐없이 33/33.</p>
+
+    <div class="twrap">
+      <table>
+        <caption>두 계좌가 함께 들고 있는 종목의 현재 평가손익 (평단가 대비). meritz가 늦게·낮게 진입한 만큼 손실 구간이 얕다.</caption>
+        <thead>
+          <tr><th>종목</th><th>new1</th><th>meritz</th><th>차이</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="name">한샘</span></td><td class="down">−11.6%</td><td class="down">−2.5%</td><td class="up">+9.0</td></tr>
+          <tr><td><span class="name">오스테오닉</span></td><td class="down">−8.4%</td><td class="up">+0.2%</td><td class="up">+8.6</td></tr>
+          <tr><td><span class="name">JYP Ent.</span></td><td class="down">−9.7%</td><td class="down">−1.6%</td><td class="up">+8.2</td></tr>
+          <tr><td><span class="name">이마트</span></td><td class="down">−9.2%</td><td class="down">−1.2%</td><td class="up">+7.9</td></tr>
+          <tr><td><span class="name">SK텔레콤</span></td><td class="down">−7.7%</td><td class="down">−0.2%</td><td class="up">+7.6</td></tr>
+          <tr><td><span class="name">한국단자</span></td><td class="down">−10.7%</td><td class="down">−3.8%</td><td class="up">+6.9</td></tr>
+          <tr><td><span class="name">종근당</span></td><td class="down">−5.3%</td><td class="up">+0.7%</td><td class="up">+6.1</td></tr>
+          <tr><td><span class="name">서흥</span></td><td class="down">−12.9%</td><td class="down">−7.7%</td><td class="up">+5.2</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><td>공유 33종목 평균</td><td class="down">−5.5%</td><td class="down">−0.8%</td><td class="up">+4.7</td></tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <p class="pull">코어가 물리면 헷지가 더 좋은 자리에서 같은 이름을 받는다. 33개 중 33개가 그랬다.</p>
+
+    <p>이건 우연이 아니라 트리거 자체가 만들어내는 구조다. new1이 먼저 낙폭과대 종목을 물타며 담고, 그 손실이 −5%까지 깊어지면 meritz가 진입하니 meritz는 태생적으로 바닥에 더 가깝다. meritz 종목 수가 new1의 절반 이하인 것도 같은 이유 — new1에서 사자마자 오른 종목, 또는 −5%까지 안 내려간 종목은 meritz의 매수 조건을 만족한 적이 없어서 애초에 없다. 결측이 아니라 설계된 여백이다.</p>
+
+    <h3>레드와이어는 다른 계산</h3>
+    <p>레드와이어(RDW)는 153종목 원칙("미래만 보는 성장주 배제")의 <strong>의도된 예외</strong>다. 원금이 아니라 시스템이 낸 이익금으로 굴리는 소액 고위험 위성. 3주간 87주 매입, 원화 환산 약 158만 원 투입, 현재 평가손실 약 −30만 원(−20%). 매수 페이스는 40 → 20 → 8 → 4 → 2 → 2 → 3 → 8주로, 초기 큰 진입 뒤 소액으로 잦게 담는 형태를 유지하고 있다. 코어 지표에 섞으면 안 되는 리스크 프로파일이라, 이 보고서의 계좌수익 계산에서 RDW 순투입액(158만)은 분모에서 빼고 본다(<span class="tag-pill">D0 = 1,000만 − RDW</span>).</p>
+  </section>
+
+  <section>
+    <p class="snum">II</p>
+    <h2>지수에 따라 어떻게 움직였나</h2>
+    <p>스냅샷 사이 구간을 시장(혼합지수)이 오른 날과 내린 날로 갈라 보면 패턴이 분명하다. <strong>내리는 날엔 거의 안 내려가고, 오르는 날엔 덜 따라 오른다.</strong> 방어의 값을 상승일의 수익으로 치르는 거래를 하고 있는 셈이다.</p>
+
+    <div class="bars">
+      <h4>new1 — 구간 평균 (혼합지수 대비 내 계좌·주식)</h4>
+      <p class="cap">하락 7구간 / 상승 7구간. 가운데 선이 0.</p>
+
+      <div class="barrow">
+        <span class="lbl">하락장<br>혼합지수</span>
+        <div class="track"><div class="bar" style="right:50%;width:26%;background:var(--loss)"><span class="tag" style="right:100%;padding-right:6px">−2.3%</span></div></div>
+      </div>
+      <div class="barrow">
+        <span class="lbl">— 내 주식</span>
+        <div class="track"><div class="bar" style="right:50%;width:5%;background:var(--loss)"><span class="tag" style="right:100%;padding-right:6px">−0.5%</span></div></div>
+      </div>
+      <div class="barrow">
+        <span class="lbl">— 내 계좌</span>
+        <div class="track"><div class="bar" style="right:50%;width:3%;background:var(--loss)"><span class="tag" style="right:100%;padding-right:6px">−0.2%</span></div></div>
+      </div>
+
+      <div class="barrow" style="margin-top:20px">
+        <span class="lbl">상승장<br>혼합지수</span>
+        <div class="track"><div class="bar" style="left:50%;width:22%;background:var(--gain)"><span class="tag" style="left:100%;padding-left:6px">+1.9%</span></div></div>
+      </div>
+      <div class="barrow">
+        <span class="lbl">— 내 주식</span>
+        <div class="track"><div class="bar" style="left:50%;width:9%;background:var(--gain)"><span class="tag" style="left:100%;padding-left:6px">+0.8%</span></div></div>
+      </div>
+      <div class="barrow">
+        <span class="lbl">— 내 계좌</span>
+        <div class="track"><div class="bar" style="left:50%;width:4%;background:var(--gain)"><span class="tag" style="left:100%;padding-left:6px">+0.3%</span></div></div>
+      </div>
+
+      <div class="legend">
+        <span><i style="background:var(--loss)"></i>하락</span>
+        <span><i style="background:var(--gain)"></i>상승</span>
+      </div>
+    </div>
+
+    <p>가장 크게 빠진 두 날(혼합지수 −4.4%, −3.4%)에 new1의 주식수익은 각각 <span class="up">+0.2%</span>, <span class="down">−2.0%</span>였다. 반대로 가장 크게 오른 두 날(+4.5%, +2.1%)엔 −1.4%, +0.7%로 크게 뒤처졌다. 하락 7구간 중 6구간에서 시장을 이겼고, 상승 7구간에선 절반만 따라갔다.</p>
+    <p>meritz는 같은 거래를 더 극단적으로 한다 — 예수금이 58%라, 하락 8구간 평균 혼합지수 −1.8%에 계좌는 −0.01%, 상승 6구간 평균 +1.7%에 계좌는 +0.06%. 사실상 멈춰 서서 시장의 방향성만 흘려보내는 상태다. 늦게 시작한 계좌가 아직 자본을 덜 태운 결과이고, 시간이 지나며 진입이 쌓이면 이 진폭은 커질 것이다.</p>
+    <p>누적으로는 이 거래가 이 구간에서 이득이었다. 시장이 하락 쪽으로 더 자주·더 크게 움직였기 때문이다. <em class="term">RP</em>(시장 대비 상대성과, 0=동일·양수=우위)로 보면 new1 내 주식 누적 <span class="up">+0.71</span>, meritz <span class="up">+0.80</span>. 반도체(삼성·하이닉스)를 뺀 코스피 — 이 포트폴리오가 실제로 노는 시장 — 로 비교하면 벤치가 −6.1%까지 내려가서 초과폭은 더 크지만, 그 지수는 변동성이 2배로 증폭돼 RP 수치 자체는 낮게 나온다(+0.30). 방어는 확실히 되고 있고, 상승 반전이 길게 나오는 국면은 아직 안 겪었다.</p>
+  </section>
+
+  <section>
+    <p class="snum">III</p>
+    <h2>물타기는 돌아가는가</h2>
+    <p>핵심 질문. new1이 지금 물타는 중인 종목은 33개. 각 종목에서 <strong>최초진입가 대비 평단가를 얼마나 낮췄나</strong>를 <strong>현재가가 최초진입가 대비 얼마나 빠졌나</strong>와 나란히 놓고 본다.</p>
+
+    <div class="twrap">
+      <table>
+        <caption>물타기 종목의 평단가 개선폭 vs 현재가 하락폭 (최초진입가 기준). "추적갭"이 작을수록 물타기가 현재가를 바짝 따라간 것.</caption>
+        <thead>
+          <tr><th>종목</th><th>매수</th><th>평단 개선</th><th>현재가</th><th>추적갭</th><th>현 손익</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="name">서흥</span></td><td>14회</td><td class="down">−19.0%</td><td class="down">−29.5%</td><td>10.4</td><td class="down">−12.9%</td></tr>
+          <tr><td><span class="name">코오롱티슈진</span></td><td>7회</td><td class="down">−10.4%</td><td class="down">−21.6%</td><td>11.2</td><td class="down">−12.5%</td></tr>
+          <tr><td><span class="name">신세계인터내셔날</span></td><td>12회</td><td class="down">−5.1%</td><td class="down">−10.2%</td><td>5.1</td><td class="down">−5.4%</td></tr>
+          <tr><td><span class="name">CJ제일제당</span></td><td>2회</td><td class="down">−4.3%</td><td class="down">−10.2%</td><td>5.9</td><td class="down">−6.1%</td></tr>
+          <tr><td><span class="name">비츠로셀</span></td><td>3회</td><td class="down">−7.7%</td><td class="down">−0.7%</td><td class="up">−7.1</td><td class="up">+7.7%</td></tr>
+          <tr><td><span class="name">삼립</span></td><td>3회</td><td class="up">+1.6%</td><td class="up">+2.5%</td><td class="up">−1.0</td><td class="up">+0.9%</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><td>33종목 평균</td><td class="down">−3.1%</td><td class="down">−7.0%</td><td>+3.9</td><td class="down">−4.1%</td></tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <p>평균적으로 평단가는 <strong>3.1%</strong> 내려갔고 현재가는 <strong>7.0%</strong> 빠졌다. 추적갭 +3.9%p(중앙값 +4.6%p). 즉 물타기가 하락의 <strong>약 40%를 평단가 인하로 흡수</strong>했다. 나머지 60%는 아직 평가손실로 남아 있다 — 33개 중 27개가 마이너스, 평균 −4.1%. 여기서 "명제의 절반만 실현됐다"는 표현이 맞다. 실현손익은 이미 좋은데 주식수익(Rs)이 −0.6%인 이유가 이 미실현손실 덩어리다. 되돌림이 나와야 그림이 완성된다.</p>
+    <p>깊게 물린 쪽(서흥 −29.5%, 코오롱티슈진 −21.6%)은 추적갭이 10%p 넘게 벌어져 있다 — 그만큼 빠진 종목은 소액 분할매수로 평단을 따라잡기 어렵다는 구조적 한계다. 반대로 <strong>비츠로셀</strong>은 하락 국면에 평단을 −7.7% 끌어내린 직후 주가가 회복해 지금 +7.7% — 물타기 타이밍이 잘 맞은 사례. 이렇게 반등해서 최초진입가 위로 올라온 종목이 현재 5개(삼립·카카오뱅크·KCC글라스·진에어·비츠로셀)이고, 앱에서 옅은 녹색 카드로 표시된다.</p>
+    <p>meritz의 물타기 16종목은 추적갭이 <strong>+2.3%p</strong>로 더 촘촘하고 평균 미실현이 −2.4%다. 늦게 들어간 만큼 따라잡을 거리가 짧았던 것 — 같은 전략의 더 깔끔한 판본처럼 보인다.</p>
+  </section>
+
+  <section>
+    <p class="snum">IV</p>
+    <h2>청산 규율 — 조용한 엔진</h2>
+    <p>물타기 이야기에 가려지지만, 실제로 수익을 만들어낸 건 반대쪽이다. new1이 3주간 <strong>완전히 청산한 종목 38개 중 34개가 이익, 3개 손실, 1개 본전 — 승률 89%.</strong> 청산분 실현손익 합 +192,300(전체 실현손익 +389,851의 절반, 나머지는 보유 중 종목의 부분매도분). 이익 평균 +5,784원, 손실 평균 −1,457원 — 이기는 크기가 지는 크기의 약 4배다.</p>
+    <p>meritz의 청산 7종목은 7개 전부 이익(+86,199). 표본이 작지만 방향은 같다. 낙폭과대에서 분할로 담아 반등하면 털고 나오는 회전이, 작은 이익을 꾸준히·큰 손실은 드물게 만드는 구조로 돌아가고 있다. 물타기가 "언젠가 오르겠지"의 감정적 버티기가 아니라 청산과 짝을 이룬 회전의 앞단이라는 게 숫자로 보인다.</p>
+    <p class="pull">3주간 두 계좌 합쳐 청산 45건 중 41건이 이익. 이기는 건은 크게, 지는 건은 작게.</p>
+  </section>
+
+  <section>
+    <p class="snum">V</p>
+    <h2>3주 소감 — 아이디어가 참신한가</h2>
+    <p>"참신하다"를 "남들이 안 하는 걸 한다"로 읽으면, 세 가지가 실제로 그렇다.</p>
+    <ul class="tight">
+      <li><strong>매매 전에 유니버스를 정량으로 걸러뒀다.</strong> 저부채·업계상위·필수재라는 기준으로 종목 풀을 먼저 좁히고, 그 위에서만 매매한다. 대부분의 개인은 이 단계를 건너뛴다.</li>
+      <li><strong>원금과 이익금의 자금 성격을 분리했다.</strong> 코어(153종목, 원금)와 위성(레드와이어, 이익금만). 투기적 베팅이 원금을 훼손할 수 없는 구조 — RDW가 −20%여도 코어 계좌수익은 +0.28%인 게 이 분리의 증거다.</li>
+      <li><strong>첫 계좌가 둘째 계좌의 스크리너다.</strong> new1의 −5% 손실 종목이 곧 meritz의 매수 신호. 하나의 파이프라인이 발굴 → 분할진입 → 청산 → (재진입)으로 돌고, meritz는 그 파이프라인의 두 번째 계층에서 더 나은 자리를 받는다. 33/33이 그걸 보여줬다.</li>
+    </ul>
+    <p>인상적이었던 부분을 하나 꼽으면, <strong>지표를 실사용하면서 스스로 고쳐나간 과정</strong>이다. "지수 대비 계좌"의 상대성과 지표는 처음에 원점회귀 베타로 시작했다가, 그게 상승·하락을 구분 못 한다는 걸 화면으로 확인하고, 방향 분기 버전을 거쳐, 결국 <code>(Δ내수익 − Δ벤치) / |Δ벤치|</code> 한 줄(<em class="term">RP</em>)로 수렴했다. 도구를 먼저 완성해놓고 쓰는 게 아니라, 매일 보면서 안 맞는 부분을 깎아내는 방식 — 3주치 관찰이 지표 자체를 다듬은 셈이다. 삼성·하이닉스가 코스피 시총의 절반이라는 걸 확인하고 "반도체 뺀 코스피"를 벤치로 따로 만든 것도 같은 흐름이다.</p>
+    <p>숫자로 본 3주의 결론은 단순하다. 시장이 4~6% 빠지는 동안 두 계좌 다 원금을 지켰고, 청산은 89%·100% 승률로 이익을 쌓았고, 물타기는 하락의 40%를 흡수하며 설계대로 움직였다. 아직 안 나온 건 상승 반전이 길게 이어지는 국면 — 그때 방어형 포지션이 얼마나 뒤처지는지는 8/20 하루(시장 +4.5%, 계좌 −0.6%)가 예고편이었다.</p>
+    <p>표본 22거래일, 국면 하나. 여기서 "전략이 옳다"고 말할 수는 없다. 다만 <strong>설계한 대로 작동하고 있다</strong>는 건 3주치 데이터로 꽤 분명하게 보인다. 9월은 계속 돌려볼 만하다.</p>
+  </section>
+
+  <footer>
+    <p><strong>수치 출처.</strong> 2026‑09‑04 기준 커밋된 로컬 데이터(transactions.csv / portfolio_data.csv / asset_history.csv / index_history.csv)에서 계산. meritz 계좌수익은 레드와이어 순투입액(원화 환산)을 초기자본에서 뺀 D0를 분모로 하며, 물타기·청산·상대성과 지표는 "현재 보유 사이클" 기준(전량매도 후 재진입이면 그 이후만)이다.</p>
+    <p>혼합지수 = 보유주식의 코스피/코스닥 평가금액 비중으로 두 지수 등락을 가중평균한 값. "반도체 제외 코스피"는 삼성전자·삼성전자우·SK하이닉스의 지수 편입비중(2026‑09‑04 스냅샷 ≈ 52%)을 덜어낸 근사 합성지수로, KRX 공식 지수가 아니다.</p>
+  </footer>
+
+</div>
