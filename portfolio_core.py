@@ -1781,37 +1781,40 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
     #   예) 벤치 +2%: 내 +4% → +1, 내 +2% → 0, 내 −2% → −2
     #       벤치 −2%: 내 −2% → 0, 내 0% → +1, 내 −4% → −1
     # = "시장이 X% 움직일 때 나는 그보다 몇 배 더/덜 했나"(정규화 초과수익). 표시는 ±3으로 자름.
-    # 누적/5일은 구간별 점수의 중앙값(median — 벤치가 0 근처인 날 값 폭발을 이상치로 흘림).
+    #
+    # RP(창) = (내 창-누적수익 − 벤치 창-누적수익) / |벤치 창-누적수익|.
+    #   당일 = 최근 1구간 / 5일 = 최근 beta_window구간(복리 누적) / 누적 = 앵커부터.
+    # 셋 다 같은 식을 다른 지평에서 본 것이다. 예전엔 당일 점수를 median 낸 게 5일·누적이었는데,
+    # 비율은 평균이 성립하지 않으므로(평균(aᵢ/bᵢ) ≠ Σaᵢ/Σbᵢ) 창 누적수익으로 직접 계산하게
+    # 바꿨다(2026-09-04, 사용자 지적). 벤치 창-누적이 ±GUARD보다 작으면(분모 폭발) 그 지점 None.
     CLAMP = 3.0
-    dbe = me["벤치당일"].values           # = 벤치누적.diff() (index 0은 NaN)
+    GUARD = 0.003
+    _bc = me["벤치누적"].values           # 벤치 앵커 대비 누적수익(소수), index 0 = 0
 
-    def _interval_score(dm, db):
-        if pd.isna(dm) or pd.isna(db) or abs(db) < 1e-9:
-            return None
-        return min(max((dm - db) / abs(db), -CLAMP), CLAMP)
-
-    def _median(vals):
-        v = sorted(x for x in vals if x is not None)
-        if not v:
-            return None
-        n = len(v)
-        return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2.0
-
-    def _sens_cols(dser):
-        """dser(주식수익.diff() 또는 계좌수익.diff())로 누적/5일/당일 상대성과 시계열 3개."""
-        dm = dser.values
-        scores = [None] + [_interval_score(dm[i], dbe[i]) for i in range(1, len(me))]
-        all_c, rec_c, tod_c = [None], [None], [None]
-        for i in range(1, len(me)):
-            win = [x for x in scores[1:i + 1] if x is not None]
-            rec = [x for x in scores[max(1, i + 1 - beta_window):i + 1] if x is not None]
-            all_c.append(_median(win) if len(win) >= 3 else None)
-            rec_c.append(_median(rec) if len(rec) >= 3 else None)
-            tod_c.append(scores[i])
+    def _rp_cols(mine_cum):
+        """내 누적수익 시계열(주식수익 또는 계좌수익) → (누적, 5일, 당일) RP 시계열 3개.
+        각 창에서 벤치·내 누적수익의 변화를 먼저 구한 뒤 한 번 나눈다(비율의 평균이 아님)."""
+        n = len(me)
+        all_c = [None] * n
+        rec_c = [None] * n
+        tod_c = [None] * n
+        for i in range(1, n):
+            for out, j, need in ((all_c, 0, 3),
+                                  (rec_c, max(0, i - beta_window), 3),
+                                  (tod_c, i - 1, 1)):
+                if i - j < need:
+                    continue
+                b = _bc[i] - _bc[j]                    # 벤치 창-누적수익 변화
+                # 누적(j=0)은 표에 뜨는 내 누적수익 값을 그대로 — 사용자가 그 값으로 RP를 읽는다.
+                # 5일·당일은 창 양끝 차이라 앵커 오프셋이 상쇄된다.
+                m = mine_cum[i] if j == 0 else mine_cum[i] - mine_cum[j]
+                if pd.isna(b) or pd.isna(m) or abs(b) < GUARD:
+                    continue
+                out[i] = min(max((m - b) / abs(b), -CLAMP), CLAMP)
         return all_c, rec_c, tod_c
 
-    s_all_col, s_rec_col, s_tod_col = _sens_cols(me["주식수익"].diff())        # 내 주식(Rs)
-    a_all_col, a_rec_col, a_tod_col = _sens_cols(me["계좌수익"].diff())        # 내 계좌(예수금 포함)
+    s_all_col, s_rec_col, s_tod_col = _rp_cols(me["주식수익"].values)          # 내 주식(Rs)
+    a_all_col, a_rec_col, a_tod_col = _rp_cols(me["계좌수익"].values)          # 내 계좌(예수금 포함)
 
     # float64로 못박음 — None+float 혼합이면 object dtype이 돼서 plotly가 %{y:.2f} 포맷을
     # 못 걸고 원시 float을 그대로 hover에 찍는다(2026-09-02 실제로 겪음).

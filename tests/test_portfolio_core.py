@@ -795,6 +795,23 @@ def test_rp_direction_consistent_up_and_down():
     assert r2["sens_today"] == pytest.approx(-1.2, abs=1e-6)
 
 
+def test_rp_cumulative_is_ratio_of_totals_not_average_of_dailies():
+    """RP 누적/5일은 그날그날 RP를 평균/median 낸 게 아니라 창 누적수익의 비율이어야 한다
+    (2026-09-04 사용자 지적: 비율은 평균이 성립하지 않는다).
+    벤치가 앵커 대비 +1% 오르는 동안 계좌는 −0.5% → 누적 RP = (−0.5 − 1)/|1| = −1.5.
+    (같은 시나리오에서 그날그날 RP의 median은 +0.5로 전혀 다른 값이 나온다.)"""
+    dates = ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06"]
+    kospi = [100.0, 99.0, 103.0, 102.0, 101.0]           # 앵커 대비 누적: 0, -1%, +3%, +2%, +1%
+    idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates, kospi)])
+    tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])   # 예수금 0 → 계좌==주식
+    tot = [1_000_000.0, 1_000_000.0, 1_005_000.0, 1_000_000.0, 995_000.0]   # 누적: 0, 0, +0.5%, 0, -0.5%
+    asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, tot)])
+    r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
+    assert r["acct_sens_all"] == pytest.approx(-1.5, abs=1e-6)
+    assert r["sens_all"] == pytest.approx(-1.5, abs=1e-6)
+    assert r["me"]["계좌상대성과누적"].iloc[-1] == pytest.approx(-1.5, abs=1e-6)
+
+
 def test_market_cache_roundtrip(tmp_path, monkeypatch):
     f = tmp_path / "mkt.csv"
     monkeypatch.setattr(core, "MARKET_CACHE_FILE", f)
