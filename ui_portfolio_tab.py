@@ -327,7 +327,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     color_map = {name: SECTOR_PALETTE[i % len(SECTOR_PALETTE)] for i, (name, _) in enumerate(stock_weight_rank)}
 
     # ---- 섹터 비중 도넛 + 목표 비중 관리 ----
-    with st.expander("섹터 비중 보기", expanded=False):
+    with st.expander("Sectors", expanded=False):
         include_cash = st.toggle("예수금 포함", value=st.session_state.get("include_cash", True), key="cash_toggle")
         st.session_state["include_cash"] = include_cash
 

@@ -73,7 +73,7 @@ st.markdown(f"""
     .trade-chip {{ font-size:12px; background:{T['bg']}; border:1px solid {T['border']}; border-radius:99px; padding:2px 9px; color:{T['text']}; }}
     .trade-chip b {{ font-weight:600; }}
 
-    .legend-wrap {{ display:flex; flex-wrap:wrap; gap:7px 14px; margin-top:10px; justify-content:center; }}
+    .legend-wrap {{ display:flex; flex-wrap:wrap; gap:7px 14px; margin-top:10px; margin-bottom:20px; justify-content:center; }}
     .legend-item {{ display:flex; align-items:center; gap:5px; font-size:12px; color:{T['text']}; }}
     .legend-dot {{ width:8px; height:8px; border-radius:99px; flex-shrink:0; }}
     .legend-pct {{ color:{T['muted']}; font-family: ui-monospace, monospace; }}

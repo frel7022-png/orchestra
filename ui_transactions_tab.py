@@ -470,7 +470,11 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     # ---- SamHynix extracted (§6-19): 혼합지수의 코스피 다리를 '삼성전자·삼성전자우·SK하이닉스
     #      제외 코스피'로 바꾼 버전. ----
     with st.expander("SamHYnix extracted", expanded=False):
-        st.caption("혼합지수의 '삼성전자, 삼성전자우, SK하이닉스 제외 코스피' 반영")
+        st.markdown(
+            f"<div style='font-size:10px;color:{T['muted2']};white-space:nowrap;"
+            f"overflow:hidden;text-overflow:ellipsis;margin:-2px 0 4px'>"
+            f"혼합지수에 '삼성전자·삼성전자우·SK하이닉스 제외 코스피' 반영</div>",
+            unsafe_allow_html=True)
         _bg = load_bigcap_history()
         if _bg.empty:
             st.caption("bigcap_history.csv 비어있음 — `python backfill_bigcap_history.py` 먼저.")
@@ -478,7 +482,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             _syn = synthetic_kospi_ex_bigcap(idx_hist, _bg)
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
-            _render_iva_panel(_iva_ex, _syn, "코스피(삼성·하이닉스 제외)", "cwrap_ex")
+            _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
 
     st.divider()
 
