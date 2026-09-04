@@ -860,7 +860,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             if _fr is not None and not pd.isna(_fr):
                 _frc = NEW_COLOR if _fr > 20 else (DOWN_COLOR if _fr <= 5 else "#000000")
                 _fr_html = f'<span class="foreign-tag" style="color:{_frc}">{float(_fr):.1f}%</span>'
-            _div_inner = _dividend_badge_html(code, dividend_cache) + _fr_html
+            _dv_html = _dividend_badge_html(code, dividend_cache)
+            _sep = '<span class="badge-sep">·</span>' if (_dv_html and _fr_html) else ""
+            _div_inner = _dv_html + _sep + _fr_html
             dividend_row_html = f'<div class="dividend-row">{_div_inner}</div>' if _div_inner else ""
 
             # 물타기(현재 사이클 매수 2회+) 했는데 반등해서 현재가 ≥ 최초진입가면 카드 옅은 녹색
