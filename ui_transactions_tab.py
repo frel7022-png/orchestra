@@ -126,7 +126,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     )
     def _render_iva_panel(iva, idx_hist_local, kospi_label, carousel_id):
         """'지수 대비 계좌' 한 벌(4줄 표 + RP 2줄 + 스와이프 캐러셀). 메인(코스피)과
-        'SamHynix extracted'(코스피 다리 = 반도체 제외)가 이 렌더러를 공유한다 —
+        'SamHynix extracted'(코스피 다리 = 삼성·하이닉스 제외)가 이 렌더러를 공유한다 —
         표·그래프의 '코스피' 표시 라벨만 kospi_label로 바뀌고 dict 키는 '코스피' 그대로."""
         me, idxc, latest = iva["me"], iva["index"], iva["latest"]
         if me.empty or idxc.empty:
@@ -143,16 +143,41 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 return T["text"]
             return UP_COLOR if v >= ref else DOWN_COLOR  # 벤치 이겼으면 빨강, 졌으면 파랑
 
+        # 최근 5영업일(=시계열 5행 전 대비) 수익률: 코스피/코스닥은 매 거래일 점이라 5거래일,
+        # 벤치/내 주식/내 계좌는 스냅샷 5구간(RP '5일'과 같은 기준).
+        _s5 = {
+            "코스피": idxc["코스피"] if "코스피" in idxc else None,
+            "코스닥": idxc["코스닥"] if "코스닥" in idxc else None,
+            "벤치": me["벤치누적"] if "벤치누적" in me else None,
+            "주식": me["주식수익"] if "주식수익" in me else None,
+            "계좌": me["계좌수익"] if "계좌수익" in me else None,
+        }
+
+        def _recent5(key):
+            s = _s5.get(key)
+            if s is None or len(s) < 6:
+                return None
+            a, b = s.iloc[-1], s.iloc[-6]
+            if pd.isna(a) or pd.isna(b):
+                return None
+            return (1 + a) / (1 + b) - 1
+
+        bench_r5 = _recent5("벤치")
+
         def _row(label, dot_color, dashed, key, color_by_bench):
             cum, day = latest.get(key, (None, None))
+            rec = _recent5(key)
             if color_by_bench:
-                cc, dc = _color_vs_bench(cum, bench[0]), _color_vs_bench(day, bench[1])
+                cc = _color_vs_bench(cum, bench[0])
+                rcc = _color_vs_bench(rec, bench_r5)
+                dc = _color_vs_bench(day, bench[1])
             else:
-                cc = dc = T["muted"]
+                cc = rcc = dc = T["muted"]
             mark = "┈" if dashed else "●"
             return (
                 f"<tr><td style='color:{dot_color}'>{mark}&nbsp;{label}</td>"
                 f"<td style='text-align:right;color:{cc}'>{_pct(cum)}</td>"
+                f"<td style='text-align:right;color:{rcc}'>{_pct(rec)}</td>"
                 f"<td style='text-align:right;color:{dc}'>{_pct(day)}</td></tr>"
             )
 
@@ -160,7 +185,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:-2px 0 4px'>"
             f"<tr style='color:{T['muted2']};font-size:10px'>"
             "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>누적</th>"
-            "<th style='text-align:right'>당일</th></tr>"
+            "<th style='text-align:right'>5일</th><th style='text-align:right'>당일</th></tr>"
             + _row(kospi_label, KOSPI_COLOR, False, "코스피", False)
             + _row("코스닥", KOSDAQ_COLOR, False, "코스닥", False)
             + _row("혼합지수", DOWN_COLOR, False, "벤치", False)
@@ -407,25 +432,28 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                                     state.get("fee_rate", 0.0), kospi_weight=wk)
     _render_iva_panel(iva, idx_hist, "코스피", "cwrap")
 
-    # ---- 코스피 추이: 일반(빨강) vs 삼성전자·삼성전자우·SK하이닉스 제외(파랑), 그래프 시작일 기준 ----
+    # ---- 코스피 추이: 일반(빨강) vs 삼성·삼성우·하이닉스 제외(파랑). 실제 지수 포인트로 표시,
+    #      hover엔 그 시점의 전일 대비 등락률(%). ----
     _bg_k = load_bigcap_history()
     if not idx_hist.empty and not _bg_k.empty:
-        _ih = idx_hist.sort_values("날짜")
-        _sh = synthetic_kospi_ex_bigcap(idx_hist, _bg_k).sort_values("날짜")
-        _base_k = float(pd.to_numeric(_ih["KOSPI"], errors="coerce").iloc[0])
+        _ih = idx_hist.sort_values("날짜").reset_index(drop=True)
+        _sh = synthetic_kospi_ex_bigcap(idx_hist, _bg_k).sort_values("날짜").reset_index(drop=True)
+        _k = pd.to_numeric(_ih["KOSPI"], errors="coerce")
+        _ke = pd.to_numeric(_sh["KOSPI"], errors="coerce")
+        _kd = ["—" if pd.isna(d) else f"{d:+.2%}" for d in _k.pct_change()]
+        _ked = ["—" if pd.isna(d) else f"{d:+.2%}" for d in _ke.pct_change()]
         st.markdown("##### 코스피 추이", unsafe_allow_html=True)
         fig_k = go.Figure()
         fig_k.add_trace(go.Scatter(
-            x=_ih["날짜"], y=pd.to_numeric(_ih["KOSPI"], errors="coerce") / _base_k - 1.0,
-            name="코스피", mode="lines", line=dict(color=UP_COLOR, width=1.8),
-            hovertemplate="<b>코스피</b> %{y:+.2%}<extra></extra>"))
+            x=_ih["날짜"], y=_k, name="코스피", mode="lines",
+            line=dict(color=UP_COLOR, width=1.8), customdata=_kd,
+            hovertemplate="<b>코스피</b> %{y:,.0f} · 전일 %{customdata}<extra></extra>"))
         fig_k.add_trace(go.Scatter(
-            x=_sh["날짜"], y=pd.to_numeric(_sh["KOSPI"], errors="coerce") / _base_k - 1.0,
-            name="반도체 제외", mode="lines", line=dict(color=DOWN_COLOR, width=1.8),
-            hovertemplate="<b>반도체 제외</b> %{y:+.2%}<extra></extra>"))
-        fig_k.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
+            x=_sh["날짜"], y=_ke, name="삼성·하이닉스 제외", mode="lines",
+            line=dict(color=DOWN_COLOR, width=1.8), customdata=_ked,
+            hovertemplate="<b>삼성·하이닉스 제외</b> %{y:,.0f} · 전일 %{customdata}<extra></extra>"))
         fig_k.update_layout(
-            height=210, margin=dict(l=42, r=8, t=6, b=24),
+            height=210, margin=dict(l=48, r=8, t=6, b=24),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11),
             legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0, font=dict(size=10)),
@@ -433,7 +461,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"],
                             font=dict(size=11, color=T["text"])),
             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=".1%",
+            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=",.0f",
                        tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
             dragmode=False,
         )
@@ -450,7 +478,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             _syn = synthetic_kospi_ex_bigcap(idx_hist, _bg)
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
-            _render_iva_panel(_iva_ex, _syn, "코스피(반도체 제외)", "cwrap_ex")
+            _render_iva_panel(_iva_ex, _syn, "코스피(삼성·하이닉스 제외)", "cwrap_ex")
 
     st.divider()
 
