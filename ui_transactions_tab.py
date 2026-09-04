@@ -43,7 +43,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     """, unsafe_allow_html=True)
 
     # ---- 실현손익 그래프: 누적 실현손익(호버 시 그날 실현손익도 표시) vs 미실현손실 ----
-    st.markdown("##### 실현손익 그래프")
+    st.markdown("##### Realized P&L")
 
     tx_realized = tx[tx["구분"] == "매도"].copy()
     tx_realized["실현손익"] = pd.to_numeric(tx_realized["실현손익"], errors="coerce").fillna(0)
@@ -427,7 +427,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         )
 
     # ---- 지수 대비 계좌 (메인: 코스피/코스닥) ----
-    st.markdown(f"##### 지수 대비 계좌{_wtag}", unsafe_allow_html=True)
+    st.markdown(f"##### Account : Index{_wtag}", unsafe_allow_html=True)
     iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
                                     state.get("fee_rate", 0.0), kospi_weight=wk)
     _render_iva_panel(iva, idx_hist, "코스피", "cwrap")
@@ -442,7 +442,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         _ke = pd.to_numeric(_sh["KOSPI"], errors="coerce")
         _kd = ["—" if pd.isna(d) else f"{d:+.2%}" for d in _k.pct_change()]
         _ked = ["—" if pd.isna(d) else f"{d:+.2%}" for d in _ke.pct_change()]
-        st.markdown("##### 코스피 추이", unsafe_allow_html=True)
+        st.markdown("##### KOSPI 2-Track Trend", unsafe_allow_html=True)
         fig_k = go.Figure()
         fig_k.add_trace(go.Scatter(
             x=_ih["날짜"], y=_k, name="코스피", mode="lines",
