@@ -753,28 +753,21 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # st.columns() 비율을 강제로 동일폭으로 만들어버리므로, 이 줄만 st.container(key=...)로
     # 감싸서 app.py의 [class*="st-key-holdings_title_row"] 스코프 CSS로 비율을 다시 덮어씀.
     with st.container(key="holdings_title_row"):
-        col_title2, col_change_toggle, col_updated = st.columns(3)
+        col_title2, col_right = st.columns([5, 4])
         with col_title2:
             st.markdown("##### Holdings")
-        with col_change_toggle:
-            # 매일 가장 먼저 확인하는 기준이라 아래 "정렬 기준" 라디오까지 안 내려가도 타이틀
-            # 옆에서 바로 토글할 수 있게 함(2026-08-28 사용자 요청). 텍스트 라벨("등락률순")을
-            # 버튼에 넣으면 타이틀이 한 줄로 안 들어가는 문제가 있어서, 라벨 없이 동그라미
-            # 점 하나만 표시하는 아이콘 버튼으로 바꿈 — 안 눌린 상태는 옅은 회색, 누르면 빨강
-            # (국내 관례상 상승/강조=빨강)으로 채워짐. 아래 라디오와는 독립된 별도 상태
-            # (change_sort_active)로 두고, 활성화된 동안만 등락률순이 라디오 선택을 덮어씀 —
-            # 라디오 옵션 목록에는 "등락률"을 안 넣음(중복 노출 안 되게).
+        with col_right:
+            # 등락률순 정렬 토글 점 + 업데이트 날짜를 한 줄로 나란히(app.py CSS로 row-flex).
+            # 안 눌림=회색 점, 누르면 빨강(국내 관례 상승/강조색). 아래 "정렬 기준" 라디오와는
+            # 독립된 별도 상태(change_sort_active)라 라디오 옵션엔 "등락률"을 안 넣는다.
             is_change_sort = st.session_state.change_sort_active
             if st.button("●", key="change_sort_toggle",
                          type="primary" if is_change_sort else "secondary",
                          help="등락률순 정렬"):
                 st.session_state.change_sort_active = not is_change_sort
                 st.rerun()
-        with col_updated:
-            st.markdown(
-                f"<div style='text-align:right;font-size:11px;color:{T['muted2']};padding-top:10px;'>{last_updated}</div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(f"<div class='holdings-updated'>{last_updated}</div>",
+                        unsafe_allow_html=True)
 
     # ---- 코스피 / 코스닥 지수 (상단 새로고침에 같이 갱신됨) ----
     idx = st.session_state.get("index_quotes") or {}
@@ -842,6 +835,15 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
 
         dividend_cache = load_dividend_cache()
 
+        # 외국인 보유율 (Supabase investor_flow 최신값) — 배당 배지 옆에 수치만. 세션 1회 조회.
+        foreign_map = st.session_state.get("holding_foreign_map")
+        if foreign_map is None:
+            _sb = st.secrets.get("supabase", {})
+            _fdf = load_investor_flow_db(_sb.get("url", ""), _sb.get("anon_key", ""))
+            foreign_map = ({} if _fdf.empty else
+                           _fdf.sort_values("날짜").groupby("종목코드")["외국인보유율"].last().to_dict())
+            st.session_state["holding_foreign_map"] = foreign_map
+
         for r in rows:
             pc = UP_COLOR if r["손익"] >= 0 else DOWN_COLOR
             psign = "+" if r["손익"] >= 0 else ""
@@ -853,12 +855,24 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             code = r["종목코드"]
             is_open = st.session_state.holding_detail_open == code
 
-            dividend_html = _dividend_badge_html(code, dividend_cache)
-            dividend_row_html = f'<div class="dividend-row">{dividend_html}</div>' if dividend_html else ""
+            _fr = foreign_map.get(code)
+            _fr_html = ""
+            if _fr is not None and not pd.isna(_fr):
+                _frc = NEW_COLOR if _fr > 20 else (DOWN_COLOR if _fr <= 5 else "#000000")
+                _fr_html = f'<span class="foreign-tag" style="color:{_frc}">{float(_fr):.1f}%</span>'
+            _div_inner = _dividend_badge_html(code, dividend_cache) + _fr_html
+            dividend_row_html = f'<div class="dividend-row">{_div_inner}</div>' if _div_inner else ""
+
+            # 물타기(현재 사이클 매수 2회+) 했는데 반등해서 현재가 ≥ 최초진입가면 카드 옅은 녹색
+            _pts = get_holding_trade_points(tx, r["종목명"])
+            _buys = _pts[_pts["구분"] == "매수"] if not _pts.empty else _pts
+            _watered_ok = (len(_buys) >= 2
+                           and float(r["현재가"]) >= float(_buys.iloc[0]["단가"]))
+            _card_cls = "stock-card watered-ok" if _watered_ok else "stock-card"
 
             with st.container(key=f"holding_wrap_{code}"):
                 st.markdown(f"""
-                <div class="stock-card">
+                <div class="{_card_cls}">
                     <div class="stock-top">
                         <span class="stock-title-group"><span class="stock-name" style="{name_style}">{r['종목명']}</span></span>
                         <span class="sector-tag" style="background:{sc}22;color:{sc}">{r['섹터']}</span>
@@ -876,7 +890,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 </div>
                 """, unsafe_allow_html=True)
 
-                if st.button("WATERING", key=f"watering_{code}",
+                if st.button("●", key=f"watering_{code}", help="WATERING",
                              type="primary" if is_open else "secondary"):
                     st.session_state.holding_detail_open = None if is_open else code
                     st.rerun()

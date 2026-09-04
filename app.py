@@ -13,7 +13,7 @@
 
 import streamlit as st
 
-from constants import THEMES, UP_COLOR
+from constants import THEMES, UP_COLOR, NEW_COLOR
 from portfolio_core import (
     load_holdings, load_transactions, load_state,
     snapshot_history, snapshot_sector_history, snapshot_index_history,
@@ -104,12 +104,16 @@ st.markdown(f"""
 
 
     .stock-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:12px; padding:10px 16px; margin-bottom:7px; }}
+    /* 물타기(현재 사이클 매수 2회 이상) 했는데 반등해서 현재가가 최초진입가 이상으로 온 종목 */
+    .stock-card.watered-ok {{ background:rgba(34,197,94,0.11) !important; border-color:rgba(34,197,94,0.38) !important; }}
     .stock-top {{ display:flex; justify-content:space-between; align-items:baseline; }}
     .stock-title-group {{ flex:1 1 auto; min-width:0; max-width:calc(100% - 180px); }}
     .stock-name {{ font-size:13px; font-weight:700; color:{T['text']}; white-space:nowrap; }}
     .dividend-tag {{ font-size:11px; margin-left:5px; white-space:nowrap; }}
+    .foreign-tag {{ font-size:11px; margin-left:8px; white-space:nowrap; }}
     .dividend-row {{ margin-top:1px; line-height:1.2; }}
     .dividend-row .dividend-tag {{ margin-left:0; }}
+    .dividend-row > .foreign-tag:first-child {{ margin-left:0; }}
     .sector-tag {{ font-size:10.5px; padding:2px 7px; border-radius:5px; font-weight:600; flex-shrink:0; }}
     .stock-grid {{ display:grid; grid-template-columns: 0.7fr 1.05fr 1.05fr 1.3fr; gap:6px; margin-top:4px; }}
     .cell .top {{ font-size:12.5px; font-weight:700; color:{T['text']}; }}
@@ -136,26 +140,21 @@ st.markdown(f"""
        버튼을 카드 우측상단(섹터태그 왼쪽)에 절대위치시킨다 — 카드 HTML 자체는 그대로 두고
        버튼만 그 위에 얹는 것이라, 카드 높이가 내용에 따라 달라져도 안 깨진다. */
     [class*="st-key-holding_wrap_"] {{ position:relative; }}
+    /* WATERING 토글 — 텍스트 칩이 너무 꽉 차 보여서(2026-09-04) 점 하나로 축소.
+       위치는 WATERING 글자가 끝나던 자리쯤(섹터태그 왼쪽). 안 눌림=회색 점, 눌림=녹색 점. */
     [class*="st-key-watering_"] {{
-        position:absolute; top:11px; right:108px; z-index:5; width:auto !important;
+        position:absolute; top:8px; right:112px; z-index:5; width:auto !important;
     }}
     [class*="st-key-watering_"] button {{
-        padding:2px 7px !important; min-height:0 !important;
-        height:auto !important; border-radius:5px !important;
-        line-height:1.4 !important; border:none !important;
-        box-shadow:none !important;
+        background:transparent !important; border:none !important; box-shadow:none !important;
+        padding:2px 4px !important; min-height:0 !important; height:auto !important;
+        line-height:1 !important;
     }}
     [class*="st-key-watering_"] button p {{
-        font-size:10.5px !important; font-weight:400 !important; line-height:1.4 !important;
+        font-size:15px !important; font-weight:400 !important; line-height:1 !important;
     }}
-    [class*="st-key-watering_"] button[kind="secondary"] {{
-        background:{T['muted']}22 !important; color:{T['text']} !important;
-    }}
-    [class*="st-key-watering_"] button[kind="secondary"] p {{ color:{T['text']} !important; }}
-    [class*="st-key-watering_"] button[kind="primary"] {{
-        background:{T['muted']} !important; color:#fff !important;
-    }}
-    [class*="st-key-watering_"] button[kind="primary"] p {{ color:#fff !important; }}
+    [class*="st-key-watering_"] button[kind="secondary"] p {{ color:{T['muted2']} !important; }}
+    [class*="st-key-watering_"] button[kind="primary"] p {{ color:{NEW_COLOR} !important; }}
 
     /* "종목별 보유현황" 타이틀 옆 등락률순 토글 — 텍스트 라벨을 넣으면 타이틀이 한 줄로
        안 들어가서(2026-08-28), 라벨 없이 동그라미 점 하나만 표시하는 아이콘 버튼으로 바꿈.
@@ -172,18 +171,17 @@ st.markdown(f"""
     [class*="st-key-change_sort_toggle"] button[kind="secondary"] p {{ color:{T['muted2']} !important; }}
     [class*="st-key-change_sort_toggle"] button[kind="primary"] p {{ color:{UP_COLOR} !important; }}
 
-    /* "종목별 보유현황" 타이틀 줄 3칸(타이틀/등락률순 점/업데이트시각)만 전역 등폭 규칙
-       (위 stColumn flex:1 1 0)을 덮어써서 원하는 비율로 — 타이틀에 훨씬 넓게 줘야
-       "종목별 보유현황"이 한 줄로 안 잘림(2026-08-28, 등폭 강제가 원인이었음을 확인). */
-    [class*="st-key-holdings_title_row"] div[data-testid="stColumn"]:nth-of-type(1) {{
-        flex: 6 1 0 !important;
+    /* "Holdings" 타이틀 줄 — 왼쪽은 타이틀, 오른쪽 칸에 등락률순 토글 점 + 업데이트 날짜를
+       한 줄로 나란히(2026-09-04, 점이 날짜 앞에서 삐뚤어 보이던 것 수정). 전역 등폭 규칙
+       (위 stColumn flex:1 1 0)을 덮어씀. */
+    [class*="st-key-holdings_title_row"] div[data-testid="stHorizontalBlock"] {{ align-items:center !important; gap:0 !important; }}
+    [class*="st-key-holdings_title_row"] div[data-testid="stColumn"]:nth-of-type(1) {{ flex: 5 1 0 !important; }}
+    [class*="st-key-holdings_title_row"] div[data-testid="stColumn"]:nth-of-type(2) {{ flex: 4 1 0 !important; }}
+    [class*="st-key-holdings_title_row"] div[data-testid="stColumn"]:nth-of-type(2) > div[data-testid="stVerticalBlock"] {{
+        flex-direction: row !important; align-items: center !important; justify-content: flex-end !important;
+        gap: 4px !important;
     }}
-    [class*="st-key-holdings_title_row"] div[data-testid="stColumn"]:nth-of-type(2) {{
-        flex: 1 1 0 !important;
-    }}
-    [class*="st-key-holdings_title_row"] div[data-testid="stColumn"]:nth-of-type(3) {{
-        flex: 3 1 0 !important;
-    }}
+    .holdings-updated {{ font-size:11px; color:{T['muted2']}; white-space:nowrap; }}
 
     .tx-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:10px; padding:10px 14px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }}
     .tx-left {{ font-size:13px; }}
