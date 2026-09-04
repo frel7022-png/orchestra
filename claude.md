@@ -125,6 +125,8 @@ backfill_bigcap_history.py           # 삼성전자/삼성전자우/SK하이닉�
 tests/                            # pytest 회귀 테스트 (§6-11 참고).
 report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML + PDF). 날짜_제목.html/.pdf. git에 커밋됨.
                                   #   HTML은 아티팩트로도 발행, PDF는 Playwright(headless chrome, emulate_media print)로 렌더.
+                                  #   **개정 시 기존 파일 덮어쓰지 말 것(2026-09-04 사용자 지시)** — 새 버전은 _v2/_v3
+                                  #   같은 접미사로 새 파일 추가. 아티팩트는 같은 URL에 재발행(버전 히스토리 남음).
 
 ```
 
