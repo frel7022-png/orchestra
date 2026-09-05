@@ -6,12 +6,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-import streamlit.components.v1 as components
-
 from constants import UP_COLOR, DOWN_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
-    compute_index_vs_account, _index_day_moves,
+    compute_index_vs_account,
     load_bigcap_history, synthetic_kospi_ex_bigcap,
 )
 
@@ -124,10 +122,13 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         f" <span style='font-size:11px;font-weight:400;color:{T['muted']}'>"
         f"보유비중 코스피 {wk * 100:.0f}% · 코스닥 {(1 - wk) * 100:.0f}%</span>"
     )
-    def _render_iva_panel(iva, idx_hist_local, kospi_label, carousel_id):
-        """'지수 대비 계좌' 한 벌(4줄 표 + CR(국면막대) 2줄 + 스와이프 캐러셀). 메인(코스피)과
+    def _render_iva_panel(iva, kospi_label):
+        """'지수 대비 계좌' 한 벌(5줄 표 + CR(국면막대) 2줄 + 국면막대 그래프 1장). 메인(코스피)과
         'SamHynix extracted'(코스피 다리 = 삼성·하이닉스 제외)가 이 렌더러를 공유한다 —
-        표·그래프의 '코스피' 표시 라벨만 kospi_label로 바뀌고 dict 키는 '코스피' 그대로."""
+        표·그래프의 '코스피' 표시 라벨만 kospi_label로 바뀌고 dict 키는 '코스피' 그대로.
+        (2026-09-05, 사용자 요청으로 누적 선그래프 제거 — "궁극적으로 보려는 건 누적 CR
+        수치(하락장/상승장/CR)고, 그래프는 매일매일 오늘 어땠나 보는 용도"라 누적 %는 위
+        표로 충분하고 그래프는 국면막대 하나만 있으면 된다는 판단. 캐러셀/스와이프도 같이 제거.)"""
         me, idxc, latest = iva["me"], iva["index"], iva["latest"]
         if me.empty or idxc.empty:
             st.info("시세를 새로고침하면 지수·자산 스냅샷이 쌓여서 그래프가 그려집니다.")
@@ -248,107 +249,27 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             unsafe_allow_html=True,
         )
 
-        # hover(x unified): 실현손익 그래프와 같은 방식 — 날짜를 누르면 한 박스에 선별로
-        # "이름  누적 X · 당일 Y" 한 줄씩. 내 주식·내 계좌 값은 벤치(혼합지수) 대비 이겼으면
-        # 빨강 / 졌으면 파랑으로 칠함.
-        moves = _index_day_moves(idx_hist_local).set_index("날짜")
-        kd_map = moves["코스피d"].to_dict()
-        qd_map = moves["코스닥d"].to_dict()
-
-        def _fmt(v):
-            return "—" if v is None or pd.isna(v) else f"{v * 100:+.2f}%"
-
-        def _cell(v, ref):
-            if v is None or pd.isna(v):
-                return "—"
-            s = f"{v * 100:+.2f}%"
-            if ref is None or pd.isna(ref):
-                return s
-            return f"<span style='color:{UP_COLOR if v >= ref else DOWN_COLOR}'>{s}</span>"
-
-        def _ht(label):
-            # x-unified라 날짜는 박스 제목으로 이미 뜸 → %{x} 안 넣음(넣으면 줄마다 날짜 반복)
-            return ("<b>" + label + "</b>  누적 %{customdata[0]} · 당일 %{customdata[1]}"
-                    "<extra></extra>")
-
-        fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(
-            x=idxc["날짜"], y=idxc["코스피"], name=kospi_label, mode="lines",
-            line=dict(color=KOSPI_COLOR, width=1.6),
-            customdata=[[_fmt(c), _fmt(kd_map.get(d))] for c, d in zip(idxc["코스피"], idxc["날짜"])],
-            hovertemplate=_ht(kospi_label),
-        ))
-        fig2.add_trace(go.Scatter(
-            x=idxc["날짜"], y=idxc["코스닥"], name="코스닥", mode="lines",
-            line=dict(color=KOSDAQ_COLOR, width=1.6),
-            customdata=[[_fmt(c), _fmt(qd_map.get(d))] for c, d in zip(idxc["코스닥"], idxc["날짜"])],
-            hovertemplate=_ht("코스닥"),
-        ))
-        # 혼합지수 = wk·코스피 + (1−wk)·코스닥 (보유비중 가중). wk 없으면 코스피 단독.
-        _bw = wk if wk is not None else 1.0
-        _blend_cum = [_bw * k + (1 - _bw) * q for k, q in zip(idxc["코스피"], idxc["코스닥"])]
-
-        def _blend_day(d):
-            k, q = kd_map.get(d), qd_map.get(d)
-            if k is None or q is None or pd.isna(k) or pd.isna(q):
-                return None
-            return _bw * k + (1 - _bw) * q
-
-        fig2.add_trace(go.Scatter(
-            x=idxc["날짜"], y=_blend_cum, name="혼합지수", mode="lines",
-            line=dict(color=DOWN_COLOR, width=1.6),
-            customdata=[[_fmt(c), _fmt(_blend_day(d))] for c, d in zip(_blend_cum, idxc["날짜"])],
-            hovertemplate=_ht("혼합지수"),
-        ))
-        fig2.add_trace(go.Scatter(
-            x=me["날짜"], y=me["주식수익"], name="내 주식", mode="lines+markers",
-            line=dict(color=T["text"], width=2.8), marker=dict(size=5),
-            customdata=[[_cell(cr, br), _cell(dr, bd)] for cr, dr, br, bd
-                        in zip(me["주식수익"], me["주식당일"], me["벤치누적"], me["벤치당일"])],
-            hovertemplate=_ht("내 주식"),
-        ))
-        fig2.add_trace(go.Scatter(
-            x=me["날짜"], y=me["계좌수익"], name="내 계좌", mode="lines",
-            line=dict(color=T["muted2"], width=1.8, dash="dot"),
-            customdata=[[_cell(cr, br), _cell(dr, bd)] for cr, dr, br, bd
-                        in zip(me["계좌수익"], me["계좌당일"], me["벤치누적"], me["벤치당일"])],
-            hovertemplate=_ht("내 계좌"),
-        ))
-        fig2.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
-        fig2.update_layout(
-            height=275,
-            margin=dict(l=40, r=8, t=8, b=30),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=T["text"], size=11),
-            showlegend=False,  # 위 표(●코스피 ●코스닥 ●혼합지수 ●내 주식 ┈내 계좌)가 곧 범례
-            hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], align="left",
-                            font=dict(size=11, color=T["text"])),
-            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False,
-                       tickfont=dict(size=9, color=T["muted"]), tickformat=".1%", fixedrange=True),
-            hovermode="x unified",
-            dragmode=False,
-        )
-        # ---- 국면별 민감도 막대 그래프 (RP 그래프 대체, 2026-09-04) ----
-        # 하루 = 막대 하나. 시장이 내린 날 = 빨강 막대(그날 "방어" = 1 − 내당일/벤치당일),
-        # 오른 날 = 파랑 막대(그날 "참여" = 내당일/벤치당일). 기준선 y=1 = 시장과 똑같이 움직임.
-        # 위로 갈수록 잘한 것(하락장은 덜 빠지거나 오히려 오름, 상승장은 더 따라 오름). 누적/5일 선 없앰.
-        _cap_bars = me["국면막대주식"] if "국면막대주식" in me else pd.Series([None] * len(me), index=me.index)
+        # ---- 국면별 민감도 막대 그래프 (2026-09-05, 내 계좌 기준으로 전환) ----
+        # 하루 = 막대 하나. 시장이 내린 날 = 빨강 막대(그날 "방어" = 1 − 내계좌당일/벤치당일),
+        # 오른 날 = 파랑 막대(그날 "참여" = 내계좌당일/벤치당일). 기준선 y=1 = 시장과 똑같이 움직임.
+        # 위로 갈수록 잘한 것. 이전엔 내 주식(Rs, 예수금 제외) 기준이었는데, "실제 운용 중인
+        # 계좌 vs 지수"가 매일 보고 싶은 것이지 이론상 100% 투자 가정은 아니라는 사용자 판단으로
+        # 계좌 기준으로 바꿈 — 내 주식(Rs) 쪽 CR은 위 요약 줄에 숫자로 남아있음.
+        # 누적 선그래프는 없앰 — "궁극적으로 보려는 건 누적 CR(하락장/상승장/CR) 수치고 그래프는
+        # 매일매일 오늘 어땠나 보는 용도"라는 사용자 판단(2026-09-05)으로, 누적 %는 위 표로 충분.
+        _cap_bars = me["국면막대계좌"] if "국면막대계좌" in me else pd.Series([None] * len(me), index=me.index)
         _reg = me["국면"] if "국면" in me else pd.Series([""] * len(me), index=me.index)
         _bar_colors = [UP_COLOR if r == "하락" else DOWN_COLOR if r == "상승" else T["muted2"] for r in _reg]
 
         def _bpct(v):
             return "—" if pd.isna(v) else f"{v * 100:+.2f}%"
 
-        # 막대 값만 보면 극단치가 왜 그런지 판단이 안 돼서(예: 계좌가 거의 안 움직인 날인데
-        # 벤치도 거의 안 움직여서 막대가 극단으로 튄 경우) 원본 % 3개를 같이 보여줌(사용자 요청
-        # 2026-09-05) — 혼합지수(벤치) 당일 / 내 주식 당일 / 내 계좌 당일.
+        # 막대 값만 보면 극단치가 왜 그런지 판단이 안 돼서 원본 % 2개를 같이 보여줌(사용자 요청
+        # 2026-09-05) — 혼합지수(벤치) 당일 / 내 계좌 당일.
         _bar_cd = list(zip(
             ["하락장" if r == "하락" else "상승장" if r == "상승" else "—" for r in _reg],
             ["—" if pd.isna(v) else f"{v:+.2f}" for v in _cap_bars],
             [_bpct(v) for v in me["벤치당일"]],
-            [_bpct(v) for v in me["주식당일"]],
             [_bpct(v) for v in me["계좌당일"]],
         ))
         fig_s = go.Figure()
@@ -356,7 +277,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             x=me["날짜"], y=_cap_bars, marker_color=_bar_colors, marker_line_width=0,
             customdata=_bar_cd,
             hovertemplate=("<b>%{customdata[0]}</b> 민감도막대 %{customdata[1]}"
-                           "<br>혼합지수 %{customdata[2]} · 내 주식 %{customdata[3]} · 내 계좌 %{customdata[4]}"
+                           "<br>혼합지수 %{customdata[2]} · 내 계좌 %{customdata[3]}"
                            "<extra></extra>"),
         ))
         fig_s.add_hline(y=1, line_dash="dash", line_color=T["muted2"], line_width=1)
@@ -375,73 +296,15 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                        tickfont=dict(size=9, color=T["muted"]), tickformat="+.0f", fixedrange=True),
             hovermode="x unified", dragmode=False,
         )
-
-        # ---- 두 그래프를 스와이프 캐러셀로 (밑에 점, 옆으로 밀면 전환) ----
-        cfg = {"displayModeBar": False, "responsive": True, "scrollZoom": False, "doubleClick": False}
-        h1 = fig2.to_html(include_plotlyjs="cdn", full_html=False, config=cfg, default_width="100%")
-        h2 = fig_s.to_html(include_plotlyjs=False, full_html=False, config=cfg, default_width="100%")
-        components.html(
-            f"""
-<div id="{carousel_id}">
-  <div class="track">
-    <div class="slide">{h1}</div>
-    <div class="slide">{h2}</div>
-  </div>
-  <div class="dots"><span class="dot on"></span><span class="dot"></span></div>
-</div>
-<style>
-  body {{ margin:0; background:transparent; }}
-  #{carousel_id} .track {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
-    -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
-  #{carousel_id} .track::-webkit-scrollbar {{ display:none; }}
-  #{carousel_id} .slide {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always; }}
-  #{carousel_id} .dots {{ display:flex; justify-content:center; gap:10px; padding:5px 0 0; }}
-  #{carousel_id} .dot {{ width:9px; height:9px; border-radius:50%; background:{T['muted2']};
-    opacity:.3; transition:opacity .18s, background .18s; }}
-  #{carousel_id} .dot.on {{ opacity:1; background:{T['text']}; }}
-</style>
-<script>
-  (function() {{
-    var track = document.querySelector('#{carousel_id} .track');
-    var dots = document.querySelectorAll('#{carousel_id} .dot');
-    function sync() {{
-      var i = Math.round(track.scrollLeft / Math.max(track.clientWidth, 1));
-      dots.forEach(function(d, j) {{ d.classList.toggle('on', j === i); }});
-    }}
-    track.addEventListener('scroll', sync, {{passive: true}});
-    // PC(마우스)에선 스와이프가 안 되므로 점을 눌러서 전환 + 좌우 화살표 키
-    dots.forEach(function(d, j) {{
-      d.style.cursor = 'pointer';
-      d.addEventListener('click', function() {{
-        track.scrollTo({{left: j * track.clientWidth, behavior: 'smooth'}});
-      }});
-    }});
-    track.setAttribute('tabindex', '0');
-    track.addEventListener('keydown', function(e) {{
-      var cur = Math.round(track.scrollLeft / Math.max(track.clientWidth, 1));
-      if (e.key === 'ArrowRight') track.scrollTo({{left: (cur + 1) * track.clientWidth, behavior: 'smooth'}});
-      if (e.key === 'ArrowLeft') track.scrollTo({{left: (cur - 1) * track.clientWidth, behavior: 'smooth'}});
-    }});
-    function rz() {{
-      var w = document.querySelector('#{carousel_id} .track').clientWidth;
-      if (!w) return;
-      document.querySelectorAll('#{carousel_id} .plotly-graph-div').forEach(function(g) {{
-        if (window.Plotly) window.Plotly.relayout(g, {{width: w, height: 275}});
-      }});
-    }}
-    window.addEventListener('resize', rz);
-    setTimeout(rz, 50); setTimeout(rz, 250); setTimeout(rz, 700);
-  }})();
-</script>
-""",
-            height=315,
-        )
+        st.plotly_chart(fig_s, use_container_width=True, config={
+            "displayModeBar": False, "scrollZoom": False, "doubleClick": False,
+        })
 
     # ---- 지수 대비 계좌 (메인: 코스피/코스닥) ----
     st.markdown(f"##### Account : Index{_wtag}", unsafe_allow_html=True)
     iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
                                     state.get("fee_rate", 0.0), kospi_weight=wk)
-    _render_iva_panel(iva, idx_hist, "코스피", "cwrap")
+    _render_iva_panel(iva, "코스피")
 
     # ---- 코스피 추이: 일반(빨강) vs 삼성·삼성우·하이닉스 제외(파랑). 실제 지수 포인트로 표시,
     #      hover엔 그 시점의 전일 대비 등락률(%). ----
@@ -493,7 +356,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             _syn = synthetic_kospi_ex_bigcap(idx_hist, _bg)
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
-            _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
+            _render_iva_panel(_iva_ex, "삼성·하이닉스 제외")
 
     st.divider()
 
