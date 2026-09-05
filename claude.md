@@ -836,6 +836,21 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
     새로고침이면 그 지수값을 직전 거래일 종가로 저장(§6-16 cron 날짜 밀림과 같은 맥락).
   - 최초 백필: `core.fetch_daily_price_history("KOSPI"|"KOSDAQ", start, end)` — §6-16의
     종목 일별시세 함수가 지수 심볼에도 그대로 동작함(확인함). 2026-08-14부터 채움.
+  - **버그: `snapshot_history`/`snapshot_sector_history`가 `snapshot_index_history`/
+    `snapshot_bigcap_history`와 다른 날짜 기준을 써서 "당일 혼합지수 0.00%"가 뜨던 문제**
+    (2026-09-05, 토요일에 새로고침한 사용자가 발견 — "코스피 1.64%, 코스닥 2.95%인데 왜
+    혼합지수만 0%냐"). 원인: index/bigcap 스냅샷은 §6-16 때부터 `resolve_trading_date()`를
+    쓰는데(장 시작 전·주말엔 직전 거래일로 보정) asset/sector 스냅샷은 여전히 `today_kst_str()`
+    (달력상 오늘 그대로)을 쓰고 있었음 — 주말에 새로고침하면 asset_history엔 "토요일" 날짜로
+    새 행이 생기고 index_history는 "금요일"에 그대로 머물러서, `_bench_on()`이 이 어긋난
+    두 스냅샷 날짜(금/토)를 같은 index 값(금요일)에 매칭시켜 벤치당일 diff가 정확히 0이 되고,
+    §6-17 국면막대의 "오늘" 칸도 국면 없음(`—`)으로 떠버림. **고침**: `snapshot_history`/
+    `snapshot_sector_history`도 `resolve_trading_date()`로 통일 — 이제 4개 스냅샷 함수
+    (asset/sector/index/bigcap)가 전부 같은 "대표 거래일" 기준을 씀. 회귀 테스트
+    `test_snapshot_history_uses_resolve_trading_date_not_calendar_today`. **meritz는 아직
+    `resolve_trading_date()` 자체가 없고 5개 스냅샷 함수가 전부 `today_kst_str()`으로
+    서로 일관돼 있어서(교차 불일치가 없어서) 이 증상 자체는 없음 — 이번엔 포팅 안 함,
+    나중에 meritz에서도 같은 증상 보고되면 그때 이식할 것.**
   - 예수금(t) 히스토리: `_cash_by_date()`가 `apply_transaction`으로 거래를 재생하며 날짜별
     예수금을 기록(§1-1 "재생 로직은 한 곳" 원칙대로 별도 계산 안 만듦). asset_history
     스냅샷이 평일 전부는 아니라서(앱 연 날만) 내 선(주식/계좌)은 스냅샷 날짜에만 점이 찍히고,

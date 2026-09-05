@@ -412,6 +412,26 @@ def test_resolve_trading_date_normal_afternoon_run_is_today(monkeypatch):
     assert core.resolve_trading_date() == "2026-08-31"
 
 
+def test_snapshot_history_uses_resolve_trading_date_not_calendar_today(tmp_path, monkeypatch):
+    """snapshot_history/snapshot_sector_history가 today_kst_str()이 아니라
+    resolve_trading_date()를 써야 한다(2026-09-05 실제로 겪음). 토요일에 새로고침하면
+    asset_history는 today_kst_str()으로 "토요일" 날짜에 새 행이 생기는데
+    index_history/bigcap_history는 이미 resolve_trading_date()라 "금요일"에 머물러 있어서,
+    compute_index_vs_account의 _bench_on()이 두 스냅샷 날짜(금/토)를 같은 index 값(금요일)에
+    매칭시켜 벤치당일이 정확히 0으로 나오는 버그가 있었음(§6-17 "당일 혼합지수 0.00%")."""
+    hist_file = tmp_path / "asset_history.csv"
+    sector_file = tmp_path / "sector_history.csv"
+    monkeypatch.setattr(core, "HISTORY_FILE", hist_file)
+    monkeypatch.setattr(core, "SECTOR_HISTORY_FILE", sector_file)
+    monkeypatch.setattr(core, "now_kst", lambda: datetime(2026, 9, 5, 11, 0))  # 토요일 오전
+
+    core.snapshot_history(1_000_000.0, 1_000_000.0)
+    core.snapshot_sector_history({"식품": 50.0, "화학": 50.0})
+
+    assert core.load_history()["날짜"].iloc[-1] == "2026-09-04"  # 토요일이 아니라 직전 거래일(금)
+    assert core.load_sector_history()["날짜"].iloc[-1] == "2026-09-04"
+
+
 # ------------------------------------------------------------------ #
 # fetch_dividend_yield / refresh_dividend_yields — 종목별 배당수익률 (2026-09-01 도입,
 # ui_portfolio_tab의 보유종목 카드에 종목명 옆 배지로 표시). 배당 없는 종목은 네이버

@@ -337,13 +337,27 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         _cap_bars = me["국면막대주식"] if "국면막대주식" in me else pd.Series([None] * len(me), index=me.index)
         _reg = me["국면"] if "국면" in me else pd.Series([""] * len(me), index=me.index)
         _bar_colors = [UP_COLOR if r == "하락" else DOWN_COLOR if r == "상승" else T["muted2"] for r in _reg]
-        _bar_cd = [("하락장" if r == "하락" else "상승장" if r == "상승" else "—",
-                    "—" if pd.isna(v) else f"{v:+.2f}") for v, r in zip(_cap_bars, _reg)]
+
+        def _bpct(v):
+            return "—" if pd.isna(v) else f"{v * 100:+.2f}%"
+
+        # 막대 값만 보면 극단치가 왜 그런지 판단이 안 돼서(예: 계좌가 거의 안 움직인 날인데
+        # 벤치도 거의 안 움직여서 막대가 극단으로 튄 경우) 원본 % 3개를 같이 보여줌(사용자 요청
+        # 2026-09-05) — 혼합지수(벤치) 당일 / 내 주식 당일 / 내 계좌 당일.
+        _bar_cd = list(zip(
+            ["하락장" if r == "하락" else "상승장" if r == "상승" else "—" for r in _reg],
+            ["—" if pd.isna(v) else f"{v:+.2f}" for v in _cap_bars],
+            [_bpct(v) for v in me["벤치당일"]],
+            [_bpct(v) for v in me["주식당일"]],
+            [_bpct(v) for v in me["계좌당일"]],
+        ))
         fig_s = go.Figure()
         fig_s.add_trace(go.Bar(
             x=me["날짜"], y=_cap_bars, marker_color=_bar_colors, marker_line_width=0,
             customdata=_bar_cd,
-            hovertemplate="<b>%{customdata[0]}</b> 민감도막대 %{customdata[1]}<extra></extra>",
+            hovertemplate=("<b>%{customdata[0]}</b> 민감도막대 %{customdata[1]}"
+                           "<br>혼합지수 %{customdata[2]} · 내 주식 %{customdata[3]} · 내 계좌 %{customdata[4]}"
+                           "<extra></extra>"),
         ))
         fig_s.add_hline(y=1, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig_s.update_layout(

@@ -284,8 +284,16 @@ def save_history(df: pd.DataFrame) -> None:
 
 
 def snapshot_history(total_assets: float, adjusted_assets: float, on_date: str | None = None) -> None:
+    """오늘자(또는 지정 날짜) 총자산 스냅샷. **resolve_trading_date()를 씀 — today_kst_str()이
+    아님** (2026-09-05 실제로 겪음): snapshot_index_history/snapshot_bigcap_history는 이미
+    resolve_trading_date()를 쓰는데 이 함수만 today_kst_str()이라, 주말/장 시작 전에 새로고침을
+    누르면 asset_history엔 "오늘"(예: 토요일) 날짜로 새 행이 생기고 index_history는 "직전
+    거래일"(금요일)에 그대로 머물러 있어서 서로 날짜가 어긋남 — compute_index_vs_account의
+    _bench_on()이 이 어긋난 두 스냅샷 날짜를 같은 index 값(금요일 값)에 매칭시켜버려서
+    벤치당일(그리고 국면막대)이 정확히 0으로 나오는 버그가 있었음(§6-17 "당일 혼합지수
+    0.00%"). 모든 스냅샷 함수가 같은 "대표 거래일" 기준을 쓰도록 통일해서 고침."""
     hist = load_history()
-    d = on_date or today_kst_str()
+    d = on_date or resolve_trading_date()
     hist = hist[hist["날짜"] != d]
     hist = pd.concat([hist, pd.DataFrame([{"날짜": d, "총자산": total_assets, "조정자산": adjusted_assets}])])
     hist = hist.sort_values("날짜")
@@ -307,7 +315,7 @@ def snapshot_sector_history(weights: dict, on_date: str | None = None) -> None:
     if not weights:
         return
     hist = load_sector_history()
-    d = on_date or today_kst_str()
+    d = on_date or resolve_trading_date()  # snapshot_history와 같은 이유(위 참고) — 날짜 기준 통일
     hist = hist[hist["날짜"] != d]
     new_rows = pd.DataFrame([{"날짜": d, "섹터그룹": k, "비중": v} for k, v in weights.items()])
     hist = pd.concat([hist, new_rows], ignore_index=True)
