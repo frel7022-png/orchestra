@@ -354,15 +354,15 @@ CAPTURE_ANOMALY_FILE = HERE / "report" / "capture_anomalies.csv"
 
 
 def append_capture_anomalies(anomalies: list[dict]) -> None:
-    """국면막대(§6-17)에서 |벤치당일| < 0.001이라 막대를 못 만든 날을
-    report/capture_anomalies.csv에 누적 기록한다. 앱 렌더링마다가 아니라 app.py "시세 새로고침"
-    핸들러에서만 호출한다(사용자 판단 2026-09-04: 월단위로 모아 분기 해석하고, 필요하면 그 날의
-    CR을 후보에서 제외). 같은 날짜가 이미 있으면 무시."""
+    """§6-17 지수 대비 계좌에서 even일(시장이 ±0.1% 안에서만 움직인 날)을
+    report/capture_anomalies.csv에 누적 기록한다. even일은 캡처 비율 대신 초과수익
+    (내당일 − 벤치당일)으로 따로 집계하는데, 나중에 분기 단위로 되짚어 보려고 그날들을
+    파일로도 남긴다. app.py "시세 새로고침" 핸들러에서만 호출(매 렌더링 아님). 같은 날짜는 무시."""
     if not anomalies:
         return
-    rows = [{"날짜": a.get("날짜", ""), "벤치당일": a.get("벤치당일"), "내당일": a.get("내당일"),
-             "사유": "|벤치당일| < 0.001 (시장 무변동)"} for a in anomalies]
-    new = pd.DataFrame(rows, columns=["날짜", "벤치당일", "내당일", "사유"])
+    rows = [{"날짜": a.get("날짜", ""), "벤치당일": a.get("벤치당일"),
+             "초과_계좌": a.get("초과_계좌"), "초과_주식": a.get("초과_주식")} for a in anomalies]
+    new = pd.DataFrame(rows, columns=["날짜", "벤치당일", "초과_계좌", "초과_주식"])
     CAPTURE_ANOMALY_FILE.parent.mkdir(parents=True, exist_ok=True)
     if CAPTURE_ANOMALY_FILE.exists():
         old = pd.read_csv(CAPTURE_ANOMALY_FILE)
@@ -1694,7 +1694,7 @@ def _index_day_moves(index_hist: pd.DataFrame) -> pd.DataFrame:
 
 def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_hist: pd.DataFrame,
                               initial_capital: float, fee_rate: float = 0.0,
-                              kospi_weight: float | None = None, beta_window: int = 5) -> dict:
+                              kospi_weight: float | None = None) -> dict:
     """'지수 대비 계좌' 그래프 데이터(§6-17). 값은 전부 소수(0.0145 = +1.45%).
 
     - 계좌수익(t)  = 총자산(t)/최초자본 - 1  — 앱 요약카드의 그 값. 예수금이 눌러주는 '완충된' 선.
@@ -1710,27 +1710,29 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
       (= wk·코스피 + (1-wk)·코스닥)를 만들어 민감도와 초과수익 판정 기준으로 쓴다
       (종목별 상장시장을 반영한 전체 벤치마크 — 사용자 요청 2026-09-01). None이면 코스피 기준.
 
-    반환 dict:
+    반환 dict (하락/상승/even 캡처 — 2026-09-07 설계, CR/엔진 전부 폐기):
       me:     DataFrame[날짜, 계좌수익, 주식수익, 주식당일, 계좌당일, 벤치누적, 벤치당일,
-                        국면막대주식, 국면막대계좌, 국면]
-              (asset_hist 스냅샷 날짜. 누적은 anchor 대비, 당일은 직전 스냅샷 대비 diff.
-               벤치 = 혼합 지수(wk 없으면 코스피)를 그 스냅샷 날짜에 정렬한 값.
-               국면막대* = 그 구간의 민감도 막대(하락일 = 1−내당일/벤치당일, 상승일 = 내당일/벤치당일),
-               국면 = "하락"/"상승"/"".)
+                        캡처계좌, 캡처주식, 초과계좌, 초과주식, 바구니]
+              (바구니 = "하락"/"상승"/"even"/"". 캡처* = 하락·상승일의 c = 내당일÷벤치당일,
+               초과* = even일의 e = 내당일−벤치당일(%p). 나머지 바구니에선 각각 NaN.)
       index:  DataFrame[날짜, 코스피, 코스닥]  (index_hist의 모든 거래일, 누적)
       latest: {"코스피"/"코스닥"/"주식"/"계좌"/"벤치": (누적, 당일)} — 최신 시점 값.
-      cap_today / cap_down / cap_up / cap_cr / cap_5d: 내 주식(Rs) 기준 국면 막대 요약 —
-                   오늘 막대 / 하락일 막대 평균 / 상승일 막대 평균 / CR(=상승÷하락) / 최근 5일 평균.
-      acct_cap_*: 같은 걸 내 계좌수익(예수금 포함) 기준으로.
-      cap_anomalies: [{날짜, 벤치당일, 내당일}] — |벤치당일| < 0.001이라 막대를 못 만든 날(이상치).
-      sensitivity_basis: "혼합" | "코스피" (막대가 어느 벤치 기준인지)
+      cap:    {"acct": {...}, "stock": {...}} — 각각 내 계좌 / 내 주식(Rs) 기준.
+              하위 키: dc(하락일 c 평균) / uc(상승일 c 평균) / even(even일 e 평균, 소수) /
+                       era=(방어 일수, 하락 일수)  — 방어 = c < 1
+                       pct=(승리 일수, 상승 일수)  — 승리 = c >= 1
+                       evr=(승리 일수, even 일수)  — 승리 = e >= +0.1%
+                       today(오늘 값: 하락/상승이면 c, even이면 e, 아니면 None) /
+                       today_bucket("하락"/"상승"/"even"/"")
+      n:      {"down": .., "up": .., "even": ..} — 바구니별 일수.
+      even_anomalies: [{날짜, 벤치당일, 초과_계좌, 초과_주식}] — even일 로그(파일 기록용).
+      sensitivity_basis: "혼합" | "코스피" (캡처가 어느 벤치 기준인지)
     """
     empty = {"me": pd.DataFrame(columns=["날짜", "계좌수익", "주식수익"]),
              "index": pd.DataFrame(columns=["날짜", "코스피", "코스닥"]),
              "latest": {},
-             "cap_today": None, "cap_down": None, "cap_up": None, "cap_cr": None, "cap_5d": None,
-             "acct_cap_today": None, "acct_cap_down": None, "acct_cap_up": None,
-             "acct_cap_cr": None, "acct_cap_5d": None, "cap_anomalies": [],
+             "cap": {"acct": {}, "stock": {}},
+             "n": {"down": 0, "up": 0, "even": 0}, "even_anomalies": [],
              "sensitivity_basis": "혼합" if kospi_weight is not None else "코스피"}
     if asset_hist is None or asset_hist.empty or index_hist is None or index_hist.empty:
         return empty
@@ -1805,57 +1807,83 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         latest["계좌"] = (_last(me["계좌수익"]), _last(me["계좌당일"]))
         latest["벤치"] = (_last(me["벤치누적"]), _last(me["벤치당일"]))  # 주식·계좌 색칠 기준
 
-    # ---- 국면별 민감도 막대 (2026-09-04 최종 설계, RP 대체) ----
-    # 하루(스냅샷 구간)마다 막대 하나. 그날 시장이 내렸으면(빨강) "얼마나 안 따라 빠졌나(방어)",
-    # 올랐으면(파랑) "얼마나 따라 올랐나(참여)".
-    #   하락일 막대 = 1 − 내당일/벤치당일   (1 = 하나도 안 잃음, 0 = 시장만큼, 2 = 잃은 만큼 벎)
-    #   상승일 막대 = 내당일/벤치당일       (1 = 시장만큼 벎, 0 = 하나도 못 벎, >1 = 더 벎)
-    # 둘 다 높을수록 좋음. |벤치당일| < EPS면 시장이 사실상 안 움직인 날이라 막대 없음 + 이상치 로그.
-    # 요약: 하락장 = 하락일 막대 평균, 상승장 = 상승일 막대 평균, CR = 상승장/하락장(1=대칭, >1=우호적),
-    #   5일 = 최근 beta_window일 막대 평균. 비율을 평균 내지만 사용자 판단(2026-09-04): 73종목
-    #   분산이라 벤치~0인데 계좌만 튀는 날이 거의 없고, 나더라도 이상치 로그 후 월단위로 수동 제외.
-    #   (예전 RP = (Δ내−Δ벤치)/|Δ벤치| 단일 식 — "0=시장동일"이 국면따라 좋/나쁨이 뒤집혀 폐기.)
-    EPS = 0.001
-    _bd = me["벤치당일"].values           # 스냅샷 구간별 벤치 변화(소수), index 0 = NaN
+    # ---- 하락 / 상승 / even 캡처 (2026-09-07 설계 — CR·엔진·합친지수 전부 폐기) ----
+    # 스냅샷 구간마다 벤치당일 부호로 3분류:
+    #   하락일 (벤치당일 < -0.1%): 캡처 c = 내당일 / 벤치당일   (낮을수록 방어 잘함, 음수 = 하락일에 오름)
+    #   상승일 (벤치당일 > +0.1%): 캡처 c = 내당일 / 벤치당일   (높을수록 참여 잘함, 음수 = 상승일에 잃음)
+    #   even일 (|벤치당일| <= 0.1%): 초과수익 e = 내당일 - 벤치당일 (%p) — 시장이 멈췄을 때 내 손익.
+    #     캡처는 비율이라 벤치당일이 0 근처면 폭발 → even은 아예 다른 지표(초과수익)를 씀.
+    # 누적(단순평균): DC = 하락일 c 평균, UC = 상승일 c 평균, even = even일 e 평균.
+    # 승률: ERA(방어율) = 하락일 중 c < 1, PCT(승률) = 상승일 중 c >= 1, evr = even일 중 e >= +0.1%.
+    # 내 계좌(예수금 포함) / 내 주식(Rs) 각각. "하락 방어"와 "상승 참여"는 성격이 다른 두 가지라
+    # 스칼라 하나로 안 뭉침(사용자 판단 2026-09-07 — 어떤 합산식도 왜곡/폭발 문제가 있었음).
+    EVEN_BAND = 0.001   # |벤치당일| 이 이하면 even일 (튜닝 가능)
+    _bd = me["벤치당일"].values
 
-    def _cap_cols(mine_day):
-        """내 당일수익 시계열 → (일자별 막대 리스트, 하락장평균, 상승장평균, CR, 5일평균, 이상치)."""
+    def _bucket(b):
+        if pd.isna(b):
+            return ""
+        if b < -EVEN_BAND:
+            return "하락"
+        if b > EVEN_BAND:
+            return "상승"
+        return "even"
+
+    me["바구니"] = [_bucket(b) for b in _bd]
+    _bk = list(me["바구니"])
+
+    def _cap_stats(mine_day):
+        """내 당일수익 시계열 → (일별 캡처 리스트, 일별 초과수익 리스트, 요약 dict)."""
         n = len(me)
-        bars = [None] * n
-        anomalies = []
+        cap = [None] * n        # 하락·상승일: c = 내/벤치
+        exc = [None] * n        # even일: e = 내 - 벤치
         for i in range(1, n):
             b, m = _bd[i], mine_day[i]
             if pd.isna(b) or pd.isna(m):
                 continue
-            if abs(b) < EPS:
-                anomalies.append({"날짜": str(me["날짜"].iloc[i]),
-                                  "벤치당일": round(float(b), 6), "내당일": round(float(m), 6)})
-                continue
-            bars[i] = (1.0 - m / b) if b < 0 else (m / b)
-        idxvals = [(i, bars[i]) for i in range(n) if bars[i] is not None]
-        down = [v for i, v in idxvals if _bd[i] < 0]
-        up = [v for i, v in idxvals if _bd[i] > 0]
-        d_avg = (sum(down) / len(down)) if down else None
-        u_avg = (sum(up) / len(up)) if up else None
-        cr = (u_avg / d_avg) if (u_avg is not None and d_avg is not None and abs(d_avg) > 1e-6) else None
-        last = [v for _, v in idxvals][-beta_window:]
-        avg5 = (sum(last) / len(last)) if last else None
-        return bars, d_avg, u_avg, cr, avg5, anomalies
+            if _bk[i] == "even":
+                exc[i] = float(m - b)
+            elif _bk[i] in ("하락", "상승"):
+                cap[i] = float(m / b)
+        down_c = [cap[i] for i in range(n) if _bk[i] == "하락" and cap[i] is not None]
+        up_c = [cap[i] for i in range(n) if _bk[i] == "상승" and cap[i] is not None]
+        even_e = [exc[i] for i in range(n) if _bk[i] == "even" and exc[i] is not None]
 
-    s_bars, s_down, s_up, s_cr, s_5d, s_anom = _cap_cols(me["주식당일"].values)   # 내 주식(Rs)
-    a_bars, a_down, a_up, a_cr, a_5d, _ = _cap_cols(me["계좌당일"].values)        # 내 계좌(예수금 포함)
+        def _mean(xs):
+            return (sum(xs) / len(xs)) if xs else None
 
-    me["국면막대주식"] = pd.Series(s_bars, index=me.index, dtype="float64")
-    me["국면막대계좌"] = pd.Series(a_bars, index=me.index, dtype="float64")
-    me["국면"] = pd.Series(["하락" if (not pd.isna(x) and x < 0) else "상승" if (not pd.isna(x) and x > 0) else ""
-                             for x in _bd], index=me.index)
+        last_bk = _bk[-1] if n else ""
+        if last_bk in ("하락", "상승"):
+            today = cap[-1]
+        elif last_bk == "even":
+            today = exc[-1]
+        else:
+            today = None
+        return cap, exc, {
+            "dc": _mean(down_c), "uc": _mean(up_c), "even": _mean(even_e),
+            "era": (sum(1 for x in down_c if x < 1.0), len(down_c)),
+            "pct": (sum(1 for x in up_c if x >= 1.0), len(up_c)),
+            "evr": (sum(1 for x in even_e if x >= EVEN_BAND), len(even_e)),
+            "today": today, "today_bucket": last_bk,
+        }
+
+    a_cap, a_exc, a_sum = _cap_stats(me["계좌당일"].values)   # 내 계좌 (예수금 포함)
+    s_cap, s_exc, s_sum = _cap_stats(me["주식당일"].values)   # 내 주식 (Rs)
+
+    me["캡처계좌"] = pd.Series(a_cap, index=me.index, dtype="float64")
+    me["캡처주식"] = pd.Series(s_cap, index=me.index, dtype="float64")
+    me["초과계좌"] = pd.Series(a_exc, index=me.index, dtype="float64")
+    me["초과주식"] = pd.Series(s_exc, index=me.index, dtype="float64")
+
+    even_anom = [{"날짜": str(me["날짜"].iloc[i]), "벤치당일": round(float(_bd[i]), 6),
+                  "초과_계좌": (round(float(a_exc[i]), 6) if a_exc[i] is not None else None),
+                  "초과_주식": (round(float(s_exc[i]), 6) if s_exc[i] is not None else None)}
+                 for i in range(len(me)) if _bk[i] == "even"]
 
     return {"me": me, "index": idx_cum, "latest": latest,
-            "cap_today": s_bars[-1] if s_bars else None, "cap_down": s_down, "cap_up": s_up,
-            "cap_cr": s_cr, "cap_5d": s_5d,
-            "acct_cap_today": a_bars[-1] if a_bars else None, "acct_cap_down": a_down,
-            "acct_cap_up": a_up, "acct_cap_cr": a_cr, "acct_cap_5d": a_5d,
-            "cap_anomalies": s_anom,
+            "cap": {"acct": a_sum, "stock": s_sum},
+            "n": {"down": _bk.count("하락"), "up": _bk.count("상승"), "even": _bk.count("even")},
+            "even_anomalies": even_anom,
             "sensitivity_basis": "혼합" if wk is not None else "코스피"}
 
 

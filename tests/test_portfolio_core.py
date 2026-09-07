@@ -775,71 +775,72 @@ def test_compute_index_vs_account_blended_benchmark():
 
 
 def test_capture_down_market():
-    """국면 막대(RP 대체, 2026-09-04): 하락장에서 내 계좌가 벤치의 0.5배로만 빠지면
-    하락일 막대 = 1 − 내당일/벤치당일 = 1 − 0.5 = 0.5 (절반 방어).
-    상승일이 하나도 없으니 상승장·CR은 None."""
+    """하락일 캡처(2026-09-07 설계): 벤치의 0.5배로만 빠지면 c = 내당일÷벤치당일 = 0.5.
+    DC(하락일 c 평균) = 0.5, 방어율(c<1)은 전부 충족, 상승일 없으니 UC는 None."""
     dates = ["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09",
              "2026-01-12", "2026-01-13"]
-    kospi = [100.0, 99.0, 98.0, 97.0, 96.0, 95.0, 94.0]
+    kospi = [100.0, 99.0, 98.0, 97.0, 96.0, 95.0, 94.0]   # 매일 약 -1%
     idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates, kospi)])
     tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])  # 예수금 0 → 계좌==주식
-    # 계좌수익이 정확히 벤치(앵커 대비 누적)의 0.5배가 되게 총자산을 잡음 → 계좌당일 diff가 정확
     asset = [1_000_000.0 * (1 + 0.5 * (k / 100.0 - 1.0)) for k in kospi]
     asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, asset)])
     r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
-    assert r["acct_cap_down"] == pytest.approx(0.5, abs=1e-9)
-    assert r["acct_cap_today"] == pytest.approx(0.5, abs=1e-9)
-    assert r["acct_cap_5d"] == pytest.approx(0.5, abs=1e-9)
-    assert r["acct_cap_up"] is None
-    assert r["acct_cap_cr"] is None
-    assert r["cap_down"] == pytest.approx(0.5, abs=5e-3)   # 주식(Rs)은 복리라 근사
-    me = r["me"]
-    assert pd.isna(me["국면막대계좌"].iloc[0])
-    assert me["국면막대계좌"].dropna().round(9).eq(0.5).all()
-    assert list(me["국면"]) == [""] + ["하락"] * 6
+    ca = r["cap"]["acct"]
+    assert ca["dc"] == pytest.approx(0.5, abs=1e-9)
+    assert ca["uc"] is None
+    assert ca["era"] == (6, 6)          # 하락 6구간 전부 c=0.5 < 1
+    assert ca["pct"] == (0, 0)
+    assert ca["today"] == pytest.approx(0.5) and ca["today_bucket"] == "하락"
+    assert r["n"] == {"down": 6, "up": 0, "even": 0}
+    assert r["cap"]["stock"]["dc"] == pytest.approx(0.5, abs=5e-3)   # Rs는 복리라 근사
+    assert list(r["me"]["바구니"]) == [""] + ["하락"] * 6
+    assert pd.isna(r["me"]["캡처계좌"].iloc[0])
     assert r["sensitivity_basis"] == "혼합"
 
 
-def test_capture_up_down_and_cr():
-    """하락일 막대 = 1−내당일/벤치당일, 상승일 막대 = 내당일/벤치당일.
-    하락장·상승장 = 각 국면 막대의 단순평균, CR = 상승장 ÷ 하락장, 5일 = 최근 막대 평균(국면 무관)."""
+def test_capture_up_and_down_buckets():
+    """하락일·상승일 캡처 평균(DC/UC)과 방어율(c<1)/승률(c>=1) 카운트."""
     dates = ["2026-02-02", "2026-02-03", "2026-02-04", "2026-02-05", "2026-02-06"]
-    kospi = [100.0, 98.0, 96.0, 100.0, 104.0]   # 앵커 대비 누적 0/-2%/-4%/0/+4% → 당일 -2,-2,+4,+4
+    kospi = [100.0, 98.0, 96.0, 100.0, 104.0]   # 누적 0/-2%/-4%/0/+4% → 당일 -2,-2,+4,+4
     idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates, kospi)])
     tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])  # 예수금 0 → 계좌==주식
     tot = [1_000_000.0, 990_000.0, 975_000.0, 995_000.0, 1_025_000.0]
-    #  계좌수익 누적: 0 / -1% / -2.5% / -0.5% / +2.5%   →   당일 -1%, -1.5%, +2%, +3%
-    #  막대:  1-0.01/0.02=.5 · 1-0.015/0.02=.25 · 0.02/0.04=.5 · 0.03/0.04=.75
+    #  계좌수익: 0/-1%/-2.5%/-0.5%/+2.5%  →  당일 -1%,-1.5%,+2%,+3%
+    #  c: -0.01/-0.02=.5, -0.015/-0.02=.75 (하락) · 0.02/0.04=.5, 0.03/0.04=.75 (상승)
     asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, tot)])
     r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
-    assert r["acct_cap_down"] == pytest.approx((0.5 + 0.25) / 2)
-    assert r["acct_cap_up"] == pytest.approx((0.5 + 0.75) / 2)
-    assert r["acct_cap_cr"] == pytest.approx(0.625 / 0.375)
-    assert r["acct_cap_5d"] == pytest.approx((0.5 + 0.25 + 0.5 + 0.75) / 4)
-    assert r["acct_cap_today"] == pytest.approx(0.75)
-    me = r["me"]
-    assert list(me["국면"]) == ["", "하락", "하락", "상승", "상승"]
-    assert me["국면막대계좌"].dropna().round(6).tolist() == [0.5, 0.25, 0.5, 0.75]
-    assert pd.isna(me["국면막대계좌"].iloc[0])
+    ca = r["cap"]["acct"]
+    assert ca["dc"] == pytest.approx((0.5 + 0.75) / 2)
+    assert ca["uc"] == pytest.approx((0.5 + 0.75) / 2)
+    assert ca["era"] == (2, 2)          # 하락 c 둘 다 < 1
+    assert ca["pct"] == (0, 2)          # 상승 c 둘 다 < 1 → 승리 0
+    assert ca["today"] == pytest.approx(0.75) and ca["today_bucket"] == "상승"
+    assert r["n"] == {"down": 2, "up": 2, "even": 0}
+    assert list(r["me"]["바구니"]) == ["", "하락", "하락", "상승", "상승"]
+    assert r["me"]["캡처계좌"].dropna().round(6).tolist() == [0.5, 0.75, 0.5, 0.75]
 
 
-def test_capture_eps_guard_logs_anomaly():
-    """|벤치당일| < 0.001인 날(시장이 사실상 안 움직임)은 막대를 만들지 않고 이상치로 기록한다."""
-    dates = ["2026-04-01", "2026-04-02", "2026-04-03"]
-    kospi = [100.0, 100.0, 98.0]      # 당일 0%, -2%
+def test_capture_even_bucket_uses_excess_return():
+    """|벤치당일| <= 0.1%인 날은 even 바구니 — 캡처 비율 대신 초과수익(내당일 − 벤치당일)으로
+    집계, even 승률 = 초과수익 >= +0.1% 비율. even_anomalies에도 기록."""
+    dates = ["2026-04-01", "2026-04-02", "2026-04-03", "2026-04-06"]
+    kospi = [100.0, 100.05, 100.10, 98.0]   # 당일 +0.05%, +0.05%, -2.1%
     idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates, kospi)])
     tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])
-    tot = [1_000_000.0, 990_000.0, 980_000.0]   # 계좌 당일 -1%, -1%
+    tot = [1_000_000.0, 1_003_000.0, 999_000.0, 990_000.0]
+    #  계좌수익: 0/+0.3%/-0.1%/-1.0%  →  당일 +0.3%, -0.4%, -0.9%
     asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, tot)])
     r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
-    anom = r["cap_anomalies"]
-    assert len(anom) == 1
-    assert anom[0]["날짜"] == "2026-04-02"
-    assert anom[0]["벤치당일"] == pytest.approx(0.0, abs=1e-9)
     me = r["me"]
-    assert pd.isna(me["국면막대주식"].iloc[1])          # 이상치 날 → 막대 없음
-    assert me["국면막대주식"].iloc[2] == pytest.approx(0.5, abs=5e-3)
-    assert me["국면"].iloc[1] == ""                      # 방향 없음
+    assert list(me["바구니"]) == ["", "even", "even", "하락"]
+    ca = r["cap"]["acct"]
+    # even 초과수익: i1 = 0.003 − 0.0005 = 0.0025 ; i2 = −0.004 − 0.0005 = −0.0045
+    assert ca["even"] == pytest.approx((0.0025 + (-0.0045)) / 2)
+    assert ca["evr"] == (1, 2)          # i1(+0.25%) >= 0.1% 충족, i2 미충족
+    assert ca["dc"] is not None         # 하락일 1개
+    assert r["n"] == {"down": 1, "up": 0, "even": 2}
+    assert [a["날짜"] for a in r["even_anomalies"]] == ["2026-04-02", "2026-04-03"]
+    assert r["even_anomalies"][0]["초과_계좌"] == pytest.approx(0.0025)
 
 
 def test_market_cache_roundtrip(tmp_path, monkeypatch):
