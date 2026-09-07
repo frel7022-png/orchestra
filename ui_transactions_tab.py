@@ -6,8 +6,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-import streamlit.components.v1 as components
-
 from constants import UP_COLOR, DOWN_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
@@ -124,9 +122,9 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         f" <span style='font-size:11px;font-weight:400;color:{T['muted']}'>"
         f"보유비중 코스피 {wk * 100:.0f}% · 코스닥 {(1 - wk) * 100:.0f}%</span>"
     )
-    def _render_iva_panel(iva, idx_hist_local, kospi_label, carousel_id):
-        """'지수 대비 계좌' 한 벌(5줄 표 + 하락/상승/even 캡처 리스트 + 스와이프 캐러셀
-        [지수 대비 계좌 선그래프 ↔ 일별 캡처 막대]). 메인(코스피)과 'SamHynix extracted'
+    def _render_iva_panel(iva, idx_hist_local, kospi_label):
+        """'지수 대비 계좌' 한 벌. 세로 순서: 5줄 지수 표 → 지수 대비 계좌 선그래프 →
+        하락/상승/even 캡처 표 3개 → 일별 캡처 막대. 메인(코스피)과 'SamHynix extracted'
         (코스피 다리 = 삼성·하이닉스 제외)가 이 렌더러를 공유한다 — 표·그래프의 '코스피'
         표시 라벨만 kospi_label로 바뀌고 dict 키는 '코스피' 그대로."""
         me, idxc, latest = iva["me"], iva["index"], iva["latest"]
@@ -196,20 +194,6 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             unsafe_allow_html=True,
         )
 
-        # 혼합지수(코스피·코스닥 합친) vs 내 주식 — 당일 한 줄
-        b_cum, b_day = latest.get("벤치", (None, None))
-        my_cum, my_day = latest.get("주식", (None, None))
-
-        def _p(v):
-            return "—" if v is None or pd.isna(v) else f"{v * 100:+.2f}%"
-
-        st.markdown(
-            f"<div style='font-size:11px;color:{T['muted']};margin:0 0 2px'>"
-            f"당일  혼합지수 <b>{_p(b_day)}</b>  /  내 주식 <b>{_p(my_day)}</b>"
-            f"<span style='color:{T['muted2']}'> · 누적 {_p(b_cum)} / {_p(my_cum)}</span></div>",
-            unsafe_allow_html=True,
-        )
-
         # ---- 하락 / 상승 캡처 + even 초과수익 + 승률 (2026-09-07, CR 대체) ----
         # 바구니마다 미니 표: 행 = 내 계좌 / 내 주식, 열 = 누적 / 당일 / Pct(승률).
         #   DC 누적 = Σ내당일/Σ벤치당일 (하락일 전체 — 일별 비율 평균이 아님, 튐 방지),
@@ -217,7 +201,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         #   당일 = 오늘이 그 바구니면 그날 값(하락/상승은 일별 c, even은 %p), 아니면 —.
         #   Pct = ERA(하락 c<1) / 승률(상승 c>=1) / even 승률(e>=+0.1%).
         # 숫자 색: 하락 표 = 빨강, 상승 표 = 파랑(사용자 지정, 국내 관례 반대), even 표 = 회색.
-        # "합친 지수" 없음(사용자 판단 2026-09-07) — 값들을 같이 읽음.
+        # "합친 지수" 없음(사용자 판단 2026-09-07) — 값들을 같이 읽음. 이 표들은 아래 fig2(선그래프)
+        # 밑, fig_s(일별 캡처 막대) 바로 위에 렌더링됨 — 캡처 막대의 데이터 짝(사용자 요청 2026-09-07).
         basis = iva["sensitivity_basis"]
         cap_a, cap_s = iva["cap"]["acct"], iva["cap"]["stock"]
         nn = iva["n"]
@@ -252,13 +237,12 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 f"{rows}</table>"
             )
 
-        st.markdown(
+        caps_html = (
             _cap_tbl("DC 하락 캡처 · ERA", UP_COLOR, "하락", "dc", "era", False)
             + _cap_tbl("UC 상승 캡처 · 승률", DOWN_COLOR, "상승", "uc", "pct", False)
             + _cap_tbl("even 평균 · 승률 (±0.1%)", T["muted2"], "even", "even", "evr", True)
             + f"<div style='font-size:10px;color:{T['muted2']};margin:3px 0 4px'>"
-              f"하락 {nn['down']} · 상승 {nn['up']} · even {nn['even']}</div>",
-            unsafe_allow_html=True,
+              f"하락 {nn['down']} · 상승 {nn['up']} · even {nn['even']}</div>"
         )
 
         # hover(x unified): 실현손익 그래프와 같은 방식 — 날짜를 누르면 한 박스에 선별로
@@ -379,72 +363,19 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             dragmode=False,
         )
 
-        # ---- 두 그래프를 스와이프 캐러셀로 (밑에 점, 옆으로 밀면 전환) ----
-        cfg = {"displayModeBar": False, "responsive": True, "scrollZoom": False, "doubleClick": False}
-        h1 = fig2.to_html(include_plotlyjs="cdn", full_html=False, config=cfg, default_width="100%")
-        h2 = fig_s.to_html(include_plotlyjs=False, full_html=False, config=cfg, default_width="100%")
-        components.html(
-            f"""
-<div id="{carousel_id}">
-  <div class="track">
-    <div class="slide">{h1}</div>
-    <div class="slide">{h2}</div>
-  </div>
-  <div class="dots"><span class="dot on"></span><span class="dot"></span></div>
-</div>
-<style>
-  body {{ margin:0; background:transparent; }}
-  #{carousel_id} .track {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
-    -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
-  #{carousel_id} .track::-webkit-scrollbar {{ display:none; }}
-  #{carousel_id} .slide {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always; }}
-  #{carousel_id} .dots {{ display:flex; justify-content:center; gap:10px; padding:5px 0 0; }}
-  #{carousel_id} .dot {{ width:9px; height:9px; border-radius:50%; background:{T['muted2']};
-    opacity:.3; transition:opacity .18s, background .18s; }}
-  #{carousel_id} .dot.on {{ opacity:1; background:{T['text']}; }}
-</style>
-<script>
-  (function() {{
-    var track = document.querySelector('#{carousel_id} .track');
-    var dots = document.querySelectorAll('#{carousel_id} .dot');
-    function sync() {{
-      var i = Math.round(track.scrollLeft / Math.max(track.clientWidth, 1));
-      dots.forEach(function(d, j) {{ d.classList.toggle('on', j === i); }});
-    }}
-    track.addEventListener('scroll', sync, {{passive: true}});
-    // PC(마우스)에선 스와이프가 안 되므로 점을 눌러서 전환 + 좌우 화살표 키
-    dots.forEach(function(d, j) {{
-      d.style.cursor = 'pointer';
-      d.addEventListener('click', function() {{
-        track.scrollTo({{left: j * track.clientWidth, behavior: 'smooth'}});
-      }});
-    }});
-    track.setAttribute('tabindex', '0');
-    track.addEventListener('keydown', function(e) {{
-      var cur = Math.round(track.scrollLeft / Math.max(track.clientWidth, 1));
-      if (e.key === 'ArrowRight') track.scrollTo({{left: (cur + 1) * track.clientWidth, behavior: 'smooth'}});
-      if (e.key === 'ArrowLeft') track.scrollTo({{left: (cur - 1) * track.clientWidth, behavior: 'smooth'}});
-    }});
-    function rz() {{
-      var w = document.querySelector('#{carousel_id} .track').clientWidth;
-      if (!w) return;
-      document.querySelectorAll('#{carousel_id} .plotly-graph-div').forEach(function(g) {{
-        if (window.Plotly) window.Plotly.relayout(g, {{width: w, height: 275}});
-      }});
-    }}
-    window.addEventListener('resize', rz);
-    setTimeout(rz, 50); setTimeout(rz, 250); setTimeout(rz, 700);
-  }})();
-</script>
-""",
-            height=315,
-        )
+        # ---- 렌더 순서: [5줄 지수 표(위)] → 선그래프 → [캡처 표 3개] → 일별 캡처 막대 ----
+        # 캐러셀(2페이지 스와이프)은 없앰 (2026-09-07 사용자 요청 — 캡처 표를 "두 번째 그래프
+        # 위에" 두려면 두 그래프가 세로로 갈려야 함). 세로 스택이 모바일 스크롤에도 더 나음.
+        _cfg = {"displayModeBar": False, "scrollZoom": False, "doubleClick": False}
+        st.plotly_chart(fig2, use_container_width=True, config=_cfg)
+        st.markdown(caps_html, unsafe_allow_html=True)
+        st.plotly_chart(fig_s, use_container_width=True, config=_cfg)
 
     # ---- 지수 대비 계좌 (메인: 코스피/코스닥) ----
     st.markdown(f"##### Account : Index{_wtag}", unsafe_allow_html=True)
     iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
                                     state.get("fee_rate", 0.0), kospi_weight=wk)
-    _render_iva_panel(iva, idx_hist, "코스피", "cwrap")
+    _render_iva_panel(iva, idx_hist, "코스피")
 
     # ---- 코스피 추이: 일반(빨강) vs 삼성·삼성우·하이닉스 제외(파랑). 실제 지수 포인트로 표시,
     #      hover엔 그 시점의 전일 대비 등락률(%). ----
@@ -496,7 +427,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             _syn = synthetic_kospi_ex_bigcap(idx_hist, _bg)
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
-            _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
+            _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외")
 
     st.divider()
 
