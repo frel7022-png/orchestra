@@ -799,25 +799,42 @@ def test_capture_down_market():
 
 
 def test_capture_up_and_down_buckets():
-    """하락일·상승일 캡처 평균(DC/UC)과 방어율(c<1)/승률(c>=1) 카운트."""
+    """하락일·상승일 캡처(DC/UC = Σ내당일/Σ벤치당일)와 방어율(c<1)/승률(c>=1) 카운트."""
     dates = ["2026-02-02", "2026-02-03", "2026-02-04", "2026-02-05", "2026-02-06"]
     kospi = [100.0, 98.0, 96.0, 100.0, 104.0]   # 누적 0/-2%/-4%/0/+4% → 당일 -2,-2,+4,+4
     idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates, kospi)])
     tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])  # 예수금 0 → 계좌==주식
     tot = [1_000_000.0, 990_000.0, 975_000.0, 995_000.0, 1_025_000.0]
     #  계좌수익: 0/-1%/-2.5%/-0.5%/+2.5%  →  당일 -1%,-1.5%,+2%,+3%
-    #  c: -0.01/-0.02=.5, -0.015/-0.02=.75 (하락) · 0.02/0.04=.5, 0.03/0.04=.75 (상승)
+    #  하락 Σ내/Σ벤치 = (-0.01-0.015)/(-0.02-0.02) = 0.625 ; 상승 = (0.02+0.03)/(0.04+0.04) = 0.625
     asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, tot)])
     r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
     ca = r["cap"]["acct"]
-    assert ca["dc"] == pytest.approx((0.5 + 0.75) / 2)
-    assert ca["uc"] == pytest.approx((0.5 + 0.75) / 2)
-    assert ca["era"] == (2, 2)          # 하락 c 둘 다 < 1
-    assert ca["pct"] == (0, 2)          # 상승 c 둘 다 < 1 → 승리 0
+    assert ca["dc"] == pytest.approx((-0.025) / (-0.04))   # 0.625
+    assert ca["uc"] == pytest.approx(0.05 / 0.08)          # 0.625
+    assert ca["era"] == (2, 2)          # 하락 일별 c 둘 다 < 1
+    assert ca["pct"] == (0, 2)          # 상승 일별 c 둘 다 < 1 → 승리 0
     assert ca["today"] == pytest.approx(0.75) and ca["today_bucket"] == "상승"
     assert r["n"] == {"down": 2, "up": 2, "even": 0}
     assert list(r["me"]["바구니"]) == ["", "하락", "하락", "상승", "상승"]
     assert r["me"]["캡처계좌"].dropna().round(6).tolist() == [0.5, 0.75, 0.5, 0.75]
+
+
+def test_capture_dc_is_ratio_of_sums_not_mean_of_daily_ratios():
+    """DC/UC 누적 = Σ내당일/Σ벤치당일 (일별 비율 평균 아님 — 벤치 작은 날에 안 튐, 2026-09-07).
+    하락 2일: 일별 c = 0.8, 0.5 → mean=0.65 이지만 Σ/Σ = -0.024/-0.045 ≈ 0.5333."""
+    dates = ["2026-05-04", "2026-05-05", "2026-05-06"]
+    kospi = [100.0, 99.5, 95.5]   # 누적 0/-0.5%/-4.5% → 당일 -0.5%, -4.0%
+    idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates, kospi)])
+    tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])
+    tot = [1_000_000.0, 996_000.0, 976_000.0]   # 계좌수익 0/-0.4%/-2.4% → 당일 -0.4%, -2.0%
+    asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, tot)])
+    r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
+    ca = r["cap"]["acct"]
+    assert list(r["me"]["바구니"]) == ["", "하락", "하락"]
+    assert r["me"]["캡처계좌"].dropna().round(6).tolist() == [0.8, 0.5]   # 일별 c
+    assert ca["dc"] == pytest.approx((-0.004 + -0.02) / (-0.005 + -0.04))  # 0.5333, NOT 0.65
+    assert abs(ca["dc"] - 0.65) > 0.1
 
 
 def test_capture_even_bucket_uses_excess_return():

@@ -211,46 +211,52 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         )
 
         # ---- 하락 / 상승 캡처 + even 초과수익 + 승률 (2026-09-07, CR 대체) ----
-        # 하락일 캡처(내당일÷벤치당일, 낮을수록 방어) / 상승일 캡처(높을수록 참여) /
-        # even일(시장 ±0.1%)은 비율 대신 초과수익 %p. 각 줄에 누적평균·오늘값·승률.
-        # 숫자 색: 하락 줄 = 빨강, 상승 줄 = 파랑(사용자 지정, 국내 관례 반대), even 줄 = 회색.
+        # 바구니마다 미니 표: 행 = 내 계좌 / 내 주식, 열 = 누적 / 당일 / Pct(승률).
+        #   DC 누적 = Σ내당일/Σ벤치당일 (하락일 전체 — 일별 비율 평균이 아님, 튐 방지),
+        #   UC 누적 = Σ내당일/Σ벤치당일 (상승일 전체),  even 누적 = even일 초과수익(%p) 단순평균.
+        #   당일 = 오늘이 그 바구니면 그날 값(하락/상승은 일별 c, even은 %p), 아니면 —.
+        #   Pct = ERA(하락 c<1) / 승률(상승 c>=1) / even 승률(e>=+0.1%).
+        # 숫자 색: 하락 표 = 빨강, 상승 표 = 파랑(사용자 지정, 국내 관례 반대), even 표 = 회색.
         # "합친 지수" 없음(사용자 판단 2026-09-07) — 값들을 같이 읽음.
         basis = iva["sensitivity_basis"]
         cap_a, cap_s = iva["cap"]["acct"], iva["cap"]["stock"]
         nn = iva["n"]
 
-        def _today_val(sm, want):
-            if sm.get("today_bucket") != want:
-                return "—"
-            v = sm.get("today")
-            if v is None or pd.isna(v):
-                return "—"
-            return f"{v * 100:+.2f}%" if want == "even" else f"{v:.2f}"
-
-        def _cap_block(title, color, want, avg_key, wr_key, is_pp):
-            def _avg(sm):
-                v = sm.get(avg_key)
-                if v is None or pd.isna(v):
+        def _cap_tbl(title, color, want, avg_key, wr_key, is_pp):
+            def _num(v):
+                if v is None or (isinstance(v, float) and pd.isna(v)):
                     return "—"
                 return f"{v * 100:+.2f}%" if is_pp else f"{v:.2f}"
+
+            def _today(sm):
+                return _num(sm.get("today")) if sm.get("today_bucket") == want else "—"
 
             def _wr(sm):
                 tp = sm.get(wr_key)
                 return "—" if not tp or tp[1] == 0 else f"{tp[0]}/{tp[1]}"
 
-            out = (f"<div style='font-size:11px;color:{color};font-weight:600;margin:3px 0 0'>"
-                   f"{title} <span style='color:{T['muted2']};font-weight:400'>({basis})</span></div>")
-            for lbl, sm in (("계좌", cap_a), ("주식", cap_s)):
-                out += (f"<div style='font-size:11px;color:{color};margin:0 0 1px'>"
-                        f"&nbsp;{lbl}&nbsp; 누적 {_avg(sm)} · 오늘 {_today_val(sm, want)}"
-                        f" <span style='color:{T['muted2']}'>· {_wr(sm)}</span></div>")
-            return out
+            rows = ""
+            for lbl, sm in (("내 계좌", cap_a), ("내 주식", cap_s)):
+                rows += (f"<tr><td style='color:{color}'>{lbl}</td>"
+                         f"<td style='text-align:right;color:{color}'>{_num(sm.get(avg_key))}</td>"
+                         f"<td style='text-align:right;color:{color}'>{_today(sm)}</td>"
+                         f"<td style='text-align:right;color:{T['muted2']}'>{_wr(sm)}</td></tr>")
+            return (
+                "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:3px 0 0'>"
+                f"<tr style='font-size:10px'>"
+                f"<th style='text-align:left;color:{color}'>{title}"
+                f" <span style='color:{T['muted2']};font-weight:400'>({basis})</span></th>"
+                f"<th style='text-align:right;color:{T['muted2']}'>누적</th>"
+                f"<th style='text-align:right;color:{T['muted2']}'>당일</th>"
+                f"<th style='text-align:right;color:{T['muted2']}'>Pct</th></tr>"
+                f"{rows}</table>"
+            )
 
         st.markdown(
-            _cap_block("DC 하락 캡처 · ERA", UP_COLOR, "하락", "dc", "era", False)
-            + _cap_block("UC 상승 캡처 · 승률", DOWN_COLOR, "상승", "uc", "pct", False)
-            + _cap_block("even 평균 · 승률 (시장 ±0.1%)", T["muted2"], "even", "even", "evr", True)
-            + f"<div style='font-size:10px;color:{T['muted2']};margin:2px 0 3px'>"
+            _cap_tbl("DC 하락 캡처 · ERA", UP_COLOR, "하락", "dc", "era", False)
+            + _cap_tbl("UC 상승 캡처 · 승률", DOWN_COLOR, "상승", "uc", "pct", False)
+            + _cap_tbl("even 평균 · 승률 (±0.1%)", T["muted2"], "even", "even", "evr", True)
+            + f"<div style='font-size:10px;color:{T['muted2']};margin:3px 0 4px'>"
               f"하락 {nn['down']} · 상승 {nn['up']} · even {nn['even']}</div>",
             unsafe_allow_html=True,
         )

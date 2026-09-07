@@ -1718,11 +1718,12 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
       index:  DataFrame[날짜, 코스피, 코스닥]  (index_hist의 모든 거래일, 누적)
       latest: {"코스피"/"코스닥"/"주식"/"계좌"/"벤치": (누적, 당일)} — 최신 시점 값.
       cap:    {"acct": {...}, "stock": {...}} — 각각 내 계좌 / 내 주식(Rs) 기준.
-              하위 키: dc(하락일 c 평균) / uc(상승일 c 평균) / even(even일 e 평균, 소수) /
-                       era=(방어 일수, 하락 일수)  — 방어 = c < 1
-                       pct=(승리 일수, 상승 일수)  — 승리 = c >= 1
+              하위 키: dc(하락일 Σ내당일/Σ벤치당일) / uc(상승일 Σ내당일/Σ벤치당일) /
+                       even(even일 e 단순평균, 소수) /
+                       era=(방어 일수, 하락 일수)  — 방어 = 일별 c < 1
+                       pct=(승리 일수, 상승 일수)  — 승리 = 일별 c >= 1
                        evr=(승리 일수, even 일수)  — 승리 = e >= +0.1%
-                       today(오늘 값: 하락/상승이면 c, even이면 e, 아니면 None) /
+                       today(오늘 값: 하락/상승이면 일별 c, even이면 e, 아니면 None) /
                        today_bucket("하락"/"상승"/"even"/"")
       n:      {"down": .., "up": .., "even": ..} — 바구니별 일수.
       even_anomalies: [{날짜, 벤치당일, 초과_계좌, 초과_주식}] — even일 로그(파일 기록용).
@@ -1813,8 +1814,12 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
     #   상승일 (벤치당일 > +0.1%): 캡처 c = 내당일 / 벤치당일   (높을수록 참여 잘함, 음수 = 상승일에 잃음)
     #   even일 (|벤치당일| <= 0.1%): 초과수익 e = 내당일 - 벤치당일 (%p) — 시장이 멈췄을 때 내 손익.
     #     캡처는 비율이라 벤치당일이 0 근처면 폭발 → even은 아예 다른 지표(초과수익)를 씀.
-    # 누적(단순평균): DC = 하락일 c 평균, UC = 상승일 c 평균, even = even일 e 평균.
-    # 승률: ERA(방어율) = 하락일 중 c < 1, PCT(승률) = 상승일 중 c >= 1, evr = even일 중 e >= +0.1%.
+    # 누적: DC = Σ내당일 / Σ벤치당일 (하락일 전체 합의 비율 — 일별 c를 평균 내지 않음.
+    #   사용자 지적 2026-09-07: mean(내/벤치)는 벤치 작은 날에 폭발해서 튐, Σ/Σ는 안 튐),
+    #   UC = Σ내당일 / Σ벤치당일 (상승일 전체), even = even일 e 단순평균(초과수익은 나눗셈이
+    #   아니라 뺄셈이라 큰 날이 있어도 안 튐 → 그냥 평균).
+    # 승률(전부 일별 이진 카운트): ERA(방어율) = 하락일 중 c < 1, PCT(승률) = 상승일 중 c >= 1,
+    #   evr = even일 중 e >= +0.1%.
     # 내 계좌(예수금 포함) / 내 주식(Rs) 각각. "하락 방어"와 "상승 참여"는 성격이 다른 두 가지라
     # 스칼라 하나로 안 뭉침(사용자 판단 2026-09-07 — 어떤 합산식도 왜곡/폭발 문제가 있었음).
     EVEN_BAND = 0.001   # |벤치당일| 이 이하면 even일 (튜닝 가능)
@@ -1852,6 +1857,18 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         def _mean(xs):
             return (sum(xs) / len(xs)) if xs else None
 
+        def _bratio(bucket):  # Σ내당일 / Σ벤치당일  (그 바구니 전체)
+            sm = sb = 0.0
+            cnt = 0
+            for i in range(1, n):
+                if _bk[i] != bucket:
+                    continue
+                b, m = _bd[i], mine_day[i]
+                if pd.isna(b) or pd.isna(m):
+                    continue
+                sm, sb, cnt = sm + m, sb + b, cnt + 1
+            return (sm / sb) if (cnt and sb != 0) else None
+
         last_bk = _bk[-1] if n else ""
         if last_bk in ("하락", "상승"):
             today = cap[-1]
@@ -1860,7 +1877,7 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         else:
             today = None
         return cap, exc, {
-            "dc": _mean(down_c), "uc": _mean(up_c), "even": _mean(even_e),
+            "dc": _bratio("하락"), "uc": _bratio("상승"), "even": _mean(even_e),
             "era": (sum(1 for x in down_c if x < 1.0), len(down_c)),
             "pct": (sum(1 for x in up_c if x >= 1.0), len(up_c)),
             "evr": (sum(1 for x in even_e if x >= EVEN_BAND), len(even_e)),
