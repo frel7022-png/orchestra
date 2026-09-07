@@ -865,6 +865,21 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
     `resolve_trading_date()` 자체가 없고 5개 스냅샷 함수가 전부 `today_kst_str()`으로
     서로 일관돼 있어서(교차 불일치가 없어서) 이 증상 자체는 없음 — 이번엔 포팅 안 함,
     나중에 meritz에서도 같은 증상 보고되면 그때 이식할 것.**
+  - **같은 증상 재발(2026-09-07) — 이번엔 날짜 기준이 아니라 `index_history.csv`가 그냥
+    며칠 뒤처져서.** `ingest_daily.py`(매매일지 반영)가 `asset_history`엔 `trade_date` 행을
+    넣는데 `index_history`는 안 건드렸음. `index_history`는 **앱 "시세 새로고침" 핸들러에서만**
+    갱신되는데 그건 배포 서버 컨테이너 로컬 fs에만 쓰이고 git엔 안 올라감(§6-1: 앱은 자동
+    커밋 안 함) → 재배포 때마다 git-committed 버전(뒤처진)으로 초기화 → 배포판의
+    `index_history`가 `asset_history`보다 며칠 뒤처짐 → `me`의 최신 asset 행(예: 9/7)의
+    `_bench_on()`이 "직전 index 값(9/4) − 같은 값 = 0" → 벤치당일 0 → "혼합지수 당일 0.00%"
+    + 오늘이 even일로 분류 + 내 계좌·주식 당일이 벤치보다 낮은데 빨강으로 (0 대비 이겼다고).
+    표의 "코스피 당일 +X%"도 사실 그 뒤처진 날의 값이지 진짜 오늘 게 아님. **고침 3종**:
+    (1) `ingest_daily.py`가 `snapshot_history` 옆에서 `snapshot_index_history
+    (fetch_index_quotes())`도 같이 찍어 두 히스토리를 lock-step으로. (2) `compute_index_vs_account`
+    안전장치 — `me`를 `asset_hist`·`index_hist` 공통 커버 마지막 날(`idx_cum["날짜"].max()`)까지만
+    자름(index가 뒤처져도 가짜 0% even일 안 생기고, 대신 "최신"이 며칠 stale하게 보일 뿐).
+    회귀 `test_compute_index_vs_account_caps_me_to_index_coverage`. (3) 겪은 시점의
+    `index_history.csv`에 9/7 종가 백필 + 9/4 공식 종가로 정정.
   - 예수금(t) 히스토리: `_cash_by_date()`가 `apply_transaction`으로 거래를 재생하며 날짜별
     예수금을 기록(§1-1 "재생 로직은 한 곳" 원칙대로 별도 계산 안 만듦). asset_history
     스냅샷이 평일 전부는 아니라서(앱 연 날만) 내 선(주식/계좌)은 스냅샷 날짜에만 점이 찍히고,
