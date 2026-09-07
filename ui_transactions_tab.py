@@ -499,6 +499,9 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
 </div>
 <style>
   body {{ margin:0; background:transparent; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }}
+  /* iframe엔 Streamlit 기본 표 CSS가 없어서 셀 테두리가 사라짐 → 여기서 되살림 */
+  #{carousel_id} table {{ border-collapse:collapse; color:{T['text']}; }}
+  #{carousel_id} table td, #{carousel_id} table th {{ border:1px solid {T['border']}; padding:3px 7px; }}
   #{carousel_id} .trk {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
     -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
   #{carousel_id} .trk::-webkit-scrollbar {{ display:none; }}
@@ -527,7 +530,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     }});
   }})();
 </script>
-""", height=560)
+""", height=590)
 
     # ---- 지수 대비 계좌 (메인: 코스피/코스닥) ----
     st.markdown(f"##### Account : Index{_wtag}", unsafe_allow_html=True)
