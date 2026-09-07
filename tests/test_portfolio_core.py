@@ -1086,3 +1086,20 @@ def test_pnl_actions_buckets_and_watering():
     assert wd["pl_avg_pct"] == pytest.approx(-12.5)                      # 1400 / 1600 - 1
     assert wd["pl_first_pct"] == pytest.approx(-30.0)                    # 1400 / 2000 - 1
     assert wd["absorbed_pp"] == pytest.approx(17.5)                      # -12.5 - (-30)
+
+
+def test_compute_index_vs_account_caps_me_to_index_coverage():
+    """index_hist가 asset_hist보다 뒤처지면(매매일지 반영으로 asset엔 오늘 행이 생겼는데
+    index_history엔 아직 없음) 그 앞선 asset 행의 벤치당일이 0으로 계산돼 "혼합지수 당일
+    0.00%"·"오늘 even일" 버그가 났음(2026-09-07). 두 히스토리 공통 커버 마지막 날까지만 써야 한다."""
+    dates = ["2026-01-05", "2026-01-06", "2026-01-07"]
+    kospi = [100.0, 102.0, 104.0]
+    idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates[:2], kospi[:2])])  # index는 1/6까지만
+    tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])
+    tot = [1_000_000.0, 1_010_000.0, 1_025_000.0]                          # asset은 1/7까지
+    asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, tot)])
+    r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
+    assert list(r["me"]["날짜"]) == ["2026-01-05", "2026-01-06"]           # 1/7 잘림
+    assert r["latest"]["벤치"][1] != pytest.approx(0.0)                     # 벤치당일이 0(가짜 even)이 아님
+    assert r["me"]["바구니"].iloc[-1] == "상승"                            # 1/6은 진짜 상승일
+    assert r["n"]["even"] == 0

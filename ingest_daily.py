@@ -67,6 +67,20 @@ def main():
     core.snapshot_history(total_assets, total_assets + unrealized_loss, on_date=trade_date)
     core.snapshot_sector_history(core.compute_sector_weights(df), on_date=trade_date)
 
+    # 지수 대비 계좌(§6-17): asset_history엔 trade_date 행이 생기는데 index_history는 앱
+    # 새로고침에서만 갱신됐고(그건 배포 서버 로컬에만 쓰여 git엔 안 올라감 → 재배포 때 초기화),
+    # 그래서 배포판에서 index_history가 asset_history보다 며칠 뒤처져 "혼합지수 당일 0.00%"
+    # 버그가 났다(2026-09-07 실제로 겪음). ingest에서도 같이 찍어 두 파일을 lock-step으로.
+    try:
+        iq = core.fetch_index_quotes()
+        if iq.get("KOSPI") and iq.get("KOSDAQ"):
+            core.snapshot_index_history(iq["KOSPI"].get("price"), iq["KOSDAQ"].get("price"),
+                                        on_date=trade_date)
+            print(f"[지수] {trade_date} 코스피 {iq['KOSPI']['price']:,.2f} · "
+                  f"코스닥 {iq['KOSDAQ']['price']:,.2f} index_history 반영")
+    except Exception as e:
+        print(f"[경고] index_history 갱신 실패(무시): {e}")
+
     # 신규 종목은 아직 종목코드가 비어있을 수 있는데(코드 캐시에 없던 이름), 그러면 바로 아래
     # watchlist 자동 편입이 걸러버린다. 백필 전에 코드 없는 종목만 네이버로 가볍게 조회해 채운다
     # (시세는 안 받음 — 시세/등락률 보충은 §6-2대로 세션이 refresh_all_prices로 따로 함).

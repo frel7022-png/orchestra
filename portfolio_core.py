@@ -1914,6 +1914,16 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
 
     me = pd.DataFrame(rows, columns=["날짜", "계좌수익", "주식수익"])
 
+    # 안전장치: index_hist가 asset_hist보다 뒤처져 있으면(예: 매매일지 반영으로 asset_hist엔
+    # 오늘 행이 생겼는데 index_hist는 아직 어제까지) 그 앞선 asset 행의 벤치당일이 "직전
+    # index 값 − 같은 값 = 0"으로 계산돼 "혼합지수 당일 0.00%"·"오늘이 even일" 버그가 남
+    # (2026-09-07 실제로 겪음). 두 히스토리가 공통으로 커버하는 마지막 날까지만 me를 씀.
+    if not idx_cum.empty and not me.empty:
+        _idx_max = str(idx_cum["날짜"].max())
+        me = me[me["날짜"] <= _idx_max].reset_index(drop=True)
+        if me.empty:
+            return empty
+
     wk = None if kospi_weight is None else min(max(float(kospi_weight), 0.0), 1.0)
 
     # 벤치 = 혼합 지수(wk·코스피 + (1-wk)·코스닥, wk 없으면 코스피)를 스냅샷 날짜에 정렬해서 붙임.
