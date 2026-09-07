@@ -752,10 +752,18 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 전역 CSS(app.py의 `div[data-testid="stColumn"] { flex:1 1 0 !important; }`)가 모든
     # st.columns() 비율을 강제로 동일폭으로 만들어버리므로, 이 줄만 st.container(key=...)로
     # 감싸서 app.py의 [class*="st-key-holdings_title_row"] 스코프 CSS로 비율을 다시 덮어씀.
+    _pnl = pd.to_numeric(df["손익"], errors="coerce")
+    _n_win, _n_loss = int((_pnl > 0).sum()), int((_pnl < 0).sum())
+
     with st.container(key="holdings_title_row"):
         col_title2, col_right = st.columns([5, 4])
         with col_title2:
-            st.markdown("##### Holdings")
+            st.markdown(
+                f"##### Holdings <span style='font-size:12px;font-weight:400'>"
+                f"(<span style='color:{UP_COLOR}'>{_n_win}</span> / "
+                f"<span style='color:{DOWN_COLOR}'>{_n_loss}</span>)</span>",
+                unsafe_allow_html=True,
+            )
         with col_right:
             # 등락률순 정렬 토글 점 + 업데이트 날짜를 한 줄로 나란히(app.py CSS로 row-flex).
             # 안 눌림=회색 점, 누르면 빨강(국내 관례 상승/강조색). 아래 "정렬 기준" 라디오와는

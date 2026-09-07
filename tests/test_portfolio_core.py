@@ -1030,3 +1030,59 @@ def test_synthetic_kospi_ex_bigcap_identical_moves_leave_ex_index_unchanged():
                      ("2026-08-18", 210000, 189000, 1680000)])  # 전부 ×1.05
     out = core.synthetic_kospi_ex_bigcap(idx, bg)
     assert out["KOSPI"].iloc[1] == pytest.approx(6300.0, rel=1e-6)
+
+
+# ------------------------------------------------------------------ #
+# compute_pnl_actions (§6-20) — 실현손익을 FA/MO/MA 매매 스타일로 해부
+# ------------------------------------------------------------------ #
+def test_pnl_actions_buckets_and_watering():
+    """FA = 1매수·부분매도 없음·전량청산, MA = 2+매수·부분매도 없음·전량청산,
+    MO = 부분매도 1회라도 있으면(우선순위 최상, 청산 여부 무관). Watering 상세도 검증."""
+    tx = pd.DataFrame([
+        # A: FA (buy once, sell all)
+        _tx_row("a1", "2026-01-05", "A", "매수", 10, 100),
+        _tx_row("a2", "2026-01-10", "A", "매도", 10, 110, 실현손익=100),
+        # B: MA (물타기 2매수 → 한 방에 전량청산, 부분매도 없음)
+        _tx_row("b1", "2026-01-05", "B", "매수", 10, 100),
+        _tx_row("b2", "2026-01-06", "B", "매수", 10, 80),
+        _tx_row("b3", "2026-01-12", "B", "매도", 20, 95, 실현손익=200),
+        # C: MO (부분매도 후 아직 보유 중)
+        _tx_row("c1", "2026-01-05", "C", "매수", 10, 100),
+        _tx_row("c2", "2026-01-11", "C", "매도", 4, 120, 실현손익=50),
+        # D: MO (부분매도 후 전량청산 — 그래도 MO)
+        _tx_row("d1", "2026-01-05", "D", "매수", 10, 100),
+        _tx_row("d2", "2026-01-09", "D", "매도", 5, 110, 실현손익=30),
+        _tx_row("d3", "2026-01-13", "D", "매도", 5, 115, 실현손익=40),
+        # E: Watering (2매수, 매도 없음, 보유 중)
+        _tx_row("e1", "2026-01-05", "E", "매수", 10, 100),
+        _tx_row("e2", "2026-01-07", "E", "매수", 10, 60),
+    ])
+    holdings = pd.DataFrame([
+        {"종목명": "C", "종목코드": "003", "섹터": "", "수량": 6, "평단가": 100, "현재가": 90,
+         "등락률": 0, "업데이트시각": ""},
+        {"종목명": "E", "종목코드": "005", "섹터": "", "수량": 20, "평단가": 80, "현재가": 70,
+         "등락률": 0, "업데이트시각": ""},
+    ])
+    r = core.compute_pnl_actions(tx, holdings)
+    assert r["total"] == pytest.approx(420)
+    assert r["baskets"]["FA"]["realized"] == pytest.approx(100)
+    assert r["baskets"]["FA"]["n_cycle"] == 1 and r["baskets"]["FA"]["amt_total"] == pytest.approx(1000)
+    assert r["baskets"]["FA"]["avg_pct"] == pytest.approx(10.0)          # 100 / 1000
+    assert r["baskets"]["MA"]["realized"] == pytest.approx(200)
+    assert r["baskets"]["MA"]["amt_total"] == pytest.approx(1800)        # 1000 + 800
+    assert r["baskets"]["MO"]["realized"] == pytest.approx(120)          # C 50 + D 70
+    assert r["baskets"]["MO"]["n_cycle"] == 2
+    assert (r["baskets"]["MO"]["closed"], r["baskets"]["MO"]["open"]) == (1, 1)  # D 청산, C 진행
+    st = r["status"]
+    assert st["n_total"] == 5
+    assert st["FA"] == (1, 5) and st["MA"] == (1, 5) and st["MO"] == (2, 5)
+    assert st["holds"] == (1, 2) and st["watering"] == (1, 2)           # C=holds, E=watering
+    assert st["holds_pl_pct"] == pytest.approx(-10.0)                    # 540/600 - 1
+    wd = r["watering"]
+    assert wd["n_stock"] == 1 and wd["n_extra_buys"] == 1
+    assert wd["seed_first"] == pytest.approx(1000)                       # 10 × 100 (첫 매수)
+    assert wd["seed_now"] == pytest.approx(1600)                         # 20 × 80 (평단 × 현재수량)
+    assert wd["seed_mult"] == pytest.approx(1.6)
+    assert wd["pl_avg_pct"] == pytest.approx(-12.5)                      # 1400 / 1600 - 1
+    assert wd["pl_first_pct"] == pytest.approx(-30.0)                    # 1400 / 2000 - 1
+    assert wd["absorbed_pp"] == pytest.approx(17.5)                      # -12.5 - (-30)

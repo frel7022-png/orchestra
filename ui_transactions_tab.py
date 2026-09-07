@@ -5,16 +5,20 @@ import calendar
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from constants import UP_COLOR, DOWN_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
-    compute_index_vs_account, _index_day_moves,
+    compute_index_vs_account, compute_pnl_actions, _index_day_moves,
     load_bigcap_history, synthetic_kospi_ex_bigcap,
 )
 
 KOSPI_COLOR = "#f59e0b"   # 지수 참조선(코스피) — 앰버
 KOSDAQ_COLOR = "#14b8a6"  # 지수 참조선(코스닥) — 틸
+_PA_COLORS = {"FA": UP_COLOR, "MO": "#22c55e", "MA": DOWN_COLOR}  # FA 빨강 / MO 녹색 / MA 파랑
+# 2번째 도넛(현재보유 3분류)도 같은 색: solo=빨강 / cutting=녹색 / wateronly=파랑
+_PA_OPEN_COLORS = [UP_COLOR, "#22c55e", DOWN_COLOR]
 
 
 def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, T):
@@ -97,6 +101,166 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             "scrollZoom": False,
             "doubleClick": False,
         })
+
+    # ---- P&L Actions (§6-20): 실현손익을 매매 스타일 FA/MO/MA로 해부 ----
+    with st.expander("P&L Actions", expanded=False):
+        pa = compute_pnl_actions(tx, holdings)
+        if not pa["baskets"]:
+            st.caption("완료된 매매 사이클이 없어요.")
+        else:
+            bk, pst, wd = pa["baskets"], pa["status"], pa["watering"]
+
+            def _won(v):
+                return f"{v:,.0f}원"
+
+            def _pct(v):
+                return "—" if v is None else f"{v:+.2f}%"
+
+            def _donut(labels, values, colors, texttmpl, center, hover):
+                f = go.Figure(go.Pie(
+                    labels=labels, values=values, hole=0.58, sort=False, direction="clockwise",
+                    marker=dict(colors=colors), texttemplate=texttmpl, textposition="inside",
+                    insidetextorientation="horizontal", hovertemplate=hover,
+                ))
+                f.update_layout(
+                    height=215, margin=dict(l=6, r=6, t=8, b=8),
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=T["text"], size=11), showlegend=False,
+                    annotations=[dict(text=center, showarrow=False,
+                                      font=dict(size=11, color=T["text"]))],
+                )
+                return f
+
+            # --- 도넛 1: 실현손익 금액을 버킷별로. 슬라이스 안에 라벨+% ---
+            _lab = ["FA", "MO", "MA"]
+            _neg = any(bk[b]["realized"] < 0 for b in _lab)
+            if _neg:
+                st.caption("버킷 중 순손실이 있어 도넛 대신 표만 — 아래 참고.")
+            else:
+                fig_d = _donut(
+                    _lab, [bk[b]["realized"] for b in _lab], [_PA_COLORS[b] for b in _lab],
+                    "%{label}<br>%{percent}",
+                    f"Total<br><b>{pa['total']:,.0f}원</b>",
+                    "%{label}  %{value:,.0f}원 · %{percent}<extra></extra>",
+                )
+                st.plotly_chart(fig_d, use_container_width=True, config={"displayModeBar": False})
+
+            # --- 도넛 2: 현재 보유 계좌 3분류. 스와이프 2장 (종목수 비중 ↔ 평가금액) ---
+            _os = pa.get("open_split") or {}
+            if _os and sum(v["n"] for v in _os.values()) > 0:
+                _ok = ["solo", "cutting", "wateronly"]
+                _onm = {"solo": "홀딩", "cutting": "부분매도", "wateronly": "물타는중"}
+                _on = [_os[k]["n"] for k in _ok]
+                _ov = [_os[k]["value"] for k in _ok]
+                _tn, _tv = sum(_on), sum(_ov)
+                f_cnt = _donut(
+                    [_onm[k] for k in _ok], _on, _PA_OPEN_COLORS,
+                    "%{label}<br>%{value}종목 (%{percent})",
+                    f"종목수<br><b>{_tn}</b>",
+                    "%{label}  %{value}종목 · %{percent}<extra></extra>",
+                )
+                f_amt = _donut(
+                    [_onm[k] for k in _ok], _ov, _PA_OPEN_COLORS,
+                    "%{label}<br>%{customdata}종목<br>%{value:,.0f}원",
+                    f"평가금액<br><b>{_tv:,.0f}원</b>",
+                    "%{label}  %{value:,.0f}원 · %{percent}<extra></extra>",
+                )
+                f_amt.update_traces(customdata=_on)
+                _cfgp = {"displayModeBar": False, "responsive": True}
+                _h1 = f_cnt.to_html(include_plotlyjs="cdn", full_html=False, config=_cfgp, default_width="100%")
+                _h2 = f_amt.to_html(include_plotlyjs=False, full_html=False, config=_cfgp, default_width="100%")
+                components.html(f"""
+<div id="pawrap">
+  <div class="trk"><div class="sl">{_h1}</div><div class="sl">{_h2}</div></div>
+  <div class="dt"><span class="d on"></span><span class="d"></span></div>
+</div>
+<style>
+  body {{ margin:0; background:transparent; }}
+  #pawrap .trk {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
+  #pawrap .trk::-webkit-scrollbar {{ display:none; }}
+  #pawrap .sl {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; }}
+  #pawrap .dt {{ display:flex; justify-content:center; gap:9px; padding:3px 0 0; }}
+  #pawrap .d {{ width:8px; height:8px; border-radius:50%; background:{T['muted2']}; opacity:.3; cursor:pointer;
+    transition:opacity .18s, background .18s; }}
+  #pawrap .d.on {{ opacity:1; background:{T['text']}; }}
+</style>
+<script>
+  (function() {{
+    var trk = document.querySelector('#pawrap .trk'), ds = document.querySelectorAll('#pawrap .d');
+    trk.addEventListener('scroll', function() {{
+      var i = Math.round(trk.scrollLeft / Math.max(trk.clientWidth, 1));
+      ds.forEach(function(x, j) {{ x.classList.toggle('on', j === i); }});
+    }}, {{passive: true}});
+    ds.forEach(function(x, j) {{ x.addEventListener('click', function() {{
+      trk.scrollTo({{left: j * trk.clientWidth, behavior: 'smooth'}}); }}); }});
+  }})();
+</script>
+""", height=248)
+
+            # --- 병합 테이블 (버킷별 2줄): 실현/비중/횟수(종목) + 총액/평균/평균손익률 ---
+            def _brow(b, amt_lbl):
+                d = bk[b]
+                note = f" · 전량매도 {d['closed']}, 진행 {d['open']}" if d["open"] else ""
+                return (
+                    f"<div style='font-size:12px;color:{_PA_COLORS[b]};font-weight:700;margin:5px 0 0'>"
+                    f"{b} &nbsp; 실현 {_won(d['realized'])} · 비중 {d['pct']:.1f}% · "
+                    f"{d['n_cycle']}({d['n_stock']}){note}</div>"
+                    f"<div style='font-size:11px;color:{T['muted']};margin:0 0 2px'>"
+                    f"&nbsp;{amt_lbl} {d['amt_total']:,.0f} · 평균 {d['amt_avg']:,.0f} · "
+                    f"평균 손익률 {d['avg_pct']:+.2f}%</div>"
+                )
+
+            st.markdown(
+                _brow("FA", "총매수액") + _brow("MO", "총분할매도액") + _brow("MA", "총매수액"),
+                unsafe_allow_html=True,
+            )
+
+            # --- 상태 테이블 (Numbers | Ratio(%)) ---
+            _tot = pst["n_total"]
+            fa_n, ma_n, mo_n = pst["FA"][0], pst["MA"][0], pst["MO"][0]
+            h_n, opn_n = pst["holds"]
+            w_n, _ = pst["watering"]
+
+            def _sr(label, num, ratio):
+                return (f"<tr><td style='color:{T['muted']}'>{label}</td>"
+                        f"<td style='text-align:right'>{num}</td>"
+                        f"<td style='text-align:right;color:{T['muted2']}'>{ratio}</td></tr>")
+
+            rows = (
+                _sr("총 횟수", _tot, "—")
+                + _sr("FA", f"{fa_n}/{_tot}", f"{fa_n / _tot * 100:.1f}%")
+                + _sr("MA", f"{ma_n}/{_tot}", f"{ma_n / _tot * 100:.1f}%")
+                + _sr("MO", f"{mo_n}/{_tot}(전량매도 {pst['MO_closed']}, 진행 {pst['MO_open']})",
+                      f"{mo_n / _tot * 100:.1f}%")
+                + _sr("Holds", f"{h_n}/{opn_n}",
+                      f"{h_n / opn_n * 100:.1f}% · 평균 손익률 {_pct(pst['holds_pl_pct'])}")
+                + _sr("Watering", f"{w_n}/{opn_n}",
+                      f"{w_n / opn_n * 100:.1f}% · 평균 손익률 {_pct(pst['watering_pl_pct'])}")
+            )
+            st.markdown(
+                "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:6px 0 0'>"
+                f"<tr style='font-size:10px;color:{T['muted2']}'>"
+                "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>Numbers</th>"
+                "<th style='text-align:right'>Ratio(%)</th></tr>"
+                + rows + "</table>",
+                unsafe_allow_html=True,
+            )
+
+            # --- Watering 상세 ---
+            _absorbed = "—" if wd["absorbed_pp"] is None else f"{wd['absorbed_pp']:+.2f}%p"
+            _mult = "—" if wd["seed_mult"] is None else f"×{wd['seed_mult']:.2f}"
+            st.markdown(
+                f"<div style='font-size:11px;color:{T['muted']};margin:6px 0 0'>"
+                f"<b>Watering</b> {wd['n_stock']}종목에 물타기(추가매수) {wd['n_extra_buys']}회 진행 중</div>"
+                f"<div style='font-size:11px;color:{T['muted']};margin:1px 0'>"
+                f"총 손익률 <b>{_pct(wd['pl_avg_pct'])}</b> "
+                f"<span style='color:{T['muted2']}'>(최초 진입가 기준 {_pct(wd['pl_first_pct'])})</span>"
+                f" → 물타기 흡수 <b style='color:{_PA_COLORS['FA']}'>{_absorbed}</b></div>"
+                f"<div style='font-size:11px;color:{T['muted']};margin:1px 0 2px'>"
+                f"시드 {wd['seed_first']:,.0f}원 → {wd['seed_now']:,.0f}원 <b>({_mult})</b></div>",
+                unsafe_allow_html=True,
+            )
 
     st.divider()
 

@@ -190,6 +190,8 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   아래 정렬 라디오와는 독립된 상태) — 2026-09-04부터 이 점은 업데이트 날짜 바로 앞에 나란히
   배치(app.py CSS로 그 칸 vertical-block을 row-flex). 정렬 라디오엔 비중/섹터/현재가/평가금액/
   손익만 있음 (2026-08-28 신설)
+- "Holdings" 타이틀 옆 `(N / M)` = 현재 평가손익 이익 종목 수(빨강) / 손실 종목 수(파랑)
+  — `df["손익"]` 부호로 셈 (2026-09-07 신설)
 - 오늘 처음 보유하게 된 종목(어제 종가 기준 순보유수량 0 → 오늘 매수)은 카드 목록 최상단 +
   종목명 초록색으로 자동 강조 — 재진입도 포함, 날짜 비교라 다음날엔 자동으로 해제됨
   (2026-08-27 신설)
@@ -953,3 +955,45 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   (빨강) vs 삼성·하이닉스 제외 코스피(파랑). **y축은 실제 지수 포인트**(6,500 등), hover엔
   그 시점의 **전일 대비 등락률(%)**. `SamHYnix extracted` expander는 그 밑.
 - **new1 전용** (meritz 미적용 — 요청 없었음).
+
+### 6-20. P&L Actions — 실현손익을 매매 스타일(FA/MO/MA)로 해부 (2026-09-07)
+- **동기**: 실현손익 총액(현재 410,291원)이 "그냥 사서 바로 나온 것"에서 왔는지 "물타기 엔진"에서
+  왔는지 보고, 물타기가 실제로 마이너스를 흡수하고 시드를 키우는지 검증하려는 것. Realized P&L
+  섹션 밑 `st.expander("P&L Actions")` (SamHynix extracted처럼 눌러야 펼침).
+- **버킷 (사이클 = 진입~전량청산 단위, `portfolio_core._all_cycles` + `_cycle_bucket`)**:
+  - **FA** (First in, All out) = 1매수 → 부분매도 없이 한 방에 전량청산.
+  - **MO** (Multiple Out) = **부분매도가 1회라도 있으면 무조건 MO** (우선순위 최상 — 물타기
+    여부·청산 여부 무관. 물타면서 부분익절해도 MO, 나중에 전량 나가도 MO). "나온 것만" 집계.
+  - **MA** (Multiple in, All out) = 2+매수(물타기) → 부분매도 없이 한 방에 전량청산.
+  - (매도 없이 보유만 = HOLD, P&L 버킷 아님)
+- **`compute_pnl_actions(tx, holdings)` 반환**: `total` / `baskets`{FA/MO/MA: realized·pct·
+  n_cycle·n_stock·closed·open·amt_total·amt_avg·avg_pct} / `status` / `watering`.
+  - **avg_pct** = 사이클별 `realized / amt` 의 산술평균. amt = FA·MA는 매수액, MO는 분할매도액.
+  - **status**: n_total(전체 사이클 수) · FA/MA/MO = (해당 버킷 사이클 수, n_total) ·
+    MO_closed/MO_open · holds/watering = (열린 사이클 중 1매수/2+매수, 열린 사이클 수) ·
+    holds_pl_pct/watering_pl_pct = 그 종목들 현재 평가액/원가 − 1 (%, holdings 필요).
+  - **watering 상세**: n_stock · n_extra_buys(Σ(매수횟수−1)) · pl_avg_pct(평단 기준 손익률) ·
+    pl_first_pct(현재수량을 전부 최초매수단가에 샀다 치면 나올 손익률 — "물타기 안 했으면"
+    정규화 값) · absorbed_pp(= pl_avg − pl_first, 물타기가 흡수한 %p, 양수=좋음) ·
+    seed_first(Σ 첫 매수 수량×단가) · seed_now(Σ 평단×현재수량) · seed_mult(seed_now/seed_first).
+- **`open_split` 반환**(2번째 도넛용): 현재 보유(열린 사이클)를 3분류 — `solo`(1매수·0매도) /
+  `cutting`(매도 1회+ 진행 = 부분매도 중) / `wateronly`(2+매수·0매도). 각 `{n: 종목수, value:
+  평가금액(현재가×수량)}`.
+- **UI (`_render` 아님, `render_transactions_tab` 안 expander)**:
+  ①**도넛 1** = 실현손익 금액을 버킷별로. 색 `_PA_COLORS` (**FA 빨강 / MO 녹색 / MA 파랑** —
+    사용자 지정 2026-09-07), 슬라이스 안에 `라벨+%`, 가운데 Total 원. 버킷 중 순손실 있으면
+    도넛 스킵(파이가 음수 못 그림) + 캡션.
+  ②**도넛 2** = `open_split` 3분류(solo/cutting/wateronly, 색 `_PA_OPEN_COLORS` 빨강/녹색/파랑),
+    **스와이프 2장 캐러셀**(`components.html`, `#pawrap`, 밑에 점 2개 — 지수 대비 계좌 캐러셀보다
+    가벼운 버전, `Plotly.relayout` 리사이즈 루프 없음): 1장 = 슬라이스 크기 = 종목수(라벨에
+    `N종목 (%)`), 2장 = 슬라이스 크기 = 평가금액(라벨에 `N종목 · 원`).
+  ③병합표(버킷별 2줄: `FA 실현·비중·횟수(종목) [·전량매도 N, 진행 N]` / `총매수액·평균·평균
+    손익률`) → ④상태표(`Numbers | Ratio(%)` 2열, 행 = 총 횟수/FA/MA/MO/Holds/Watering, MO는
+    `38/169(전량매도 28, 진행 10)`, Holds·Watering은 Ratio 칸에 `% · 평균 손익률 X%`) →
+  ⑤Watering 상세 3줄.
+- **회귀 테스트**: `test_pnl_actions_buckets_and_watering` (FA/MO/MA 분류 + MO 우선순위 +
+  seed·흡수 계산).
+- **알려진 근사**: pl_first_pct는 "현재 수량을 최초가에 샀다 치면"이라 물타기 안 했을 때 실제
+  보유수량(첫 매수분만)과 다름 — 흡수 효과를 보여주는 정규화 지표로만 씀.
+- **new1 전용** (2026-09-07 시점. meritz는 USD 거래가 섞여 사이클 로직이 더 복잡 — 확정 후
+  포팅 검토).

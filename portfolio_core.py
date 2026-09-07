@@ -1636,6 +1636,168 @@ def get_holding_avg_price_path(tx: pd.DataFrame, name: str) -> pd.DataFrame:
 
 
 # ------------------------------------------------------------------ #
+# P&L Actions (§6-20) — 실현손익을 매매 스타일(FA/MO/MA)로 해부
+# ------------------------------------------------------------------ #
+def _all_cycles(tx: pd.DataFrame) -> list[dict]:
+    """모든 종목의 모든 사이클(진입 ~ 전량청산, 청산 안 됐으면 open)을 리스트로.
+    사이클 dict: 종목, n_buy, n_sell, n_partial, first_buy_qty, first_buy_px,
+    buy_amt(Σ매수 수량×단가), sell_amt(Σ매도 수량×단가), realized(Σ실현손익), closed."""
+    if tx is None or tx.empty:
+        return []
+    t = tx.copy()
+    t["수량"] = pd.to_numeric(t["수량"], errors="coerce").fillna(0.0)
+    t["단가"] = pd.to_numeric(t["단가"], errors="coerce").fillna(0.0)
+    t["실현손익"] = pd.to_numeric(t["실현손익"], errors="coerce").fillna(0.0)
+    t["_ord"] = range(len(t))
+    out = []
+    for name, g in t.groupby("종목명", sort=False):
+        g = g.sort_values(["날짜", "_ord"])
+        qty = 0.0
+        cur = None
+        for _, r in g.iterrows():
+            if cur is None:
+                cur = {"종목": name, "n_buy": 0, "n_sell": 0, "n_partial": 0,
+                       "first_buy_qty": 0.0, "first_buy_px": 0.0,
+                       "buy_amt": 0.0, "sell_amt": 0.0, "realized": 0.0, "closed": False}
+            if r["구분"] == "매수":
+                if cur["n_buy"] == 0:
+                    cur["first_buy_qty"], cur["first_buy_px"] = float(r["수량"]), float(r["단가"])
+                cur["n_buy"] += 1
+                cur["buy_amt"] += r["수량"] * r["단가"]
+                qty += r["수량"]
+            elif r["구분"] == "매도":
+                cur["n_sell"] += 1
+                cur["sell_amt"] += r["수량"] * r["단가"]
+                cur["realized"] += r["실현손익"]
+                qty -= r["수량"]
+                if qty <= 1e-9:
+                    cur["closed"] = True
+                    out.append(cur)
+                    cur, qty = None, 0.0
+                else:
+                    cur["n_partial"] += 1
+        if cur is not None:
+            out.append(cur)
+    return out
+
+
+def _cycle_bucket(c: dict) -> str:
+    """FA = 1매수·부분매도 없음·전량청산. MO = 부분매도 1회라도 있음(우선순위 최상).
+    MA = 2+매수·부분매도 없음·전량청산. HOLD = 매도 없이 보유만 (P&L 버킷 아님)."""
+    if c["n_partial"] > 0:
+        return "MO"
+    if not c["closed"]:
+        return "HOLD"
+    return "FA" if c["n_buy"] == 1 else "MA"
+
+
+def compute_pnl_actions(tx: pd.DataFrame, holdings: pd.DataFrame) -> dict:
+    """실현손익을 매매 스타일 3버킷(FA/MO/MA)으로 해부 + 진행 상태 카운터 + 물타기 상세.
+    §6-20. 도넛·병합표·상태표·Watering 상세에 그대로 쓰는 값들을 반환."""
+    cycles = _all_cycles(tx)
+    empty = {"total": 0.0, "baskets": {}, "status": {}, "watering": {}}
+    if not cycles:
+        return empty
+
+    cp = {}  # 종목 → (현재가, 수량, 평단가)
+    if holdings is not None and not holdings.empty:
+        h = holdings.copy()
+        for col in ("현재가", "수량", "평단가"):
+            h[col] = pd.to_numeric(h[col], errors="coerce")
+        cp = {r["종목명"]: (r["현재가"], r["수량"], r["평단가"]) for _, r in h.iterrows()}
+
+    for c in cycles:
+        c["bucket"] = _cycle_bucket(c)
+    total = sum(c["realized"] for c in cycles)
+
+    def _bk(name):
+        d = [c for c in cycles if c["bucket"] == name]
+        r = sum(c["realized"] for c in d)
+        amt = [(c["sell_amt"] if name == "MO" else c["buy_amt"]) for c in d]
+        pcts = [c["realized"] / a * 100.0 for c, a in zip(d, amt) if a]
+        return {
+            "realized": r, "pct": (r / total * 100.0) if total else 0.0,
+            "n_cycle": len(d), "n_stock": len({c["종목"] for c in d}),
+            "closed": sum(1 for c in d if c["closed"]),
+            "open": sum(1 for c in d if not c["closed"]),
+            "amt_total": sum(amt), "amt_avg": (sum(amt) / len(amt)) if amt else 0.0,
+            "avg_pct": (sum(pcts) / len(pcts)) if pcts else 0.0,
+        }
+
+    baskets = {b: _bk(b) for b in ("FA", "MO", "MA")}
+
+    n_total = len(cycles)
+    open_cy = [c for c in cycles if not c["closed"]]
+    holds = [c for c in open_cy if c["n_buy"] == 1]
+    watering = [c for c in open_cy if c["n_buy"] >= 2]
+
+    def _agg_pl(cs):
+        val = cost = 0.0
+        for c in cs:
+            px, q, avg = cp.get(c["종목"], (None, None, None))
+            if px and q and avg:
+                val += q * px
+                cost += q * avg
+        return (val / cost - 1.0) * 100.0 if cost else None
+
+    # ---- Watering 상세 ----
+    w_val = w_cost = w_firstcost = w_seed_first = 0.0
+    w_extra = 0
+    for c in watering:
+        px, q, avg = cp.get(c["종목"], (None, None, None))
+        w_extra += c["n_buy"] - 1
+        if px and q and avg and c["first_buy_px"]:
+            w_val += q * px
+            w_cost += q * avg
+            w_firstcost += q * c["first_buy_px"]         # 현재수량을 최초매수단가에 샀다 치면
+            w_seed_first += c["first_buy_qty"] * c["first_buy_px"]  # 첫 매수 금액
+    pl_avg = (w_val / w_cost - 1.0) * 100.0 if w_cost else None
+    pl_first = (w_val / w_firstcost - 1.0) * 100.0 if w_firstcost else None
+    watering_detail = {
+        "n_stock": len(watering), "n_extra_buys": int(w_extra),
+        "pl_avg_pct": pl_avg, "pl_first_pct": pl_first,
+        "absorbed_pp": (pl_avg - pl_first) if (pl_avg is not None and pl_first is not None) else None,
+        "seed_first": w_seed_first, "seed_now": w_cost,
+        "seed_mult": (w_cost / w_seed_first) if w_seed_first else None,
+    }
+
+    n_open = len(open_cy)
+    status = {
+        "n_total": n_total,
+        "FA": (baskets["FA"]["n_cycle"], n_total),
+        "MA": (baskets["MA"]["n_cycle"], n_total),
+        "MO": (baskets["MO"]["n_cycle"], n_total),
+        "MO_closed": baskets["MO"]["closed"], "MO_open": baskets["MO"]["open"],
+        "holds": (len(holds), n_open), "holds_pl_pct": _agg_pl(holds),
+        "watering": (len(watering), n_open), "watering_pl_pct": pl_avg,
+    }
+
+    # ---- 두 번째 도넛: 현재 보유 계좌를 3분류 (종목수 / 평가금액) ----
+    #   solo    = 한 번 사고 보유만 (n_buy==1, n_sell==0)
+    #   cutting = 여러 번 사고 여러 번 파는 중 (n_sell>=1)  ← 부분매도 진행
+    #   wateronly = 물타고만 있는 중 (n_buy>=2, n_sell==0)
+    def _grp_val(cs):
+        v = 0.0
+        for c in cs:
+            px, q, _ = cp.get(c["종목"], (None, None, None))
+            if px and q:
+                v += q * px
+        return v
+
+    solo = [c for c in open_cy if c["n_buy"] == 1 and c["n_sell"] == 0]
+    cutting = [c for c in open_cy if c["n_sell"] >= 1]
+    wateronly = [c for c in open_cy if c["n_buy"] >= 2 and c["n_sell"] == 0]
+    open_split = {
+        "solo": {"n": len(solo), "value": _grp_val(solo)},
+        "cutting": {"n": len(cutting), "value": _grp_val(cutting)},
+        "wateronly": {"n": len(wateronly), "value": _grp_val(wateronly)},
+    }
+
+    return {"total": total, "baskets": baskets, "status": status,
+            "watering": watering_detail, "open_split": open_split}
+
+
+# ------------------------------------------------------------------ #
 # 지수 대비 계좌 (§6-17)
 # ------------------------------------------------------------------ #
 def _cash_by_date(tx: pd.DataFrame, initial_capital: float, fee_rate: float) -> dict:
