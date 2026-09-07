@@ -817,17 +817,22 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
     `test_capture_dc_is_ratio_of_sums_not_mean_of_daily_ratios`(Σ/Σ ≠ 일별비율평균 고정),
     `test_capture_even_bucket_uses_excess_return`(even일 = 초과수익 집계, evr `e≥0.1%`,
     `even_anomalies` 기록).
-- **그래프 = 2개 세로 스택** (2026-09-07, 스와이프 캐러셀 없앰 — 캡처 표를 두 그래프
-  사이에 끼우려면 세로로 갈려야 함. 세로 스택이 모바일 스크롤에도 더 나음. 캐러셀 이력:
-  2026-09-02 도입 → 09-05 한 번 없앴다 되돌림 → 09-07 최종 제거):
-  1. **지수 대비 계좌 선그래프** — 코스피/코스닥/혼합지수/내주식/내계좌 누적 선. `st.plotly_chart`
-     직접. hover x-unified, `_index_day_moves`로 당일 등락 계산.
-  2. (그 사이에 캡처 표 3개)
-  3. **일별 캡처 막대** — 하루 = 막대 하나, y = 그날 캡처 `c`, 하락일 빨강 / 상승일 파랑,
-     **even일은 그래프에서 완전히 제외**(단위가 %p라 캡처 축과 안 섞임 — 값은 표로만). `y=1`에
-     얇은 수평선("시장과 똑같이 움직임") — 빨강이 1 아래 = 방어 잘함, 파랑이 1 위 = 참여 잘함.
-     y축 `range=[-1.5, 3.0]`. **내 계좌만**(표엔 둘 다). hover에 그날 혼합지수·내 계좌 당일 %
-     원본도. `me`의 `캡처계좌`/`바구니`로 그림(`go.Bar`, even·미분류는 x에서 빼서 gap). 범례 끔.
+- **그래프 = 2장 스와이프 캐러셀** (`_render_iva_panel`, `components.html` iframe, `#{carousel_id}`
+  = `cwrap`/`cwrap_ex`. 캐러셀 이력: 2026-09-02 도입 → 09-05 한 번 없앴다 되돌림 → 09-07
+  세로 스택으로 바꿨다가 **SamHynix expander 안에서 `st.plotly_chart`가 폭 0으로 안 그려지는
+  문제**로 다시 캐러셀로 되돌림 — iframe + plotly `responsive:true`면 expander 열릴 때 알아서
+  리플로우됨):
+  - **1장** = `[5줄 지수 표(HTML) + 지수 대비 계좌 선그래프]`. 선 = 코스피/코스닥/혼합지수/
+    내주식/내계좌 누적. hover x-unified, `_index_day_moves`로 당일 등락 계산.
+  - **2장** = `[하락/상승/even 캡처 표 3개(HTML) + 일별 캡처 막대]`. 막대 = 하루 = 막대 하나,
+    y = 그날 캡처 `c`, 하락일 빨강 / 상승일 파랑, **even일은 그래프에서 완전히 제외**(단위 %p라
+    캡처 축과 안 섞임 — 값은 표로만). `y=1` 얇은 선("시장과 똑같이") — 빨강 1 아래 = 방어,
+    파랑 1 위 = 참여. y축 `[-1.5, 3.0]`. **내 계좌만**(표엔 둘 다). `me`의 `캡처계좌`/`바구니`로
+    그림(`go.Bar`, even·미분류는 x에서 빼서 gap). 범례 끔.
+  - 표와 그래프가 **같은 슬라이드 안**에 들어가므로 표도 `to_html`이 아니라 HTML 문자열로
+    만들어 슬라이드 div에 직접 박음(iframe이라 폰트는 시스템 폰트, 색은 전부 inline hex).
+  - 밑에 점 2개(`.d`) — 스크롤로 동기화 + 점 클릭 + 좌우 화살표 키. `Plotly.relayout` 리사이즈
+    루프는 안 넣음(예전에 그게 렌더 프리즈 원인이었음 — `responsive:true`가 대신 처리).
 - **혼합 지수 가중치**는 `ui_transactions_tab.py`가 `holdings`의 종목별 평가금액을
   `load_market_cache()`(§1-3 캐시 `stock_market_cache.csv`)로 코스피/코스닥으로 갈라
   `wk = 코스피평가금액 / (코스피+코스닥)`로 계산해 넘긴다. 시장 캐시는 `fetch_quotes`와 같은
@@ -921,9 +926,9 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   버전을 나란히 보여준다. **내 주식·내 계좌 계산은 그대로**(삼성전자 1주뿐이라 무의미) —
   바뀌는 건 벤치와 캡처(DC/UC/even).
 - **위치**: 거래 기록 탭, "지수 대비 계좌" 바로 밑 `SamHYnix extracted` expander. 메인과
-  **완전히 같은 렌더러**(`ui_transactions_tab._render_iva_panel(iva, idx_hist_local, kospi_label)`,
-  5줄 표 → 선그래프 → 캡처 표 3개 → 캡처 막대) 공유 — '코스피' 표시 라벨만 '코스피(삼성·
-  하이닉스 제외)'로 바뀌고 dict 키·계산은 동일. 표 라벨은
+  **완전히 같은 렌더러**(`_render_iva_panel(iva, idx_hist_local, kospi_label, carousel_id)`,
+  2장 캐러셀) 공유 — '코스피' 표시 라벨만 '코스피(삼성·하이닉스 제외)'로 바뀌고 dict 키·계산은
+  동일. `carousel_id`는 `cwrap`/`cwrap_ex`로 분리. 표 라벨은
   "반도체 제외"가 아니라 **"삼성·하이닉스 제외"**로 통일(사용자 요청 2026-09-04). 표 컬럼은
   **누적 / 5일 / 당일** — "5일"은 시계열 5행 전 대비(코스피·코스닥은 5거래일, 벤치·내 주식·
   내 계좌는 스냅샷 5구간).
@@ -978,15 +983,19 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
     seed_first(Σ 첫 매수 수량×단가) · seed_now(Σ 평단×현재수량) · seed_mult(seed_now/seed_first).
 - **UI (`_render` 아님, `render_transactions_tab` 안 expander) — 사용자가 여러 번 다듬어
   최종적으로 4개만**:
-  ①**표**(`이름 | 실현 | 비중 | 평균 손익률`, FA/MO/MA + Total 행. 이름 칸에 풀네임
-    `FA (First in, All out)` 등, 색 `_PA_COLORS`) — 도넛 위. (2026-09-07: "총매수액/총분할매도액
-    같은 상세는 다 빼고 이 표 하나로. 평균 손익률만 비중 옆에 추가" 지시로 병합표 삭제됨.)
-  ②**도넛** = 실현손익 금액을 버킷별로. 색 `_PA_COLORS` (**FA 빨강 / MO 녹색 / MA 파랑** —
-    사용자 지정), 슬라이스 안 글씨 **전부 하얀색**(`textfont color #ffffff`), `라벨+%`. 가운데
-    Total 주석 없음(위 표에 있음). 버킷 중 순손실 있으면 도넛 스킵 + 캡션.
-  ③**상태표**(`Numbers | Ratio(%)` 2열, 행 = 총 횟수/FA/MA/MO/Holds/Watering, MO는
-    `38/169(전량매도 28, 진행 10)`, Holds·Watering은 Ratio 칸에 `% · 평균 손익률 X%`).
-  ④**Watering 상세** 3줄.
+  ①**표**(`이름 | 실현 | 비중 | 손익률`, FA/MO/MA + Total 행. 이름 = `FA (First in, All out)` /
+    `MO (Multiple Out)` / `MA (Multiple in, All out)` — 설명글 안 붙임(사용자: "내가 만든 건데
+    설명 쓰면 지저분"). 색 `_PA_COLORS`. `white-space:nowrap` + `overflow-x:auto`로 셀 안 잘리게,
+    실현값은 "원" 안 붙임) — 도넛 위. (병합표(총매수액/총분할매도액 등)는 2026-09-07 삭제.)
+  ②**도넛** = 실현손익 금액 버킷별. 색 `_PA_COLORS` (**FA 빨강 / MO 녹색 / MA 파랑**), 슬라이스
+    안 글씨 **전부 하얀색**(`textfont #ffffff`), `라벨 %`. 가운데 주석 없음. 순손실 버킷 있으면
+    도넛 스킵 + 캡션. **expander 안에선 `st.plotly_chart`가 폭 0으로 안 그려져서
+    `components.html`(iframe) + `responsive:true`로 렌더** (2026-09-07 이 문제로 바꿈).
+  ③**상태표**(`Numbers | Ratio(%)` 2열, 행 = 총 횟수/FA/MA/MO/Holds/Watering, 전부
+    `white-space:nowrap`). MO는 `(28/38)/169` = (전량매도/전체MO)/전체. Holds·Watering은
+    Ratio 칸에 `52.9%(-2.07%)` 한 줄 — 괄호 안 손익률은 음수 파랑(`DOWN_COLOR`)/양수 빨강.
+  ④**Watering 상세** 3줄: L1 `Watering N종목·물타기 M회`, L2 `총 손익률 X%(최초 진입가 기준
+    Y%)`, L3 `물타기 흡수율 +Z%p · 시드 A원→B원 (×N)`.
   (한때 있었던 것: "현재 보유 3분류" 2번째 도넛 스와이프 캐러셀 — 만들었다가 같은 날 사용자가
   "두 번째 도넛 없애자"고 해서 제거. `compute_pnl_actions`의 `open_split` 반환도 같이 삭제.)
 - **회귀 테스트**: `test_pnl_actions_buckets_and_watering` (FA/MO/MA 분류 + MO 우선순위 +

@@ -5,6 +5,7 @@ import calendar
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from constants import UP_COLOR, DOWN_COLOR
 from portfolio_core import (
@@ -114,31 +115,37 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 return "—" if v is None else f"{v:+.2f}%"
 
             _lab = ["FA", "MO", "MA"]
-            _fullname = {"FA": "FA (First in, All out)",
-                         "MO": "MO (Multiple Out, 부분매도 1회+ = 우선순위 최상)",
+            _fullname = {"FA": "FA (First in, All out)", "MO": "MO (Multiple Out)",
                          "MA": "MA (Multiple in, All out)"}
 
-            # --- 도넛 1 위의 표: 이름 | 실현 | 비중 | 평균 손익률 ---
+            def _plcol(v):  # 손익률: 음수=파랑(손실), 양수=빨강
+                return DOWN_COLOR if v is not None and v < 0 else UP_COLOR
+
+            # --- 표: 이름 | 실현 | 비중 | 손익률 (전부 한 줄, 안 잘리게) ---
+            _td = "white-space:nowrap"
             _trs = "".join(
-                f"<tr><td style='color:{_PA_COLORS[b]};font-weight:700'>{_fullname[b]}</td>"
-                f"<td style='text-align:right'>{_won(bk[b]['realized'])}</td>"
-                f"<td style='text-align:right'>{bk[b]['pct']:.1f}%</td>"
-                f"<td style='text-align:right'>{bk[b]['avg_pct']:+.2f}%</td></tr>"
+                f"<tr><td style='color:{_PA_COLORS[b]};font-weight:700;{_td}'>{_fullname[b]}</td>"
+                f"<td style='text-align:right;{_td}'>{bk[b]['realized']:,.0f}</td>"
+                f"<td style='text-align:right;{_td}'>{bk[b]['pct']:.1f}%</td>"
+                f"<td style='text-align:right;{_td}'>{bk[b]['avg_pct']:+.2f}%</td></tr>"
                 for b in _lab
             )
             st.markdown(
+                "<div style='overflow-x:auto'>"
                 "<table style='width:100%;font-size:11px;border-collapse:collapse;margin:0 0 4px'>"
                 f"<tr style='font-size:10px;color:{T['muted2']}'>"
-                "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>실현</th>"
-                "<th style='text-align:right'>비중</th><th style='text-align:right'>평균 손익률</th></tr>"
+                f"<th style='text-align:left'>&nbsp;</th><th style='text-align:right;{_td}'>실현</th>"
+                f"<th style='text-align:right'>비중</th><th style='text-align:right;{_td}'>손익률</th></tr>"
                 + _trs
                 + f"<tr style='border-top:1px solid {T['border']};color:{T['text']};font-weight:700'>"
-                  f"<td>Total</td><td style='text-align:right'>{_won(pa['total'])}</td>"
-                  "<td style='text-align:right'>100%</td><td style='text-align:right'>—</td></tr></table>",
+                  f"<td style='{_td}'>Total</td><td style='text-align:right;{_td}'>{pa['total']:,.0f}</td>"
+                  "<td style='text-align:right'>100%</td><td style='text-align:right'>—</td></tr>"
+                "</table></div>",
                 unsafe_allow_html=True,
             )
 
-            # --- 도넛 1: 실현손익 금액을 버킷별로. 슬라이스 안 글씨 전부 하얀색 ---
+            # --- 도넛: 실현손익 버킷별. 글씨 전부 하얀색. expander 안에선 st.plotly_chart가
+            #     폭 0으로 깨져서 components.html(iframe)+responsive로 렌더 ---
             if any(bk[b]["realized"] < 0 for b in _lab):
                 st.caption("버킷 중 순손실이 있어 도넛 생략 — 위 표 참고.")
             else:
@@ -146,60 +153,68 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                     labels=_lab, values=[bk[b]["realized"] for b in _lab],
                     hole=0.5, sort=False, direction="clockwise",
                     marker=dict(colors=[_PA_COLORS[b] for b in _lab]),
-                    texttemplate="%{label}<br>%{percent}", textposition="inside",
-                    insidetextorientation="horizontal",
-                    textfont=dict(color="#ffffff", size=12),
+                    texttemplate="%{label}  %{percent}", textposition="inside",
+                    insidetextorientation="horizontal", textfont=dict(color="#ffffff", size=13),
                     hovertemplate="%{label}  %{value:,.0f}원 · %{percent}<extra></extra>",
                 ))
                 fig_d.update_layout(
-                    height=210, margin=dict(l=6, r=6, t=6, b=6),
+                    height=215, margin=dict(l=6, r=6, t=6, b=6),
                     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                     font=dict(color=T["text"], size=11), showlegend=False,
                 )
-                st.plotly_chart(fig_d, use_container_width=True, config={"displayModeBar": False})
+                components.html(
+                    "<style>body{margin:0;background:transparent}</style>"
+                    + fig_d.to_html(include_plotlyjs="cdn", full_html=False, default_width="100%",
+                                    config={"displayModeBar": False, "responsive": True}),
+                    height=225,
+                )
 
-            # --- 상태 테이블 (Numbers | Ratio(%)) ---
+            # --- 상태 테이블 (Numbers | Ratio(%)) — 값 한 줄로 ---
             _tot = pst["n_total"]
             fa_n, ma_n, mo_n = pst["FA"][0], pst["MA"][0], pst["MO"][0]
             h_n, opn_n = pst["holds"]
             w_n, _ = pst["watering"]
 
             def _sr(label, num, ratio):
-                return (f"<tr><td style='color:{T['muted']}'>{label}</td>"
-                        f"<td style='text-align:right'>{num}</td>"
-                        f"<td style='text-align:right;color:{T['muted2']}'>{ratio}</td></tr>")
+                return (f"<tr><td style='color:{T['muted']};{_td}'>{label}</td>"
+                        f"<td style='text-align:right;{_td}'>{num}</td>"
+                        f"<td style='text-align:right;color:{T['muted2']};{_td}'>{ratio}</td></tr>")
+
+            def _ratio_pl(n, tot_, pl):
+                c = _plcol(pl)
+                return (f"{n / tot_ * 100:.1f}%(<span style='color:{c}'>"
+                        f"{'—' if pl is None else f'{pl:+.2f}%'}</span>)")
 
             rows = (
                 _sr("총 횟수", _tot, "—")
                 + _sr("FA", f"{fa_n}/{_tot}", f"{fa_n / _tot * 100:.1f}%")
                 + _sr("MA", f"{ma_n}/{_tot}", f"{ma_n / _tot * 100:.1f}%")
-                + _sr("MO", f"{mo_n}/{_tot}(전량매도 {pst['MO_closed']}, 진행 {pst['MO_open']})",
-                      f"{mo_n / _tot * 100:.1f}%")
-                + _sr("Holds", f"{h_n}/{opn_n}",
-                      f"{h_n / opn_n * 100:.1f}% · 평균 손익률 {_pct(pst['holds_pl_pct'])}")
-                + _sr("Watering", f"{w_n}/{opn_n}",
-                      f"{w_n / opn_n * 100:.1f}% · 평균 손익률 {_pct(pst['watering_pl_pct'])}")
+                + _sr("MO", f"({pst['MO_closed']}/{mo_n})/{_tot}", f"{mo_n / _tot * 100:.1f}%")
+                + _sr("Holds", f"{h_n}/{opn_n}", _ratio_pl(h_n, opn_n, pst["holds_pl_pct"]))
+                + _sr("Watering", f"{w_n}/{opn_n}", _ratio_pl(w_n, opn_n, pst["watering_pl_pct"]))
             )
             st.markdown(
+                "<div style='overflow-x:auto'>"
                 "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:6px 0 0'>"
                 f"<tr style='font-size:10px;color:{T['muted2']}'>"
                 "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>Numbers</th>"
                 "<th style='text-align:right'>Ratio(%)</th></tr>"
-                + rows + "</table>",
+                + rows + "</table></div>",
                 unsafe_allow_html=True,
             )
 
-            # --- Watering 상세 ---
+            # --- Watering 상세 (3줄) ---
             _absorbed = "—" if wd["absorbed_pp"] is None else f"{wd['absorbed_pp']:+.2f}%p"
             _mult = "—" if wd["seed_mult"] is None else f"×{wd['seed_mult']:.2f}"
+            _pf = "" if wd["pl_first_pct"] is None else f" (최초 진입가 기준 {wd['pl_first_pct']:+.2f}%)"
             st.markdown(
                 f"<div style='font-size:11px;color:{T['muted']};margin:6px 0 0'>"
                 f"<b>Watering</b> {wd['n_stock']}종목에 물타기(추가매수) {wd['n_extra_buys']}회 진행 중</div>"
                 f"<div style='font-size:11px;color:{T['muted']};margin:1px 0'>"
-                f"총 손익률 <b>{_pct(wd['pl_avg_pct'])}</b> "
-                f"<span style='color:{T['muted2']}'>(최초 진입가 기준 {_pct(wd['pl_first_pct'])})</span>"
-                f" → 물타기 흡수 <b style='color:{_PA_COLORS['FA']}'>{_absorbed}</b></div>"
+                f"총 손익률 <b style='color:{_plcol(wd['pl_avg_pct'])}'>{_pct(wd['pl_avg_pct'])}</b>"
+                f"<span style='color:{T['muted2']}'>{_pf}</span></div>"
                 f"<div style='font-size:11px;color:{T['muted']};margin:1px 0 2px'>"
+                f"물타기 흡수율 <b style='color:{UP_COLOR}'>{_absorbed}</b> · "
                 f"시드 {wd['seed_first']:,.0f}원 → {wd['seed_now']:,.0f}원 <b>({_mult})</b></div>",
                 unsafe_allow_html=True,
             )
@@ -228,11 +243,13 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         f" <span style='font-size:11px;font-weight:400;color:{T['muted']}'>"
         f"보유비중 코스피 {wk * 100:.0f}% · 코스닥 {(1 - wk) * 100:.0f}%</span>"
     )
-    def _render_iva_panel(iva, idx_hist_local, kospi_label):
-        """'지수 대비 계좌' 한 벌. 세로 순서: 5줄 지수 표 → 지수 대비 계좌 선그래프 →
-        하락/상승/even 캡처 표 3개 → 일별 캡처 막대. 메인(코스피)과 'SamHynix extracted'
-        (코스피 다리 = 삼성·하이닉스 제외)가 이 렌더러를 공유한다 — 표·그래프의 '코스피'
-        표시 라벨만 kospi_label로 바뀌고 dict 키는 '코스피' 그대로."""
+    def _render_iva_panel(iva, idx_hist_local, kospi_label, carousel_id):
+        """'지수 대비 계좌' 한 벌 = 2장짜리 스와이프 캐러셀. 1장 = [5줄 지수 표 + 선그래프],
+        2장 = [하락/상승/even 캡처 표 3개 + 일별 캡처 막대]. 밑에 점 2개(클릭·좌우키로도 전환).
+        캐러셀을 쓰는 이유: SamHynix expander 안에선 `st.plotly_chart`가 폭 0으로 깨지는데,
+        components.html(iframe) + plotly `responsive:true`면 expander 열릴 때 알아서 리플로우됨
+        (2026-09-07 재도입 — 세로 스택으로 바꿨다가 그래프 안 보이는 문제로 되돌림).
+        메인(코스피)과 'SamHynix extracted'가 공유 — 표시 라벨만 kospi_label."""
         me, idxc, latest = iva["me"], iva["index"], iva["latest"]
         if me.empty or idxc.empty:
             st.info("시세를 새로고침하면 지수·자산 스냅샷이 쌓여서 그래프가 그려집니다.")
@@ -286,7 +303,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 f"<td style='text-align:right;color:{dc}'>{_pct(day)}</td></tr>"
             )
 
-        st.markdown(
+        idx_table_html = (
             "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:-2px 0 4px'>"
             f"<tr style='color:{T['muted2']};font-size:10px'>"
             "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>누적</th>"
@@ -296,8 +313,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             + _row("혼합지수", DOWN_COLOR, False, "벤치", False)
             + _row("내 주식", T["text"], False, "주식", True)
             + _row("내 계좌", T["muted2"], True, "계좌", True)
-            + "</table>",
-            unsafe_allow_html=True,
+            + "</table>"
         )
 
         # ---- 하락 / 상승 캡처 + even 초과수익 + 승률 (2026-09-07, CR 대체) ----
@@ -469,19 +485,55 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             dragmode=False,
         )
 
-        # ---- 렌더 순서: [5줄 지수 표(위)] → 선그래프 → [캡처 표 3개] → 일별 캡처 막대 ----
-        # 캐러셀(2페이지 스와이프)은 없앰 (2026-09-07 사용자 요청 — 캡처 표를 "두 번째 그래프
-        # 위에" 두려면 두 그래프가 세로로 갈려야 함). 세로 스택이 모바일 스크롤에도 더 나음.
-        _cfg = {"displayModeBar": False, "scrollZoom": False, "doubleClick": False}
-        st.plotly_chart(fig2, use_container_width=True, config=_cfg)
-        st.markdown(caps_html, unsafe_allow_html=True)
-        st.plotly_chart(fig_s, use_container_width=True, config=_cfg)
+        # ---- 2장 캐러셀: [지수 표 + 선그래프]  ↔  [캡처 표 3개 + 캡처 막대] ----
+        _cfg = {"displayModeBar": False, "responsive": True, "scrollZoom": False, "doubleClick": False}
+        _g1 = fig2.to_html(include_plotlyjs="cdn", full_html=False, config=_cfg, default_width="100%")
+        _g2 = fig_s.to_html(include_plotlyjs=False, full_html=False, config=_cfg, default_width="100%")
+        components.html(f"""
+<div id="{carousel_id}">
+  <div class="trk">
+    <div class="sl">{idx_table_html}{_g1}</div>
+    <div class="sl">{caps_html}{_g2}</div>
+  </div>
+  <div class="dt"><span class="d on"></span><span class="d"></span></div>
+</div>
+<style>
+  body {{ margin:0; background:transparent; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }}
+  #{carousel_id} .trk {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
+  #{carousel_id} .trk::-webkit-scrollbar {{ display:none; }}
+  #{carousel_id} .sl {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always; }}
+  #{carousel_id} .dt {{ display:flex; justify-content:center; gap:10px; padding:4px 0 0; }}
+  #{carousel_id} .d {{ width:9px; height:9px; border-radius:50%; background:{T['muted2']}; opacity:.3;
+    cursor:pointer; transition:opacity .18s, background .18s; }}
+  #{carousel_id} .d.on {{ opacity:1; background:{T['text']}; }}
+</style>
+<script>
+  (function() {{
+    var trk = document.querySelector('#{carousel_id} .trk');
+    var ds = document.querySelectorAll('#{carousel_id} .d');
+    function sync() {{
+      var i = Math.round(trk.scrollLeft / Math.max(trk.clientWidth, 1));
+      ds.forEach(function(x, j) {{ x.classList.toggle('on', j === i); }});
+    }}
+    trk.addEventListener('scroll', sync, {{passive: true}});
+    ds.forEach(function(x, j) {{ x.addEventListener('click', function() {{
+      trk.scrollTo({{left: j * trk.clientWidth, behavior: 'smooth'}}); }}); }});
+    trk.setAttribute('tabindex', '0');
+    trk.addEventListener('keydown', function(e) {{
+      var cur = Math.round(trk.scrollLeft / Math.max(trk.clientWidth, 1));
+      if (e.key === 'ArrowRight') trk.scrollTo({{left: (cur + 1) * trk.clientWidth, behavior: 'smooth'}});
+      if (e.key === 'ArrowLeft') trk.scrollTo({{left: (cur - 1) * trk.clientWidth, behavior: 'smooth'}});
+    }});
+  }})();
+</script>
+""", height=560)
 
     # ---- 지수 대비 계좌 (메인: 코스피/코스닥) ----
     st.markdown(f"##### Account : Index{_wtag}", unsafe_allow_html=True)
     iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
                                     state.get("fee_rate", 0.0), kospi_weight=wk)
-    _render_iva_panel(iva, idx_hist, "코스피")
+    _render_iva_panel(iva, idx_hist, "코스피", "cwrap")
 
     # ---- 코스피 추이: 일반(빨강) vs 삼성·삼성우·하이닉스 제외(파랑). 실제 지수 포인트로 표시,
     #      hover엔 그 시점의 전일 대비 등락률(%). ----
@@ -533,7 +585,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             _syn = synthetic_kospi_ex_bigcap(idx_hist, _bg)
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
-            _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외")
+            _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
 
     st.divider()
 
