@@ -976,21 +976,19 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
     pl_first_pct(현재수량을 전부 최초매수단가에 샀다 치면 나올 손익률 — "물타기 안 했으면"
     정규화 값) · absorbed_pp(= pl_avg − pl_first, 물타기가 흡수한 %p, 양수=좋음) ·
     seed_first(Σ 첫 매수 수량×단가) · seed_now(Σ 평단×현재수량) · seed_mult(seed_now/seed_first).
-- **`open_split` 반환**(2번째 도넛용): 현재 보유(열린 사이클)를 3분류 — `solo`(1매수·0매도) /
-  `cutting`(매도 1회+ 진행 = 부분매도 중) / `wateronly`(2+매수·0매도). 각 `{n: 종목수, value:
-  평가금액(현재가×수량)}`.
-- **UI (`_render` 아님, `render_transactions_tab` 안 expander)**:
-  ①**도넛 1** = 실현손익 금액을 버킷별로. 색 `_PA_COLORS` (**FA 빨강 / MO 녹색 / MA 파랑** —
-    사용자 지정 2026-09-07), 슬라이스 안에 `라벨+%`, 가운데 Total 원. 버킷 중 순손실 있으면
-    도넛 스킵(파이가 음수 못 그림) + 캡션.
-  ②**도넛 2** = `open_split` 3분류(solo/cutting/wateronly, 색 `_PA_OPEN_COLORS` 빨강/녹색/파랑),
-    **스와이프 2장 캐러셀**(`components.html`, `#pawrap`, 밑에 점 2개 — 지수 대비 계좌 캐러셀보다
-    가벼운 버전, `Plotly.relayout` 리사이즈 루프 없음): 1장 = 슬라이스 크기 = 종목수(라벨에
-    `N종목 (%)`), 2장 = 슬라이스 크기 = 평가금액(라벨에 `N종목 · 원`).
-  ③병합표(버킷별 2줄: `FA 실현·비중·횟수(종목) [·전량매도 N, 진행 N]` / `총매수액·평균·평균
-    손익률`) → ④상태표(`Numbers | Ratio(%)` 2열, 행 = 총 횟수/FA/MA/MO/Holds/Watering, MO는
-    `38/169(전량매도 28, 진행 10)`, Holds·Watering은 Ratio 칸에 `% · 평균 손익률 X%`) →
-  ⑤Watering 상세 3줄.
+- **UI (`_render` 아님, `render_transactions_tab` 안 expander) — 사용자가 여러 번 다듬어
+  최종적으로 4개만**:
+  ①**표**(`이름 | 실현 | 비중 | 평균 손익률`, FA/MO/MA + Total 행. 이름 칸에 풀네임
+    `FA (First in, All out)` 등, 색 `_PA_COLORS`) — 도넛 위. (2026-09-07: "총매수액/총분할매도액
+    같은 상세는 다 빼고 이 표 하나로. 평균 손익률만 비중 옆에 추가" 지시로 병합표 삭제됨.)
+  ②**도넛** = 실현손익 금액을 버킷별로. 색 `_PA_COLORS` (**FA 빨강 / MO 녹색 / MA 파랑** —
+    사용자 지정), 슬라이스 안 글씨 **전부 하얀색**(`textfont color #ffffff`), `라벨+%`. 가운데
+    Total 주석 없음(위 표에 있음). 버킷 중 순손실 있으면 도넛 스킵 + 캡션.
+  ③**상태표**(`Numbers | Ratio(%)` 2열, 행 = 총 횟수/FA/MA/MO/Holds/Watering, MO는
+    `38/169(전량매도 28, 진행 10)`, Holds·Watering은 Ratio 칸에 `% · 평균 손익률 X%`).
+  ④**Watering 상세** 3줄.
+  (한때 있었던 것: "현재 보유 3분류" 2번째 도넛 스와이프 캐러셀 — 만들었다가 같은 날 사용자가
+  "두 번째 도넛 없애자"고 해서 제거. `compute_pnl_actions`의 `open_split` 반환도 같이 삭제.)
 - **회귀 테스트**: `test_pnl_actions_buckets_and_watering` (FA/MO/MA 분류 + MO 우선순위 +
   seed·흡수 계산).
 - **알려진 근사**: pl_first_pct는 "현재 수량을 최초가에 샀다 치면"이라 물타기 안 했을 때 실제

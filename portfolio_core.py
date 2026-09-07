@@ -1772,29 +1772,7 @@ def compute_pnl_actions(tx: pd.DataFrame, holdings: pd.DataFrame) -> dict:
         "watering": (len(watering), n_open), "watering_pl_pct": pl_avg,
     }
 
-    # ---- 두 번째 도넛: 현재 보유 계좌를 3분류 (종목수 / 평가금액) ----
-    #   solo    = 한 번 사고 보유만 (n_buy==1, n_sell==0)
-    #   cutting = 여러 번 사고 여러 번 파는 중 (n_sell>=1)  ← 부분매도 진행
-    #   wateronly = 물타고만 있는 중 (n_buy>=2, n_sell==0)
-    def _grp_val(cs):
-        v = 0.0
-        for c in cs:
-            px, q, _ = cp.get(c["종목"], (None, None, None))
-            if px and q:
-                v += q * px
-        return v
-
-    solo = [c for c in open_cy if c["n_buy"] == 1 and c["n_sell"] == 0]
-    cutting = [c for c in open_cy if c["n_sell"] >= 1]
-    wateronly = [c for c in open_cy if c["n_buy"] >= 2 and c["n_sell"] == 0]
-    open_split = {
-        "solo": {"n": len(solo), "value": _grp_val(solo)},
-        "cutting": {"n": len(cutting), "value": _grp_val(cutting)},
-        "wateronly": {"n": len(wateronly), "value": _grp_val(wateronly)},
-    }
-
-    return {"total": total, "baskets": baskets, "status": status,
-            "watering": watering_detail, "open_split": open_split}
+    return {"total": total, "baskets": baskets, "status": status, "watering": watering_detail}
 
 
 # ------------------------------------------------------------------ #
