@@ -151,22 +151,25 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             else:
                 fig_d = go.Figure(go.Pie(
                     labels=_lab, values=[bk[b]["realized"] for b in _lab],
-                    hole=0.5, sort=False, direction="clockwise",
+                    hole=0.38, sort=False, direction="clockwise",
                     marker=dict(colors=[_PA_COLORS[b] for b in _lab]),
-                    texttemplate="%{label}  %{percent}", textposition="inside",
-                    insidetextorientation="horizontal", textfont=dict(color="#ffffff", size=13),
+                    texttemplate="%{label} %{percent}", textposition="inside",
+                    insidetextorientation="horizontal", textfont=dict(color="#ffffff", size=12),
+                    automargin=True,
                     hovertemplate="%{label}  %{value:,.0f}원 · %{percent}<extra></extra>",
+                    hoverlabel=dict(bgcolor="#ffffff", bordercolor=T["border"],
+                                    font=dict(color=T["text"], size=12)),  # 슬라이스색 무관 흰 박스로 통일
                 ))
                 fig_d.update_layout(
-                    height=215, margin=dict(l=6, r=6, t=6, b=6),
+                    height=250, margin=dict(l=10, r=10, t=10, b=10),
                     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=T["text"], size=11), showlegend=False,
+                    font=dict(color=T["text"], size=11), showlegend=False, uniformtext=dict(mode="hide", minsize=9),
                 )
                 components.html(
                     "<style>body{margin:0;background:transparent}</style>"
                     + fig_d.to_html(include_plotlyjs="cdn", full_html=False, default_width="100%",
                                     config={"displayModeBar": False, "responsive": True}),
-                    height=225,
+                    height=260,
                 )
 
             # --- 상태 테이블 (Numbers | Ratio(%)) — 값 한 줄로 ---
