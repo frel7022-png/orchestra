@@ -328,7 +328,6 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         # 숫자 색: 하락 표 = 빨강, 상승 표 = 파랑(사용자 지정, 국내 관례 반대), even 표 = 회색.
         # "합친 지수" 없음(사용자 판단 2026-09-07) — 값들을 같이 읽음. 이 표들은 아래 fig2(선그래프)
         # 밑, fig_s(일별 캡처 막대) 바로 위에 렌더링됨 — 캡처 막대의 데이터 짝(사용자 요청 2026-09-07).
-        basis = iva["sensitivity_basis"]
         cap_a, cap_s = iva["cap"]["acct"], iva["cap"]["stock"]
         nn = iva["n"]
 
@@ -354,8 +353,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             return (
                 "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:3px 0 0'>"
                 f"<tr style='font-size:10px'>"
-                f"<th style='text-align:left;color:{color}'>{title}"
-                f" <span style='color:{T['muted2']};font-weight:400'>({basis})</span></th>"
+                f"<th style='text-align:left;color:{color}'>{title}</th>"
                 f"<th style='text-align:right;color:{T['muted2']}'>누적</th>"
                 f"<th style='text-align:right;color:{T['muted2']}'>당일</th>"
                 f"<th style='text-align:right;color:{T['muted2']}'>Pct</th></tr>"
@@ -363,8 +361,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             )
 
         caps_html = (
-            _cap_tbl("DC 하락 캡처 · ERA", UP_COLOR, "하락", "dc", "era", False)
-            + _cap_tbl("UC 상승 캡처 · 승률", DOWN_COLOR, "상승", "uc", "pct", False)
+            _cap_tbl("DC ERA", UP_COLOR, "하락", "dc", "era", False)
+            + _cap_tbl("UC ERA", DOWN_COLOR, "상승", "uc", "pct", False)
             + _cap_tbl("even 평균 · 승률 (±0.1%)", T["muted2"], "even", "even", "evr", True)
             + f"<div style='font-size:10px;color:{T['muted2']};margin:3px 0 4px'>"
               f"하락 {nn['down']} · 상승 {nn['up']} · even {nn['even']}</div>"
