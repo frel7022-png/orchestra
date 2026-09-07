@@ -105,6 +105,19 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
     avg_x = list(avg_path["날짜"]) + [today]
     avg_y = list(avg_path["평단가"]) + [avg_price]
 
+    # x축 눈금: 매수가 한 건이고 진입일이 오늘과 하루 이내면 plotly가 날짜축을 "하루 미만"
+    # 범위로 보고 23:59:59.999 같은 시:분:초 눈금을 찍어버린다. 항상 날짜 눈금만 나오도록
+    # dtick을 '며칠 단위'로 고정하고, 범위를 살짝 넓혀 눈금이 2~4개 찍히게 한다.
+    _xs = pd.to_datetime(
+        [entry_date, today] + avg_x + list(buys["날짜"])
+        + (list(sells["날짜"]) if not sells.empty else []), errors="coerce")
+    _xs = _xs.dropna()
+    _xmin, _xmax = _xs.min(), _xs.max()
+    _span = max((_xmax - _xmin).days, 1)
+    _pad = pd.Timedelta(days=max(1, round(_span * 0.08)))
+    _dtick_ms = max(1, round(_span / 4)) * 86_400_000
+    _xrange = [(_xmin - _pad).strftime("%Y-%m-%d"), (_xmax + _pad).strftime("%Y-%m-%d")]
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=[entry_date, today], y=[entry_price, current_price], mode="lines+markers",
@@ -142,7 +155,8 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
         showlegend=True,
         legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5,
                     bgcolor="rgba(0,0,0,0)"),
-        xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+        xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True,
+                   type="date", tickformat="%m/%d", dtick=_dtick_ms, range=_xrange),
         yaxis=dict(showgrid=True, gridcolor=T["border"], tickfont=dict(size=9, color=T["muted"]),
                    tickformat=",.0f", fixedrange=True),
         hovermode="closest",
