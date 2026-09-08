@@ -150,29 +150,30 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             if any(bk[b]["realized"] < 0 for b in _lab):
                 st.caption("버킷 중 순손실이 있어 도넛 생략 — 위 표 참고.")
             else:
+                # 작은 슬라이스(비중 < 12%)는 라벨 아예 빈 문자열 — 바깥으로 삐져나오지 않게.
+                # domain 꽉 채우고 margin 최소 → 도넛이 iframe 정중앙.
+                _slice_txt = [(f"{b} {bk[b]['pct']:.1f}%" if bk[b]["pct"] >= 12 else "") for b in _lab]
                 fig_d = go.Figure(go.Pie(
                     labels=_lab, values=[bk[b]["realized"] for b in _lab],
-                    hole=0.38, sort=False, direction="clockwise",
+                    hole=0.40, sort=False, direction="clockwise",
                     marker=dict(colors=[_PA_COLORS[b] for b in _lab]),
-                    texttemplate="%{label} %{percent}", textposition="inside",
+                    text=_slice_txt, textinfo="text", textposition="inside",
                     insidetextorientation="horizontal", textfont=dict(color="#ffffff", size=12),
-                    automargin=False,  # 바깥 라벨 자리 예약 안 함 → 도넛이 중앙에 옴
+                    domain=dict(x=[0, 1], y=[0, 1]),
                     hovertemplate="%{label}  %{value:,.0f}원 · %{percent}<extra></extra>",
                     hoverlabel=dict(bgcolor="#ffffff", bordercolor=T["border"],
                                     font=dict(color=T["text"], size=12)),  # 슬라이스색 무관 흰 박스로 통일
                 ))
                 fig_d.update_layout(
-                    height=250, margin=dict(l=10, r=10, t=10, b=10),
+                    height=240, margin=dict(l=6, r=6, t=6, b=6),
                     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                     font=dict(color=T["text"], size=11), showlegend=False,
-                    # 슬라이스가 작아 라벨이 13px로 안 들어가면 아예 숨김(바깥으로 삐져나오지 않게).
-                    uniformtext=dict(mode="hide", minsize=13),
                 )
                 components.html(
                     "<style>body{margin:0;background:transparent}</style>"
                     + fig_d.to_html(include_plotlyjs="cdn", full_html=False, default_width="100%",
                                     config={"displayModeBar": False, "responsive": True}),
-                    height=260,
+                    height=244,
                 )
 
             # --- 상태 테이블 (Numbers | Ratio(%)) — 값 한 줄로 ---
@@ -511,10 +512,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
   #{carousel_id} .trk::-webkit-scrollbar {{ display:none; }}
   #{carousel_id} .sl {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always;
     display:flex; flex-direction:column; justify-content:center; padding-top:4px; box-sizing:border-box; }}
-  #{carousel_id} .dt {{ display:flex; justify-content:center; gap:10px; padding:4px 0 0; }}
-  #{carousel_id} .d {{ width:8px; height:8px; border-radius:50%; background:{T['muted2']}; opacity:.35;
+  #{carousel_id} .dt {{ display:flex; justify-content:center; gap:11px; padding:8px 0 4px; }}
+  #{carousel_id} .d {{ width:9px; height:9px; border-radius:50%; background:{T['muted2']}; opacity:.45;
     cursor:pointer; transition:opacity .18s, background .18s; }}
-  #{carousel_id} .d.on {{ opacity:.75; background:{T['muted']}; }}
+  #{carousel_id} .d.on {{ opacity:1; background:{T['text']}; }}
 </style>
 <script>
   (function() {{
@@ -535,7 +536,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     }});
   }})();
 </script>
-""", height=550)
+""", height=565)
 
     # ---- KOSPI 2-Track Trend: 일반(빨강) vs 삼성·삼성우·하이닉스 제외(파랑). 실제 지수 포인트로
     #      표시, hover엔 그 시점의 전일 대비 등락률(%). (2026-09-08: Account:Index 자리로 옮김 —
@@ -636,14 +637,12 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 hovertemplate="<b>VIP</b> %{y:+.2%}<extra></extra>"))
             fig_vo.add_trace(go.Scatter(
                 x=[d for d, _ in vo["orch_line"]], y=[y for _, y in vo["orch_line"]],
-                name="Orchestra", mode="lines+markers", line=dict(color=UP_COLOR, width=2.4),
-                marker=dict(size=5),
+                name="Orchestra", mode="lines", line=dict(color=UP_COLOR, width=1.8),
                 hovertemplate="<b>Orchestra</b> %{y:+.2%}<extra></extra>"))
             if vo.get("orchn_line"):
                 fig_vo.add_trace(go.Scatter(
                     x=[d for d, _ in vo["orchn_line"]], y=[y for _, y in vo["orchn_line"]],
-                    name="Orchestration", mode="lines+markers", line=dict(color=NEW_COLOR, width=2.4),
-                    marker=dict(size=5),
+                    name="Orchestration", mode="lines", line=dict(color=NEW_COLOR, width=1.8),
                     hovertemplate="<b>Orchestration</b> %{y:+.2%}<extra></extra>"))
             fig_vo.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
             fig_vo.update_layout(
