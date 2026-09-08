@@ -17,7 +17,7 @@ from portfolio_core import (
     compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     study_foreign_buy_forward_returns, load_index_history, load_market_cache,
-    load_history,
+    load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
 )
 
 
@@ -301,6 +301,47 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     day_color = UP_COLOR if day_change > 0 else (DOWN_COLOR if day_change < 0 else T["muted"])
     day_sign = "+" if day_change > 0 else ""
 
+    # ---- Today's Take: 오늘 내 주식 성과 vs 시장(혼합지수·DC/UC), 기본 + 반도체 제외(W/O SH) ----
+    # 원(내 주식 어제 대비)은 위 day_change 그대로, %는 Account:Index의 "내 주식 당일"(Rs).
+    # 혼합지수 당일 / DC(하락일 c)·UC(상승일 c)·—(even) 를 기본 벤치와 삼성·하이닉스 제외 벤치
+    # 두 가지로 보여준다. compute_index_vs_account를 여기서 2번 호출(가벼움).
+    _idx_h = load_index_history()
+    _asset_h = load_history()
+    _mc = load_market_cache()
+    _hv = holdings.copy()
+    _hv["_v"] = (pd.to_numeric(_hv["수량"], errors="coerce").fillna(0)
+                 * pd.to_numeric(_hv["현재가"], errors="coerce").fillna(0))
+    _hv["_m"] = _hv["종목명"].map(_mc)
+    _ksv = float(_hv.loc[_hv["_m"] == "KOSPI", "_v"].sum())
+    _kqv = float(_hv.loc[_hv["_m"] == "KOSDAQ", "_v"].sum())
+    _wk = _ksv / (_ksv + _kqv) if (_ksv + _kqv) > 0 else None
+    _fr = state.get("fee_rate", 0.0)
+    _iva_m = compute_index_vs_account(tx, _asset_h, _idx_h, state["initial"], _fr, kospi_weight=_wk)
+    _bg_h = load_bigcap_history()
+    _iva_s = (compute_index_vs_account(tx, _asset_h, synthetic_kospi_ex_bigcap(_idx_h, _bg_h),
+                                       state["initial"], _fr, kospi_weight=_wk)
+              if not _bg_h.empty else None)
+
+    def _tt_dcuc(iva):
+        sm = (iva or {}).get("cap", {}).get("stock", {})
+        b, v = sm.get("today_bucket"), sm.get("today")
+        if b == "하락" and v is not None:
+            return f"DC {v:.2f}", UP_COLOR
+        if b == "상승" and v is not None:
+            return f"UC {v:.2f}", DOWN_COLOR
+        return "—", T["muted"]
+
+    def _tt_p(v):
+        return "—" if v is None else f"{v * 100:+.2f}%"
+
+    _stk_day = (_iva_m.get("latest", {}).get("주식") or (None, None))[1]
+    _bench_m = (_iva_m.get("latest", {}).get("벤치") or (None, None))[1]
+    _bench_s = ((_iva_s.get("latest", {}).get("벤치") if _iva_s else None) or (None, None))[1]
+    _dc_m, _dc_m_c = _tt_dcuc(_iva_m)
+    _dc_s, _dc_s_c = _tt_dcuc(_iva_s)
+    _stk_c = UP_COLOR if (_stk_day or 0) > 0 else (DOWN_COLOR if (_stk_day or 0) < 0 else T["muted"])
+    _tt_arrow = "▲" if day_change > 0 else ("▼" if day_change < 0 else "·")
+
     # ---- 오늘의 거래 요약 (매수/매도 총금액) ----
     buy_tx = today_tx[today_tx["구분"] == "매수"].copy()
     sell_tx = today_tx[today_tx["구분"] == "매도"].copy()
@@ -333,8 +374,14 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             <div>일일손익<b style="color:{daily_color}">{daily_sign}{daily_pnl:,.0f}원</b></div>
             <div>보유종목<b>{len(df)}개</b></div>
         </div>
-        <div class="capital-line">어제 대비&nbsp;
-            <b style="color:{day_color}">{day_sign}{day_change:,.0f}원</b>
+        <div class="capital-line" style="line-height:1.75">
+            <div>내 주식 어제 대비&nbsp;
+                <b style="color:{day_color}">{day_sign}{day_change:,.0f}원</b>
+                <span style="color:{_stk_c}">&nbsp;{_tt_arrow} {_tt_p(_stk_day)}</span></div>
+            <div style="color:{T['muted']}">혼합지수&nbsp;<b style="color:{T['text']}">{_tt_p(_bench_m)}</b>
+                &nbsp;·&nbsp;W/O SH&nbsp;<b style="color:{T['text']}">{_tt_p(_bench_s)}</b></div>
+            <div style="color:{T['muted']}"><b style="color:{_dc_m_c}">{_dc_m}</b>
+                &nbsp;·&nbsp;W/O SH&nbsp;<b style="color:{_dc_s_c}">{_dc_s}</b></div>
         </div>
         {daily_trade_html}
     </div>
