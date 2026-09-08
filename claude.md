@@ -1106,3 +1106,27 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   `test_compute_vip_vs_orchestra_rebases_orchestra_to_anchor`,
   `test_snapshot_fund_nav_history_overwrites_same_date`.
 - **meritz에도 이식됨** (2026-09-08, §6-6). `both_accounts.csv`·`load_both_accounts`는 meritz에도 있음.
+
+### 6-22. "Claude's Read" — 세션의 일일 평가 (2026-09-08, new1 전용)
+- **뭐냐**: 포트폴리오 첫 화면 요약카드 **Today's Take 바로 밑**에, 그날 장을 세션(어시스턴트)이
+  분석적으로 3~5문단 서술 + **별점 ★N/5**(보수적, 중간=★★, ½ 없음)로 평가한 것. Claude 스타버스트
+  마크(오렌지 `#D97757`) + 라벨 + 별 + 날짜. 네이티브 `<details>`라 클릭해도 rerun 없음 —
+  펼치면 오늘 코멘트 + 지난 3개.
+- **데이터**: `claude_daily_notes.csv`(날짜, 별점, 코멘트). `portfolio_core.load_claude_notes()`,
+  UI는 `ui_portfolio_tab._claude_read_html(T)`. 비어있으면 블록 자체 안 그림.
+- **루틴 (하루 1회, 오후 3:30 KST 이후 = 장 마감 후)**: 매매일지 반영 + `sync_both_accounts.py`
+  뒤에 `python daily_stats.py [YYYY-MM-DD]`로 그날 수치(내 주식/계좌 어제대비, 코스피·코스닥·혼합·
+  W/O SH 당일, DC/UC 오늘·누적, 오늘 매수/매도 종목별, 예수금 비중, P&L Actions, 물타기, 신규진입)를
+  덤프 → **세션이 그걸 읽고 코멘트+별점 작성** → CSV에 append → git commit/push.
+  LLM 호출은 앱이 아니라 세션이 함(하루 1회라 굳이 앱에 API 안 붙임).
+- **코멘트 톤**: 표보다 **서술 위주**(읽기 편하게), 숫자는 문장 안에 섞어서. 다루는 것 — 시장 판정
+  (하락/상승/even, W/O SH 대비), DC/UC 해석(하락일 방어 / **상승일 못 따라간 것도 지적**),
+  자금 배치 평가(하락일에 현금 적절히 넣었나, 매수/매도 금액이 적절했나, 예수금 비중), 실현손익
+  해부(총액 + 최고/최악 기여 종목), 물타기·P&L Actions 흐름 한 줄, 마지막 총평 + 별점 이유.
+- **별점 기준**: ★=시장보다 확연 열위 · ★★=시장과 비슷/소폭 열위(대부분의 날 기본값) ·
+  ★★★=명확한 선방+무난한 자금배치 · ★★★★=강한 방어+익절 확보+좋은 배치 · ★★★★★=드묾
+  (하락일 거의 안 빠짐 or 상승일 시장 이상 참여 + 매매가 다 맞아떨어진 날).
+- **주간 리포트는 별개 (매주 금요일 장 마감 후)**: `report/` 폴더에 `YYYY-MM-DD_제목.html`(+PDF)로
+  한 주치 관찰/리뷰를 세션이 쓴다(§2 report/ 규칙 그대로 — 개정 시 덮어쓰지 말고 `_v2` 접미사).
+  Claude's Read가 "매일 한 줄"이면 이건 "주 1회 깊게".
+- **new1 전용** (meritz 미적용).
