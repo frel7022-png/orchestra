@@ -1869,7 +1869,8 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
                               fund_nav_hist: pd.DataFrame | None = None) -> dict:
     """'지수 대비 계좌' 그래프 데이터(§6-17). 값은 전부 소수(0.0145 = +1.45%).
 
-    - 계좌수익(t)  = 총자산(t)/최초자본 - 1  — 앱 요약카드의 그 값. 예수금이 눌러주는 '완충된' 선.
+    - 계좌수익(t)  = 총자산(t)/최초자본 - 1 을 **anchor일 = 0 으로 리베이스**한 값
+      (`(1+r_t)/(1+r_0)-1`, 2026-09-08). 예수금이 눌러주는 '완충된' 선. 절대값은 요약카드에.
     - 주식수익 Rs(t) = 보유주식을 100% 투자했다고 봤을 때의 누적수익. 스냅샷 구간마다
       (주식평가액 변화 - 그 구간 순매수대금)을 직전 주식평가액으로 나눠 순수 가격변동만
       복리로 누적 → 지수와 1:1 비교 가능. 예수금 비중이 낮을수록 계좌수익보다 크게 벌어짐.
@@ -1980,6 +1981,14 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         me = me[me["날짜"] <= _idx_max].reset_index(drop=True)
         if me.empty:
             return empty
+
+    # 내 계좌 누적을 anchor일(첫 스냅샷) = 0 으로 리베이스 (2026-09-08). 코스피/코스닥/혼합지수/
+    # 내 주식(Rs)이 전부 anchor 기준이라, "8/14부터 시장 대비"가 정합이 되게. 절대 계좌수익
+    # (총자산/최초자본−1)은 요약카드·"vs 최초자본"에 그대로 있음. 계좌당일 diff는 상수배
+    # (1/(1+r0))만큼만 스케일돼 사실상 불변 — 오히려 벤치당일과 같은 스케일이 돼 정합.
+    if not me.empty:
+        _acc0 = float(me["계좌수익"].iloc[0])
+        me["계좌수익"] = (1.0 + me["계좌수익"]) / (1.0 + _acc0) - 1.0
 
     wk = None if kospi_weight is None else min(max(float(kospi_weight), 0.0), 1.0)
 
