@@ -51,6 +51,23 @@ def test_apply_transaction_full_sell_removes_holding():
     assert realized == pytest.approx(1000)  # (1200-1000)*5
 
 
+def test_sell_tax_deducts_from_both_cash_and_realized():
+    """2026-09-08 수수료 모델: 매수 수수료 0, 매도 시 매도금액 × fee_rate 를
+    예수금과 그 건 실현손익 양쪽에서 차감 (CLAUDE.md §6-4). 예: 10만원(=100주@1,000)
+    매수 후 100주@1,100(=11만원)에 전량매도, fee_rate 0.2% →
+    세금 11만원×0.002 = 220원. 실현손익 = (1,100-1,000)×100 - 220 = 9,780원.
+    예수금 = 100만 - 10만(매수, 수수료 0) + 11만 - 220 = 100만 9,780원."""
+    holdings = pd.DataFrame(columns=core.HOLD_COLUMNS)
+    state = {"cash": 1_000_000.0, "initial": 1_000_000.0, "fee_rate": 0.002}
+
+    holdings, state, _ = core.apply_transaction(holdings, state, "A", "매수", 100, 1000, fee_rate=0.002)
+    assert state["cash"] == pytest.approx(900_000)  # 매수엔 수수료 안 붙음
+
+    holdings, state, realized = core.apply_transaction(holdings, state, "A", "매도", 100, 1100, fee_rate=0.002)
+    assert realized == pytest.approx(100 * 100 - 110_000 * 0.002)   # 10,000 - 220 = 9,780
+    assert state["cash"] == pytest.approx(900_000 + 110_000 - 220)  # 1,009,780
+
+
 def test_new_holding_change_pct_starts_as_float_not_int(recwarn):
     """신규 종목 매수 시 "등락률" 컬럼이 int(0)로 시작하면, 이후 재생 때마다
     _apply_prior_prices가 실시간 시세의 float 등락률(예: -1.34)을 그 컬럼에 대입하면서

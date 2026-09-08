@@ -2095,17 +2095,19 @@ def compute_sector_weights(df: pd.DataFrame) -> dict:
 def apply_transaction(holdings: pd.DataFrame, state: dict, name: str, kind: str, qty: float, price: float,
                        code_cache: dict | None = None, sector_cache: dict | None = None,
                        fee_rate: float = 0.0):
-    """fee_rate: 매수/매도 대금 대비 수수료+세금 추정 비율 (예: 0.000579 = 0.0579%).
-    매수/매도 구분 없이 거래대금에 균일하게 적용하는 근사치 — 실제로는 매도 쪽에
-    거래세가 더 붙어서 비대칭이지만, 그걸 나눠볼 데이터가 없어 우선 평균값으로 적용."""
+    """fee_rate: **매도 시** 매도금액 대비 세금(거래세) 비율 (예: 0.002 = 0.2%, 메리츠 국내주식).
+    매수엔 수수료를 매기지 않는다(fee_rate 무관). 매도 시 fee = 매도금액 × fee_rate 를
+    예수금과 **그 건 실현손익 양쪽에서** 함께 차감한다 — 둘 다 빼야 예수금·실현손익이
+    정합이 맞는다(예: 10만원 매도로 1만원 수익 → 세금 200원 → 실현손익 9,800원, 입금 99,800원).
+    (2026-09-08 이전엔 매수·매도 거래대금에 균일 비율을 적용하고 실현손익엔 반영 안 했음 —
+    그래서 앱 실현손익이 증권사보다 조금 크게 나오는 알려진 오차가 있었는데, 이 변경으로 해소.)"""
     holdings = holdings.copy()
     realized = None
     match = holdings.index[holdings["종목명"] == name]
-    fee = qty * price * fee_rate
 
     if kind == "매수":
         cost = qty * price
-        state["cash"] -= (cost + fee)
+        state["cash"] -= cost
         if len(match):
             i = match[0]
             old_qty = float(holdings.loc[i, "수량"])
@@ -2128,12 +2130,13 @@ def apply_transaction(holdings: pd.DataFrame, state: dict, name: str, kind: str,
             holdings = pd.concat([holdings, pd.DataFrame([new_row])], ignore_index=True)
     else:  # 매도
         proceeds = qty * price
+        fee = proceeds * fee_rate
         state["cash"] += (proceeds - fee)
         if len(match):
             i = match[0]
             old_qty = float(holdings.loc[i, "수량"])
             old_avg = float(holdings.loc[i, "평단가"])
-            realized = (price - old_avg) * qty
+            realized = (price - old_avg) * qty - fee
             new_qty = old_qty - qty
             if new_qty <= 0:
                 holdings = holdings.drop(index=i).reset_index(drop=True)

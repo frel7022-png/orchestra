@@ -113,9 +113,9 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
         + (list(sells["날짜"]) if not sells.empty else []), errors="coerce")
     _xs = _xs.dropna()
     _xmin, _xmax = _xs.min(), _xs.max()
-    _span = max((_xmax - _xmin).days, 1)
-    _pad = pd.Timedelta(days=max(1, round(_span * 0.08)))
-    _dtick_ms = max(1, round(_span / 4)) * 86_400_000
+    _span = max(int((_xmax - _xmin).days), 1)
+    _pad = pd.Timedelta(days=max(1, int(round(_span * 0.08))))
+    _dtick_ms = max(1, int(round(_span / 4))) * 86_400_000
     _xrange = [(_xmin - _pad).strftime("%Y-%m-%d"), (_xmax + _pad).strftime("%Y-%m-%d")]
 
     fig = go.Figure()
