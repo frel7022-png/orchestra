@@ -26,9 +26,13 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     c3 = UP_COLOR if cap_return >= 0 else DOWN_COLOR
     s3 = "+" if cap_return >= 0 else ""
 
-    total_realized = pd.to_numeric(tx.loc[tx["구분"] == "매도", "실현손익"], errors="coerce").sum()
+    _sell = tx[tx["구분"] == "매도"]
+    total_realized = pd.to_numeric(_sell["실현손익"], errors="coerce").sum()
     rc = UP_COLOR if total_realized >= 0 else DOWN_COLOR
     rs = "+" if total_realized >= 0 else ""
+    # 누적 세금 = Σ 매도금액 × fee_rate (매도세 0.2%). 실현손익은 이미 이걸 뺀 값.
+    total_tax = (pd.to_numeric(_sell["수량"], errors="coerce")
+                 * pd.to_numeric(_sell["단가"], errors="coerce")).sum() * state.get("fee_rate", 0.0)
 
     st.markdown(f"""
     <div class="summary-box">
@@ -38,6 +42,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         <div class="summary-grid">
             <div>현재 총자산<b>{total_assets:,.0f}원</b></div>
             <div>실현손익 누적<b style="color:{rc}">{rs}{total_realized:,.0f}원</b></div>
+            <div>누적 세금<b style="color:{DOWN_COLOR}">-{total_tax:,.0f}원</b></div>
             <div>미실현 손실<b style="color:{DOWN_COLOR}">-{unrealized_loss:,.0f}원</b></div>
         </div>
     </div>
