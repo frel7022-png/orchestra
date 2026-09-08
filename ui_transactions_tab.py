@@ -39,10 +39,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         <div class="summary-label">최초 자본 {state['initial']:,.0f}원 대비</div>
         <span class="summary-main" style="color:{c3}">{s3}{cap_return:,.0f}원</span>
         <span class="summary-sub" style="color:{c3}">{s3}{cap_return_pct:.2f}%</span>
+        <span style="font-size:12px;color:{DOWN_COLOR};margin-left:8px">누적 세금 -{total_tax:,.0f}원</span>
         <div class="summary-grid">
             <div>현재 총자산<b>{total_assets:,.0f}원</b></div>
             <div>실현손익 누적<b style="color:{rc}">{rs}{total_realized:,.0f}원</b></div>
-            <div>누적 세금<b style="color:{DOWN_COLOR}">-{total_tax:,.0f}원</b></div>
             <div>미실현 손실<b style="color:{DOWN_COLOR}">-{unrealized_loss:,.0f}원</b></div>
         </div>
     </div>

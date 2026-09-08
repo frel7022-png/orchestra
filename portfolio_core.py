@@ -375,6 +375,18 @@ def load_both_accounts() -> pd.DataFrame:
     return pd.DataFrame(columns=["날짜", "orchestra", "orchestration"])
 
 
+CLAUDE_NOTES_FILE = HERE / "claude_daily_notes.csv"  # 날짜, 별점, 코멘트 — "Claude's Read" 일일 평가(§6-22)
+
+
+def load_claude_notes() -> pd.DataFrame:
+    """세션이 매일 장 마감 후 써넣는 일일 평가(Claude's Read). 날짜 오름차순.
+    별점 0~5 정수(보수적, 중간=2), 코멘트는 한국어 여러 문장. new1 전용."""
+    if CLAUDE_NOTES_FILE.exists():
+        df = pd.read_csv(CLAUDE_NOTES_FILE, dtype={"날짜": str})
+        return df.sort_values("날짜").reset_index(drop=True)
+    return pd.DataFrame(columns=["날짜", "별점", "코멘트"])
+
+
 def snapshot_fund_nav_history(nav: float, on_date: str | None = None) -> None:
     """펀드 기준가 스냅샷(같은 날짜 덮어씀). 네이버가 펀드 시세 API를 접었고 KOFIA/funetf는
     SPA라, 기준가는 사용자가 메리츠증권 앱에서 읽어 `ingest_daily.py`에 `todaytrans/fund_nav.txt`로

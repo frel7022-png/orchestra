@@ -18,7 +18,51 @@ from portfolio_core import (
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     study_foreign_buy_forward_returns, load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
+    load_claude_notes,
 )
+
+_CLAUDE_ORANGE = "#D97757"   # Claude 클레이 오렌지 — "Claude's Read" 마크·라벨·채운 별
+_CLAUDE_MARK = ("<svg width='13' height='13' viewBox='0 0 24 24' style='vertical-align:-2px'>"
+                "<g fill='#D97757'>"
+                "<path d='M12 2l1.6 6.1L19 5.6l-3.1 4.9L22 12l-6.1 1.6L18.4 19l-4.9-3.1L12 22l-1.6-6.1L5 18.4l3.1-4.9L2 12l6.1-1.6L5.6 5z'/>"
+                "</g></svg>")
+
+
+def _claude_read_html(T: dict) -> str:
+    """포트폴리오 요약카드 Today's Take 밑에 붙는 'Claude's Read' 블록(§6-22). 네이티브
+    <details>라 클릭 시 rerun 없음. claude_daily_notes.csv 비어있으면 빈 문자열."""
+    notes = load_claude_notes()
+    if notes.empty:
+        return ""
+
+    def _stars(n):
+        n = max(0, min(5, int(n)))
+        return (f"<span style='color:{_CLAUDE_ORANGE}'>{'★' * n}</span>"
+                f"<span style='color:{T['muted2']}'>{'☆' * (5 - n)}</span>")
+
+    def _body(txt):
+        return str(txt).replace("\n", "<br>")
+
+    cur = notes.iloc[-1]
+    past = notes.iloc[:-1].tail(3).iloc[::-1]
+    past_html = "".join(
+        f"<div style='font-size:11px;color:{T['muted']};line-height:1.55;margin:8px 2px 0;"
+        f"padding-top:7px;border-top:1px dashed {T['border']}'>"
+        f"<span style='color:{T['muted2']};font-weight:600'>{str(r['날짜'])[5:]} {_stars(r['별점'])}</span>"
+        f"<br>{_body(r['코멘트'])}</div>"
+        for _, r in past.iterrows()
+    )
+    _sum = (f"list-style:none;cursor:pointer;font-size:13px;color:{_CLAUDE_ORANGE};"
+            f"font-weight:600;display:flex;align-items:center;gap:6px")
+    return (
+        f"<details style='border-top:1px solid {T['border']};margin-top:10px;padding-top:9px'>"
+        f"<summary style=\"{_sum}\">{_CLAUDE_MARK}<span>Claude's Read</span>"
+        f"<span style='font-size:12px;letter-spacing:1px'>{_stars(cur['별점'])}</span>"
+        f"<span style='font-size:11px;color:{T['muted']};font-weight:400;margin-left:auto'>"
+        f"{str(cur['날짜'])[5:]}</span></summary>"
+        f"<div style='font-size:12px;color:{T['text']};line-height:1.65;margin:8px 2px 4px'>"
+        f"{_body(cur['코멘트'])}</div>{past_html}</details>"
+    )
 
 
 def _rank_delta_html(prev_rank, cur_rank) -> str:
@@ -383,6 +427,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             <div style="color:{T['muted']}"><b style="color:{_dc_m_c}">{_dc_m}</b>
                 &nbsp;·&nbsp;W/O SH&nbsp;<b style="color:{_dc_s_c}">{_dc_s}</b></div>
         </div>
+        {_claude_read_html(T)}
         {daily_trade_html}
     </div>
     """, unsafe_allow_html=True)
