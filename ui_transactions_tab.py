@@ -7,12 +7,12 @@ import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
-from constants import UP_COLOR, DOWN_COLOR
+from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, compute_pnl_actions, _index_day_moves,
     load_bigcap_history, synthetic_kospi_ex_bigcap, load_fund_nav_history,
-    compute_vip_vs_orchestra,
+    compute_vip_vs_orchestra, load_both_accounts,
 )
 
 KOSPI_COLOR = "#f59e0b"   # 지수 참조선(코스피) — 앰버
@@ -71,13 +71,13 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=all_dates, y=cum_values, mode="lines+markers", name="실현손익(누적)",
-            line=dict(color=UP_COLOR, width=2.5), marker=dict(size=5),
+            line=dict(color=UP_COLOR, width=1.6), marker=dict(size=3),
             customdata=daily_values,
             hovertemplate="%{x}<br>누적 실현손익 %{y:,.0f}원<br>이날 실현손익 %{customdata:,.0f}원<extra></extra>",
         ))
         fig.add_trace(go.Scatter(
             x=unreal_dates, y=unreal_series, mode="lines+markers", name="미실현손실",
-            line=dict(color=DOWN_COLOR, width=2.5), marker=dict(size=5),
+            line=dict(color=DOWN_COLOR, width=1.6), marker=dict(size=3),
             hovertemplate="%{x}<br>미실현손실 %{y:,.0f}원<extra></extra>",
         ))
         fig.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
@@ -156,7 +156,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                     marker=dict(colors=[_PA_COLORS[b] for b in _lab]),
                     texttemplate="%{label} %{percent}", textposition="inside",
                     insidetextorientation="horizontal", textfont=dict(color="#ffffff", size=12),
-                    automargin=True,
+                    automargin=False,  # 바깥 라벨 자리 예약 안 함 → 도넛이 중앙에 옴
                     hovertemplate="%{label}  %{value:,.0f}원 · %{percent}<extra></extra>",
                     hoverlabel=dict(bgcolor="#ffffff", bordercolor=T["border"],
                                     font=dict(color=T["text"], size=12)),  # 슬라이스색 무관 흰 박스로 통일
@@ -164,7 +164,9 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 fig_d.update_layout(
                     height=250, margin=dict(l=10, r=10, t=10, b=10),
                     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=T["text"], size=11), showlegend=False, uniformtext=dict(mode="hide", minsize=9),
+                    font=dict(color=T["text"], size=11), showlegend=False,
+                    # 슬라이스가 작아 라벨이 13px로 안 들어가면 아예 숨김(바깥으로 삐져나오지 않게).
+                    uniformtext=dict(mode="hide", minsize=13),
                 )
                 components.html(
                     "<style>body{margin:0;background:transparent}</style>"
@@ -316,7 +318,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             + _row("코스닥", KOSDAQ_COLOR, False, "코스닥", False)
             + _row("혼합지수", DOWN_COLOR, False, "벤치", False)
             + _row("내 주식", T["text"], False, "주식", True)
-            + _row("내 계좌", T["muted2"], True, "계좌", True)
+            + _row("내 계좌", UP_COLOR, False, "계좌", True)
             + "</table>"
         )
 
@@ -422,22 +424,22 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             hovertemplate=_ht("혼합지수"),
         ))
         fig2.add_trace(go.Scatter(
-            x=me["날짜"], y=me["주식수익"], name="내 주식", mode="lines+markers",
-            line=dict(color=T["text"], width=2.8), marker=dict(size=5),
+            x=me["날짜"], y=me["주식수익"], name="내 주식", mode="lines",
+            line=dict(color=T["text"], width=1.6),
             customdata=[[_cell(cr, br), _cell(dr, bd)] for cr, dr, br, bd
                         in zip(me["주식수익"], me["주식당일"], me["벤치누적"], me["벤치당일"])],
             hovertemplate=_ht("내 주식"),
         ))
         fig2.add_trace(go.Scatter(
             x=me["날짜"], y=me["계좌수익"], name="내 계좌", mode="lines",
-            line=dict(color=T["muted2"], width=1.8, dash="dot"),
+            line=dict(color=UP_COLOR, width=1.4),
             customdata=[[_cell(cr, br), _cell(dr, bd)] for cr, dr, br, bd
                         in zip(me["계좌수익"], me["계좌당일"], me["벤치누적"], me["벤치당일"])],
             hovertemplate=_ht("내 계좌"),
         ))
         fig2.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig2.update_layout(
-            height=275,
+            height=315,
             margin=dict(l=40, r=8, t=8, b=30),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
@@ -472,7 +474,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         ))
         fig_s.add_hline(y=1, line_dash="dash", line_color=T["muted2"], line_width=1)
         fig_s.update_layout(
-            height=275,
+            height=315,
             margin=dict(l=40, r=8, t=8, b=30),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11),
@@ -509,9 +511,9 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
   #{carousel_id} .trk::-webkit-scrollbar {{ display:none; }}
   #{carousel_id} .sl {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always; }}
   #{carousel_id} .dt {{ display:flex; justify-content:center; gap:10px; padding:4px 0 0; }}
-  #{carousel_id} .d {{ width:9px; height:9px; border-radius:50%; background:{T['muted2']}; opacity:.3;
+  #{carousel_id} .d {{ width:8px; height:8px; border-radius:50%; background:{T['muted2']}; opacity:.35;
     cursor:pointer; transition:opacity .18s, background .18s; }}
-  #{carousel_id} .d.on {{ opacity:1; background:{T['text']}; }}
+  #{carousel_id} .d.on {{ opacity:.75; background:{T['muted']}; }}
 </style>
 <script>
   (function() {{
@@ -532,7 +534,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     }});
   }})();
 </script>
-""", height=505)
+""", height=550)
 
     # ---- 지수 대비 계좌 (메인: 코스피/코스닥) ----
     st.markdown(f"##### Account : Index{_wtag}", unsafe_allow_html=True)
@@ -593,35 +595,29 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
             _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
 
-    # ---- VIP vs Orchestra (§6-21): VIP 가치투자 펀드 vs 내 계좌(Orchestra), 둘 다 8/14 = 0 ----
-    with st.expander("VIP vs Orchestra", expanded=False):
-        vo = compute_vip_vs_orchestra(iva)
+    # ---- VIP vs Orchestra vs Orchestration (§6-21): VIP 펀드 / new1 계좌 / meritz 계좌, 셋 다 8/14=0 ----
+    with st.expander("VIP vs Orchestra vs Orchestration", expanded=False):
+        vo = compute_vip_vs_orchestra(iva, load_both_accounts())
         if not vo:
             st.caption("fund_nav_history.csv 비어있음 — 세션에 펀드 기준가를 알려주세요.")
         else:
-            v_cum, v_day = vo["vip"]
-            o_cum, o_day = vo["orch"]
-
-            def _c(o, v):   # Orchestra가 VIP 이기면 빨강 / 지면 파랑
-                if o is None or v is None:
-                    return T["text"]
-                return UP_COLOR if o >= v else DOWN_COLOR
-
             def _p(x):
                 return "—" if x is None else f"{x * 100:+.2f}%"
 
+            def _trow(label, dot, cum, day):
+                return (f"<tr><td style='color:{dot}'>● {label}</td>"
+                        f"<td style='text-align:right;color:{T['text']}'>{_p(cum)}</td>"
+                        f"<td style='text-align:right;color:{T['text']}'>{_p(day)}</td></tr>")
+
+            _rows = (_trow("VIP", DOWN_COLOR, *vo["vip"])
+                     + _trow("Orchestra", UP_COLOR, *vo["orch"]))
+            if vo.get("orchn_line"):
+                _rows += _trow("Orchestration", NEW_COLOR, *vo["orchn"])
             st.markdown(
                 "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:2px 0 6px'>"
                 f"<tr style='color:{T['muted2']};font-size:10px'>"
                 "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>누적</th>"
-                "<th style='text-align:right'>당일</th></tr>"
-                f"<tr><td style='color:{DOWN_COLOR}'>● VIP</td>"
-                f"<td style='text-align:right;color:{T['text']}'>{_p(v_cum)}</td>"
-                f"<td style='text-align:right;color:{T['text']}'>{_p(v_day)}</td></tr>"
-                f"<tr><td style='color:{UP_COLOR}'>● Orchestra</td>"
-                f"<td style='text-align:right;color:{_c(o_cum, v_cum)}'>{_p(o_cum)}</td>"
-                f"<td style='text-align:right;color:{_c(o_day, v_day)}'>{_p(o_day)}</td></tr>"
-                "</table>",
+                "<th style='text-align:right'>당일</th></tr>" + _rows + "</table>",
                 unsafe_allow_html=True,
             )
 
@@ -635,6 +631,12 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 name="Orchestra", mode="lines+markers", line=dict(color=UP_COLOR, width=2.4),
                 marker=dict(size=5),
                 hovertemplate="<b>Orchestra</b> %{y:+.2%}<extra></extra>"))
+            if vo.get("orchn_line"):
+                fig_vo.add_trace(go.Scatter(
+                    x=[d for d, _ in vo["orchn_line"]], y=[y for _, y in vo["orchn_line"]],
+                    name="Orchestration", mode="lines+markers", line=dict(color=NEW_COLOR, width=2.4),
+                    marker=dict(size=5),
+                    hovertemplate="<b>Orchestration</b> %{y:+.2%}<extra></extra>"))
             fig_vo.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
             fig_vo.update_layout(
                 height=250, margin=dict(l=44, r=8, t=8, b=26),

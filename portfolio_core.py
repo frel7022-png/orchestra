@@ -364,6 +364,17 @@ def save_fund_nav_history(df: pd.DataFrame) -> None:
     df.to_csv(FUND_NAV_HISTORY_FILE, index=False)
 
 
+BOTH_ACCOUNTS_FILE = HERE / "both_accounts.csv"  # 날짜, orchestra, orchestration — 두 앱 계좌수익(8/14=0 리베이스)
+
+
+def load_both_accounts() -> pd.DataFrame:
+    """new1(orchestra) + meritz(orchestration) 계좌수익 시계열(anchor일=0 리베이스, 소수).
+    `sync_both_accounts.py`가 두 레포에 똑같이 써준다(§6-21). 없으면 빈 DataFrame."""
+    if BOTH_ACCOUNTS_FILE.exists():
+        return pd.read_csv(BOTH_ACCOUNTS_FILE)
+    return pd.DataFrame(columns=["날짜", "orchestra", "orchestration"])
+
+
 def snapshot_fund_nav_history(nav: float, on_date: str | None = None) -> None:
     """펀드 기준가 스냅샷(같은 날짜 덮어씀). 네이버가 펀드 시세 API를 접었고 KOFIA/funetf는
     SPA라, 기준가는 사용자가 메리츠증권 앱에서 읽어 `ingest_daily.py`에 `todaytrans/fund_nav.txt`로
@@ -2122,22 +2133,20 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
             "sensitivity_basis": "혼합" if wk is not None else "코스피"}
 
 
-def compute_vip_vs_orchestra(iva: dict) -> dict:
-    """§6-21 'VIP vs Orchestra' 전용 패널 데이터. iva = compute_index_vs_account 결과
-    (fund_nav_hist를 넘겨서 index에 '펀드' 컬럼이 있어야 함 — 없으면 {} 반환, 패널 안 그림).
+def compute_vip_vs_orchestra(iva: dict, both_accounts: pd.DataFrame | None = None) -> dict:
+    """§6-21 'VIP vs Orchestra vs Orchestration' 패널 데이터. iva = compute_index_vs_account
+    결과(fund_nav_hist를 넘겨 index에 '펀드' 컬럼이 있어야 함 — 없으면 {} 반환).
 
-    둘 다 anchor일(=asset_hist·index_hist 공통 시작일, 보통 8/14) = 0 으로 리베이스한 누적수익률:
-      - VIP       = idx_cum['펀드']  (이미 anchor 기준가 대비 누적)
-      - Orchestra = me['계좌수익']을 anchor(첫 스냅샷) 대비로 재기준화:
-                    (1+r_t)/(1+r_0) - 1   (계좌수익은 계좌개설=최초자본 기준 절대값이라,
-                    8/14 이전에 번 것까지 섞여 VIP(8/14=0)와 사과-오렌지가 되는 걸 막음)
+    세 선 모두 anchor일(보통 8/14) = 0 리베이스 누적수익률(소수):
+      - VIP           = idx_cum['펀드']  (이미 anchor 기준가 대비 누적)
+      - Orchestra     = new1 계좌수익.  both_accounts['orchestra'] (이미 0-앵커) 우선,
+                        없으면 이 앱의 me['계좌수익']을 첫값 대비로 재기준화.
+      - Orchestration = meritz 계좌수익. both_accounts['orchestration']. 없으면 orchn_line=None.
 
-    반환: {
-      vip_line:  [(날짜, 누적), ...],   # 매 거래일
-      orch_line: [(날짜, 누적), ...],   # 스냅샷 날짜만
-      vip:  (누적, 당일),
-      orch: (누적, 당일),              # 당일은 latest 값 그대로 (diff라 리베이스 영향 미미)
-    }  — 펀드 데이터 없으면 {}.
+    both_accounts: `sync_both_accounts.py`가 두 레포에 써주는 both_accounts.csv (날짜, orchestra,
+    orchestration). None/빈 값이면 Orchestra만 이 앱 자체 계좌로, Orchestration은 생략.
+
+    반환: {vip_line/orch_line/orchn_line: [(날짜,누적)], vip/orch/orchn: (누적, 당일)}. 펀드 없으면 {}.
     """
     idx_cum, me, latest = iva.get("index"), iva.get("me"), iva.get("latest", {})
     if idx_cum is None or me is None or "펀드" not in getattr(idx_cum, "columns", []):
@@ -2146,19 +2155,36 @@ def compute_vip_vs_orchestra(iva: dict) -> dict:
     if fser.dropna().empty or me.empty:
         return {}
 
-    vip_line = [(str(d), float(v)) for d, v in zip(idx_cum["날짜"], fser) if pd.notna(v)]
+    def _ser_to_line(dates, vals):
+        return [(str(d), float(v)) for d, v in zip(dates, vals) if pd.notna(v)]
 
-    acct = pd.to_numeric(me["계좌수익"], errors="coerce")
-    r0 = float(acct.iloc[0]) if pd.notna(acct.iloc[0]) else 0.0
-    orch_reb = (1.0 + acct) / (1.0 + r0) - 1.0
-    orch_line = [(str(d), float(v)) for d, v in zip(me["날짜"], orch_reb) if pd.notna(v)]
+    def _last_day(line):
+        return (line[-1][1] - line[-2][1]) if len(line) >= 2 else None
 
+    vip_line = _ser_to_line(idx_cum["날짜"], fser)
     vip_cum = vip_line[-1][1] if vip_line else None
-    orch_cum = orch_line[-1][1] if orch_line else None
     vip_day = latest.get("펀드", (None, None))[1]
-    orch_day = latest.get("계좌", (None, None))[1]
-    return {"vip_line": vip_line, "orch_line": orch_line,
-            "vip": (vip_cum, vip_day), "orch": (orch_cum, orch_day)}
+
+    ba = both_accounts if (both_accounts is not None and not both_accounts.empty) else None
+    if ba is not None and "orchestra" in ba.columns:
+        orch_line = _ser_to_line(ba["날짜"].astype(str), pd.to_numeric(ba["orchestra"], errors="coerce"))
+    else:
+        acct = pd.to_numeric(me["계좌수익"], errors="coerce")
+        r0 = float(acct.iloc[0]) if pd.notna(acct.iloc[0]) else 0.0
+        orch_line = _ser_to_line(me["날짜"], (1.0 + acct) / (1.0 + r0) - 1.0)
+    orch_cum = orch_line[-1][1] if orch_line else None
+
+    orchn_line = None
+    orchn_cum = orchn_day = None
+    if ba is not None and "orchestration" in ba.columns:
+        orchn_line = _ser_to_line(ba["날짜"].astype(str), pd.to_numeric(ba["orchestration"], errors="coerce"))
+        orchn_cum = orchn_line[-1][1] if orchn_line else None
+        orchn_day = _last_day(orchn_line)
+
+    return {"vip_line": vip_line, "orch_line": orch_line, "orchn_line": orchn_line,
+            "vip": (vip_cum, vip_day),
+            "orch": (orch_cum, _last_day(orch_line) if ba is not None else latest.get("계좌", (None, None))[1]),
+            "orchn": (orchn_cum, orchn_day)}
 
 
 # ------------------------------------------------------------------ #
