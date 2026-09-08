@@ -211,7 +211,7 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   캡처 표 (§6-17)
 - SamHYnix extracted expander: 위 그래프의 코스피 다리를 "삼성·삼성우·하이닉스 제외 코스피"로
   바꾼 버전 (§6-19)
-- VIP vs Orchestra expander: VIP 가치투자 펀드 vs 내 계좌, 둘 다 8/14 기준 (§6-21)
+- VIP vs Orchestra vs Orchestration expander: VIP 펀드 / new1 계좌(Orchestra) / meritz 계좌(Orchestration), 셋 다 8/14 기준 (§6-21)
 - 누적 매수/매도(건수+금액+일평균건수) + 누적 실현손익(금액+매수대비%) 요약 (§6-13)
 - 거래 내역 캘린더
 
@@ -1083,16 +1083,25 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
     기준 절대값이라 8/14 이전 손익이 섞임 → 리베이스해야 VIP와 사과-사과. 사용자가 8/14
     맞비교 명시.) 펀드 데이터 없으면 `{}`. 반환: `vip_line`/`orch_line`(각 (날짜,누적) 리스트),
     `vip`/`orch` = (누적, 당일).
-- **UI** (`ui_transactions_tab.py`, 거래 기록 탭 **맨 밑 SamHynix extracted 밑**):
-  `st.expander("VIP vs Orchestra")` → 표 + 그래프.
-  - **표**: 2행(VIP / Orchestra) × 2열(누적 / 당일). **Orchestra = 내 계좌**(예수금 포함), 내 주식 아님.
-    Orchestra 셀 = VIP보다 앞서면 빨강(`UP_COLOR`) / 뒤지면 파랑(`DOWN_COLOR`), 누적·당일 각각.
-    VIP 행은 검정.
-  - **그래프**: VIP 파랑(`DOWN_COLOR`) / Orchestra 빨강(`UP_COLOR`), 8/14 기준 누적. expander
-    안이라 `components.html`(iframe)+`responsive:true`로 렌더(SamHynix와 같은 이유).
-- **읽는 법 / 주의**: 펀드 기준가는 보수 차감 후(연 1.96% ≈ 0.005%/일) + 국내주식형 T+1~T+2
-  가격이라 VIP 선이 살짝 매끄럽고 하루쯤 밀려 보인다. 틱 단위로 맞물리진 않음.
+- **3-way로 확장 (2026-09-08): "VIP vs Orchestra vs Orchestration"** — 사용자가 meritz(헷지/최종무기)를
+  같이 대보고 싶다고 함. 라벨: `VIP`(펀드) / `Orchestra`(= new1 계좌) / `Orchestration`(= meritz 계좌).
+  - **크로스-레포 데이터**: new1·meritz는 따로 배포돼 런타임에 서로 못 읽음 → **`both_accounts.csv`
+    (날짜, orchestra, orchestration)** 한 파일을 **양쪽 레포에 똑같이** 둔다. 값 = 각 앱의
+    `compute_index_vs_account`가 낸 `me["계좌수익"]`(8/14=0 리베이스된 그 값).
+  - **`sync_both_accounts.py`** (new1에만): new1 계좌는 이 레포에서, meritz 계좌는 `subprocess`로
+    meritz 폴더의 portfolio_core를 불러 계산(모듈명 겹쳐 같은 프로세스 불가) → 합쳐서 두 레포에 쓴다.
+    **어느 앱이든 `ingest_daily.py`를 돌린 뒤 세션이 `python sync_both_accounts.py` 실행 → 두 레포에서
+    각각 `both_accounts.csv` git commit/push.** (fund_nav_history.csv와 같은 수동 동기화 루틴.)
+  - `compute_vip_vs_orchestra(iva, both_accounts)` — `both_accounts` 주면 orchestra/orchestration을
+    그 파일에서, 없으면 orchestra만 이 앱 자체 계좌로(orchn_line=None). 반환에 `orchn_line`/`orchn` 추가.
+- **UI** (거래 기록 탭 **맨 밑 SamHynix extracted 밑**, `st.expander("VIP vs Orchestra vs Orchestration")`):
+  - **표**: 3행(VIP / Orchestra / Orchestration) × 2열(누적/당일). **값은 전부 검정**, 점 색만
+    VIP 파랑(`DOWN_COLOR`) / Orchestra 빨강(`UP_COLOR`) / Orchestration 녹색(`NEW_COLOR`).
+    Orchestration 행/선은 `both_accounts.csv`에 그 컬럼 있을 때만.
+  - **그래프**: 3선 동색, 범례 없음(`showlegend=False`), 8/14=0 누적. iframe 렌더.
+- **읽는 법 / 주의**: 펀드 기준가는 보수 차감 후(연 1.96%) + 국내주식형 T+1~T+2 가격이라 VIP 선이
+  살짝 매끄럽고 하루쯤 밀려 보인다.
 - **회귀 테스트 3개**: `test_compute_index_vs_account_fund_line`,
   `test_compute_vip_vs_orchestra_rebases_orchestra_to_anchor`,
   `test_snapshot_fund_nav_history_overwrites_same_date`.
-- **new1 전용** (meritz 미적용).
+- **meritz에도 이식됨** (2026-09-08, §6-6). `both_accounts.csv`·`load_both_accounts`는 meritz에도 있음.
