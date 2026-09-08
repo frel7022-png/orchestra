@@ -362,8 +362,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             )
 
         caps_html = (
-            _cap_tbl("DC ERA", UP_COLOR, "하락", "dc", "era", False)
-            + _cap_tbl("UC ERA", DOWN_COLOR, "상승", "uc", "pct", False)
+            _cap_tbl("DC ERA", DOWN_COLOR, "하락", "dc", "era", False)
+            + _cap_tbl("UC ERA", UP_COLOR, "상승", "uc", "pct", False)
             + _cap_tbl("even 평균 · 승률 (±0.1%)", T["muted2"], "even", "even", "evr", True)
             + f"<div style='font-size:10px;color:{T['muted2']};margin:3px 0 4px'>"
               f"하락 {nn['down']} · 상승 {nn['up']} · even {nn['even']}</div>"
@@ -453,7 +453,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         )
         # ---- 일별 캡처 막대 (2026-09-07) : 하락일 빨강 / 상승일 파랑, y = 캡처 c, y=1 얇은 선 ----
         # 내 계좌 기준. even일은 그래프에서 완전히 제외(단위가 %p라 캡처 축과 안 섞임 — 값은 리스트로).
-        # 빨강이 1 아래 = 방어 잘함, 파랑이 1 위 = 참여 잘함.
+        # 하락일(DC) 파랑이 1 아래 = 방어 잘함, 상승일(UC) 빨강이 1 위 = 참여 잘함.
         _xs, _ys, _cols, _cd = [], [], [], []
         for dt, c, bk, bd, ad in zip(me["날짜"], me["캡처계좌"], me["바구니"],
                                      me["벤치당일"], me["계좌당일"]):
@@ -461,7 +461,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 continue
             _xs.append(dt)
             _ys.append(float(c))
-            _cols.append(UP_COLOR if bk == "하락" else DOWN_COLOR)
+            _cols.append(DOWN_COLOR if bk == "하락" else UP_COLOR)
             _cd.append((bk, f"{bd * 100:+.2f}%" if pd.notna(bd) else "—",
                         f"{ad * 100:+.2f}%" if pd.notna(ad) else "—"))
         fig_s = go.Figure()

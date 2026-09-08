@@ -326,9 +326,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         sm = (iva or {}).get("cap", {}).get("stock", {})
         b, v = sm.get("today_bucket"), sm.get("today")
         if b == "하락" and v is not None:
-            return f"DC {v:.2f}", UP_COLOR
+            return f"DC {v:.2f}", DOWN_COLOR   # 하락일 방어 = 파랑
         if b == "상승" and v is not None:
-            return f"UC {v:.2f}", DOWN_COLOR
+            return f"UC {v:.2f}", UP_COLOR     # 상승일 참여 = 빨강
         return "—", T["muted"]
 
     def _tt_p(v):
@@ -352,12 +352,11 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     daily_trade_html = f"""
     <div class="daily-trade-box">
         <div class="daily-trade-count">일일거래 총 {total_trade_count}회
-            <span>(매수 {len(buy_tx)}건 · 매도 {len(sell_tx)}건)</span>
-        </div>
-        <div class="daily-trade-row"><span class="tag-label" style="color:{UP_COLOR}">매수</span>
-            <span class="trade-chip"><b>{buy_total_amt:,.0f}원</b></span></div>
-        <div class="daily-trade-row"><span class="tag-label" style="color:{DOWN_COLOR}">매도</span>
-            <span class="trade-chip"><b>{sell_total_amt:,.0f}원</b></span></div>
+            <span>(매수 {len(buy_tx)}건 · 매도 {len(sell_tx)}건)</span></div>
+        <div style="font-size:12px;color:{T['muted']};margin-top:2px">
+            <span style="color:{UP_COLOR}">매수</span> <b>{buy_total_amt:,.0f}원</b>
+            &nbsp;&nbsp;·&nbsp;&nbsp;
+            <span style="color:{DOWN_COLOR}">매도</span> <b>{sell_total_amt:,.0f}원</b></div>
     </div>
     """
 

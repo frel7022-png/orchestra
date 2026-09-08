@@ -67,12 +67,8 @@ st.markdown(f"""
     .capital-line b {{ font-size:14px; }}
 
     .daily-trade-box {{ margin-top:10px; padding-top:10px; border-top:1px solid {T['border']}; font-size:12.5px; color:{T['muted']}; }}
-    .daily-trade-count {{ font-size:13px; color:{T['text']}; font-weight:700; margin-bottom:6px; }}
+    .daily-trade-count {{ font-size:13px; color:{T['text']}; font-weight:700; }}
     .daily-trade-count span {{ font-weight:400; color:{T['muted']}; margin-left:4px; }}
-    .daily-trade-row {{ display:flex; flex-wrap:wrap; gap:6px 8px; align-items:baseline; margin-top:4px; }}
-    .daily-trade-row .tag-label {{ font-size:12px; font-weight:700; min-width:30px; }}
-    .trade-chip {{ font-size:12px; background:{T['bg']}; border:1px solid {T['border']}; border-radius:99px; padding:2px 9px; color:{T['text']}; }}
-    .trade-chip b {{ font-weight:600; }}
 
     .legend-wrap {{ display:flex; flex-wrap:wrap; gap:7px 14px; margin-top:10px; margin-bottom:20px; justify-content:center; }}
     .legend-item {{ display:flex; align-items:center; gap:5px; font-size:12px; color:{T['text']}; }}
