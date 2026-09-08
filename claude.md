@@ -206,12 +206,13 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
 ### 거래 기록 탭
 - 최초 자본 대비 손익 요약 카드
 - 실현손익 그래프 (누적 실현손익 vs 미실현손실 추이)
-- 지수 대비 계좌 그래프: 코스피/코스닥/혼합지수 vs 내 주식수익(예수금 제외)/계좌수익, 각 선의
-  누적+5일+당일 표(내 주식·계좌는 보유비중 반영 혼합지수 대비 빨강/파랑) + 하락/상승/even
-  캡처 표 (§6-17)
+- KOSPI 2-Track Trend: 일반 코스피(빨강) vs 삼성·삼성우·하이닉스 제외(파랑) 라인차트, 실제 지수
+  포인트 (§6-19). **Analysis 탭에서 항상 표시** (2026-09-08부터 Account:Index 자리).
+- Account : Index expander (2026-09-08부터 접힘): 코스피/코스닥/혼합지수 vs 내 주식/내 계좌,
+  누적+5일+당일 표 + 하락/상승/even 캡처 표(캐러셀 2장) (§6-17)
 - SamHYnix extracted expander: 위 그래프의 코스피 다리를 "삼성·삼성우·하이닉스 제외 코스피"로
   바꾼 버전 (§6-19)
-- VIP vs Orchestra vs Orchestration expander: VIP 펀드 / new1 계좌(Orchestra) / meritz 계좌(Orchestration), 셋 다 8/14 기준 (§6-21)
+- VIP vs Orchestra expander: VIP 펀드 vs new1 계좌(Orchestra), 8/14 기준 (§6-21). meritz 앱에서만 Orchestration(meritz 계좌)까지 3-way.
 - 누적 매수/매도(건수+금액+일평균건수) + 누적 실현손익(금액+매수대비%) 요약 (§6-13)
 - 거래 내역 캘린더
 
