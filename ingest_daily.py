@@ -81,6 +81,18 @@ def main():
     except Exception as e:
         print(f"[경고] index_history 갱신 실패(무시): {e}")
 
+    # SamHynix extracted(§6-19)도 같은 이유로 lock-step. bigcap_history가 index_history보다
+    # 하루라도 비면 synthetic_kospi_ex_bigcap이 '여러 날치 대형주 수익률'을 'KOSPI 하루치'에서
+    # 빼서 ex 지수가 폭주한다(2026-09-08 실제로 -10%까지 튐).
+    try:
+        bq = core.fetch_bigcap_quotes()
+        if bq and all(bq.get(n) for n in core.BIGCAP_CODES):
+            core.snapshot_bigcap_history({n: bq[n] for n in core.BIGCAP_CODES}, on_date=trade_date)
+            print(f"[대형주] {trade_date} " + " · ".join(f"{n} {bq[n]:,.0f}" for n in core.BIGCAP_CODES)
+                  + " bigcap_history 반영")
+    except Exception as e:
+        print(f"[경고] bigcap_history 갱신 실패(무시): {e}")
+
     # 신규 종목은 아직 종목코드가 비어있을 수 있는데(코드 캐시에 없던 이름), 그러면 바로 아래
     # watchlist 자동 편입이 걸러버린다. 백필 전에 코드 없는 종목만 네이버로 가볍게 조회해 채운다
     # (시세는 안 받음 — 시세/등락률 보충은 §6-2대로 세션이 refresh_all_prices로 따로 함).

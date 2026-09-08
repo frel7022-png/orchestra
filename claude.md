@@ -168,7 +168,11 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
 > (영어 라벨 첫 글자는 항상 대문자 — 사용자 규칙.)
 
 ### 포트폴리오 탭
-- 총자산 요약 카드 (최초자본 대비 손익, 현재 총자산, 실현손익 누적, 미실현손실)
+- 총자산 요약 카드 (보유종목 평가손익, 예수금/총매입/총평가/총자산/일일손익/보유종목수, 일일거래 요약).
+  맨 밑 줄은 **"어제 대비 ±N원"** (= 현재 총자산 − 직전 `asset_history` 스냅샷 총자산, + 빨강 / − 파랑,
+  2026-09-08 사용자 요청). 최초자본 대비 누적손익이 아님 — 그건 거래 기록 탭에도 나오고 이 화면은
+  포트폴리오 현황용이라 전일 대비로 바꿈. 오늘 이익 실현분도 총자산에 이미 반영돼 자동으로 +로 잡힘
+  ("어제 대비 1만원 올라서 매도했다"도 당일 +1만원).
 - 자산 추이 그래프
 - 섹터 비중: 도넛차트 + 섹터별 막대(0~40% 고정 스케일, 목표선 표시, 전일 대비 변화) + 섹터 클릭 시
   일별 추이(0~40% y축, raw 값 표시)
@@ -960,6 +964,14 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   (별도 계산기 안 만듦).
   - 일별 `r_ex = (r_kospi − Σ wᵢ·rᵢ) / (1 − Σ wᵢ)`, `wᵢ(t) = sharesᵢ·closeᵢ(t) / TOTAL(t)`,
     `TOTAL(t) = TOTAL0 · KOSPI(t)/KOSPI0`. 첫날 레벨 = 원본 KOSPI 첫날 값(누적 앵커 동일).
+  - **대형주 수익률 구간은 KOSPI 수익률 구간과 정확히 일치해야 함** — `rᵢ`는 반드시
+    `bigcap_hist[dates[i-1]]`→`bigcap_hist[dates[i]]` (직전 '지수 날짜'). 예전엔 `prev`를
+    "마지막으로 본 종가"로 들고 있어서, `bigcap_history`에 중간 하루가 비면(cron 누락 등)
+    그 다음 날 대형주의 '이틀치 수익률'을 KOSPI '하루치'에서 빼버려 ex 지수가 폭주했음
+    (2026-09-08 실제로: 9/7 bigcap 행 누락 → ex 누적이 -4.6%가 아니라 **-10%**로 튐, 화면엔
+    -7.71%로 보였음). 이제 `dates[i-1]` 또는 `dates[i]`에 대형주 종가가 없으면 그 구간은
+    `r_ex = r_k`(코스피와 동일)로 두고 넘어감. 회귀 테스트
+    `test_synthetic_kospi_ex_bigcap_missing_middle_day_does_not_blow_up`.
   - 상수: `_BIGCAP_SHARES`(상장주식수), `_KOSPI_MKTCAP_ANCHOR = (6645.0, 5.40e15)` —
     ETF/ETN 제외 추정 지수 시총. **증자/자사주 소각으로 주식수가 변하니 분기에 한 번
     갱신 권장**(네이버에서 시총·상장주식수 다시 확인). 근사치라는 걸 전제로 씀(KRX 공식
@@ -967,17 +979,19 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   - bigcap_hist가 비면 원본 그대로 반환(폴백 = 그냥 코스피와 동일).
 - **데이터**: `bigcap_history.csv`(날짜, 삼성전자, 삼성전자우, SK하이닉스 종가). 백필
   `python backfill_bigcap_history.py`(재실행 가능, index_history 시작일부터 빠진 날짜만).
-  일별 갱신은 `app.py` 새로고침 핸들러에서 `snapshot_bigcap_history(fetch_bigcap_quotes())`
-  — `snapshot_index_history` 바로 뒤. `index_history.csv`류와 같은 로컬 CSV라 세션이
-  git commit/push(다른 데이터 파일과 함께).
+  일별 갱신: `app.py` 새로고침 핸들러(`snapshot_index_history` 바로 뒤) **와**
+  `ingest_daily.py`(2026-09-08 추가 — `index_history`와 lock-step. app 새로고침은 배포 서버
+  로컬에만 쓰여 git엔 안 올라가서, ingest에서 안 찍으면 매매일지만 반영한 날 bigcap이 하루
+  비어 위의 폭주 버그가 남). `index_history.csv`류와 같은 로컬 CSV라 세션이 git commit/push.
 - **읽는 법 / 주의**: 최근엔 반도체가 코스피를 떠받쳐서 "코스피 ex-반도체"가 헤드라인보다
   **더 많이 빠져 있음**(2026-09-04: 코스피 -4.4% vs ex -6.2%) → 내 주식·내 계좌의
   **초과수익(%p)과 5줄 표 빨강/파랑**은 이 버전에서 더 유리하게 나옴. 그런데 **하락 캡처(DC)는
   오히려 더 커** 보일 수 있음 — ex 지수는 `1/(1−W)≈2.1x`로 변동성이 증폭돼서, 벤치당일이
   커지면 `c = 내당일/벤치당일` 분모가 커지기 때문(정의상 정상. 판단은 %p·승률·표 색을 같이 볼 것).
 - **함수**(`portfolio_core.py`): `load/save/snapshot_bigcap_history`, `fetch_bigcap_quotes`,
-  `synthetic_kospi_ex_bigcap`. 회귀 테스트 3개(`test_synthetic_kospi_ex_bigcap_*`: 앵커·폴백,
-  대형주 flat이면 나머지 증폭, 대형주가 지수와 똑같이 움직이면 ex 지수 불변).
+  `synthetic_kospi_ex_bigcap`. 회귀 테스트 4개(`test_synthetic_kospi_ex_bigcap_*`: 앵커·폴백,
+  대형주 flat이면 나머지 증폭, 대형주가 지수와 똑같이 움직이면 ex 지수 불변,
+  중간 날짜 누락 시 폭주 안 함).
 - **"코스피 추이" 라인차트** (2026-09-04 추가): "지수 대비 계좌" 패널 바로 밑. 일반 코스피
   (빨강) vs 삼성·하이닉스 제외 코스피(파랑). **y축은 실제 지수 포인트**(6,500 등), hover엔
   그 시점의 **전일 대비 등락률(%)**. `SamHYnix extracted` expander는 그 밑.

@@ -17,6 +17,7 @@ from portfolio_core import (
     compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     study_foreign_buy_forward_returns, load_index_history, load_market_cache,
+    load_history,
 )
 
 
@@ -114,7 +115,7 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
     _xs = _xs.dropna()
     _xmin, _xmax = _xs.min(), _xs.max()
     _span = max(int((_xmax - _xmin).days), 1)
-    _pad = pd.Timedelta(days=max(1, int(round(_span * 0.08))))
+    _pad = pd.Timedelta(max(1, int(round(_span * 0.08))), "D")
     _dtick_ms = max(1, int(round(_span / 4))) * 86_400_000
     _xrange = [(_xmin - _pad).strftime("%Y-%m-%d"), (_xmax + _pad).strftime("%Y-%m-%d")]
 
@@ -263,9 +264,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     stock_profit = stock_valuation - total_cost
     stock_profit_pct = (stock_profit / total_cost * 100) if total_cost else 0
 
-    capital_return = total_assets - state["initial"]
-    capital_return_pct = (capital_return / state["initial"] * 100) if state["initial"] else 0
-
     today_str = today_kst_str()
     today_tx = tx[tx["날짜"].astype(str) == today_str]
 
@@ -289,10 +287,19 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
 
     color = UP_COLOR if stock_profit >= 0 else DOWN_COLOR
     sign = "+" if stock_profit >= 0 else ""
-    cap_color = UP_COLOR if capital_return >= 0 else DOWN_COLOR
-    cap_sign = "+" if capital_return >= 0 else ""
     daily_color = UP_COLOR if daily_pnl > 0 else (DOWN_COLOR if daily_pnl < 0 else T["muted"])
     daily_sign = "+" if daily_pnl > 0 else ""
+
+    # 어제 대비 포트폴리오 총자산 변화 (직전 asset_history 스냅샷 대비). 이 화면은 포트폴리오
+    # 현황용이라 "최초 자본 대비 누적손익"(그건 거래 기록 탭에도 나옴) 대신 전일 대비를 보여준다.
+    # 오늘 실현한 이익도 총자산에 이미 반영돼 있으므로 자동으로 +로 잡힌다 —
+    # "어제 대비 1만원 이익이 나서 매도했다"도 당일 +1만원으로 정당하게 평가됨 (사용자 요청).
+    _hist = load_history()
+    _prev = _hist[_hist["날짜"].astype(str) < today_str] if not _hist.empty else _hist
+    prev_total = float(_prev["총자산"].iloc[-1]) if not _prev.empty else state["initial"]
+    day_change = total_assets - prev_total
+    day_color = UP_COLOR if day_change > 0 else (DOWN_COLOR if day_change < 0 else T["muted"])
+    day_sign = "+" if day_change > 0 else ""
 
     # ---- 오늘의 거래 요약 (매수/매도 총금액) ----
     buy_tx = today_tx[today_tx["구분"] == "매수"].copy()
@@ -326,8 +333,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             <div>일일손익<b style="color:{daily_color}">{daily_sign}{daily_pnl:,.0f}원</b></div>
             <div>보유종목<b>{len(df)}개</b></div>
         </div>
-        <div class="capital-line">최초 자본 {state['initial']:,.0f}원 대비&nbsp;
-            <b style="color:{cap_color}">{cap_sign}{capital_return:,.0f}원 ({cap_sign}{capital_return_pct:.2f}%)</b>
+        <div class="capital-line">어제 대비&nbsp;
+            <b style="color:{day_color}">{day_sign}{day_change:,.0f}원</b>
         </div>
         {daily_trade_html}
     </div>

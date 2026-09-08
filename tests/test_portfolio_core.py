@@ -1049,6 +1049,24 @@ def test_synthetic_kospi_ex_bigcap_identical_moves_leave_ex_index_unchanged():
     assert out["KOSPI"].iloc[1] == pytest.approx(6300.0, rel=1e-6)
 
 
+def test_synthetic_kospi_ex_bigcap_missing_middle_day_does_not_blow_up():
+    """bigcap_history에 중간 날짜(2026-08-19)가 빠지면, 예전엔 그 다음 날 대형주의
+    '이틀치 수익률'을 KOSPI '하루치'에서 빼서 ex 지수가 폭주했다(2026-09-08 실제로 -10%).
+    이제 대형주 수익률 구간과 KOSPI 수익률 구간이 정확히 일치할 때만 조정하고,
+    한쪽 날짜가 비면 그 구간은 r_ex = r_k(코스피와 동일)로 둔다."""
+    idx = pd.DataFrame({"날짜": ["2026-08-14", "2026-08-19", "2026-08-20"],
+                        "KOSPI": [6000.0, 6060.0, 6090.0], "KOSDAQ": [800.0, 800.0, 800.0]})
+    # 8/19 대형주 종가 없음. 8/14 → 8/20 사이 대형주가 크게 올랐어도(하루치로 오해되면 폭주)
+    bg = _bigcap_df([("2026-08-14", 200000, 180000, 1600000),
+                     ("2026-08-20", 260000, 234000, 2080000)])  # 전부 ×1.30
+    out = core.synthetic_kospi_ex_bigcap(idx, bg)
+    lv = list(out["KOSPI"])
+    # 8/19 구간: bigcap 8/19 없음 → r_ex = r_k → 6000*1.01 = 6060
+    assert lv[1] == pytest.approx(6060.0, rel=1e-6)
+    # 8/20 구간: 직전(8/19) bigcap 없음 → 역시 r_ex = r_k → 6060*(6090/6060) = 6090 (폭주 안 함)
+    assert lv[2] == pytest.approx(6090.0, rel=1e-6)
+
+
 # ------------------------------------------------------------------ #
 # compute_pnl_actions (§6-20) — 실현손익을 FA/MO/MA 매매 스타일로 해부
 # ------------------------------------------------------------------ #

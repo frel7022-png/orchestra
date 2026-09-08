@@ -458,25 +458,28 @@ def synthetic_kospi_ex_bigcap(index_hist: pd.DataFrame, bigcap_hist: pd.DataFram
     dates = h["날짜"].tolist()
 
     ex_level = [kospi[0] if kospi else None] + [None] * (len(h) - 1)
-    prev_closes = bg_by_date.get(dates[0])
     for i in range(1, len(h)):
         r_k = (kospi[i] / kospi[i - 1] - 1.0) if (kospi[i - 1] and kospi[i]) else 0.0
         cur = bg_by_date.get(dates[i])
-        if (cur and prev_closes and kospi[i]
-                and all(cur.get(n) for n in names) and all(prev_closes.get(n) for n in names)):
+        prev = bg_by_date.get(dates[i - 1])   # 바로 직전 '지수 날짜'의 대형주 종가 (last-seen 아님)
+        # 대형주 수익률 구간(dates[i-1]→dates[i])과 KOSPI 수익률 구간이 정확히 같아야 한다.
+        # 어느 한쪽 날짜에 대형주 종가가 없으면(예: cron 누락으로 bigcap_history에 그날이 빠짐)
+        # 그 구간은 조정하지 않고 r_ex = r_k 로 둔다 — 예전엔 prev를 "마지막으로 본 종가"로
+        # 들고 있어서, 중간에 하루가 비면 그 다음 날 대형주의 '이틀치 수익률'을 KOSPI '하루치'에서
+        # 빼버려 ex 지수가 폭주하는 버그가 있었음(2026-09-08, 9/7 bigcap 누락으로 -10% 튐).
+        if (cur and prev and kospi[i]
+                and all(cur.get(n) for n in names) and all(prev.get(n) for n in names)):
             total_t = total0 * (kospi[i] / k0_lvl)
             w_sum, wr_sum = 0.0, 0.0
             for n in names:
                 wi = _BIGCAP_SHARES[n] * cur[n] / total_t
-                ri = cur[n] / prev_closes[n] - 1.0
+                ri = cur[n] / prev[n] - 1.0
                 w_sum += wi
                 wr_sum += wi * ri
             r_ex = (r_k - wr_sum) / (1.0 - w_sum) if w_sum < 0.999 else r_k
         else:
             r_ex = r_k
         ex_level[i] = ex_level[i - 1] * (1.0 + r_ex)
-        if cur and all(cur.get(n) for n in names):
-            prev_closes = cur
     h["KOSPI"] = ex_level
     return h
 
