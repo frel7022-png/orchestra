@@ -1138,3 +1138,37 @@ def test_compute_index_vs_account_caps_me_to_index_coverage():
     assert r["latest"]["벤치"][1] != pytest.approx(0.0)                     # 벤치당일이 0(가짜 even)이 아님
     assert r["me"]["바구니"].iloc[-1] == "상승"                            # 1/6은 진짜 상승일
     assert r["n"]["even"] == 0
+
+
+def test_compute_index_vs_account_fund_line(monkeypatch, tmp_path):
+    """§6-21: fund_nav_hist를 주면 index에 '펀드' 컬럼(anchor 대비 누적), latest['펀드']에
+    (누적, 당일)이 붙는다. 안 주면 컬럼 없음(SamHynix 패널이 이 경로)."""
+    asset_hist = pd.DataFrame([{"날짜": d, "총자산": 1_000_000.0, "조정자산": 1_000_000.0}
+                               for d in ["2026-01-05", "2026-01-06", "2026-01-07"]])
+    idx = _idx_hist([["2026-01-05", 100.0, 200.0], ["2026-01-06", 101.0, 201.0],
+                     ["2026-01-07", 102.0, 202.0]])
+    empty_tx = pd.DataFrame(columns=["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"])
+    fund = pd.DataFrame({"날짜": ["2026-01-05", "2026-01-06", "2026-01-07"],
+                         "기준가": [2000.0, 2100.0, 1980.0]})
+
+    r = core.compute_index_vs_account(empty_tx, asset_hist, idx, 1_000_000.0, fund_nav_hist=fund)
+    assert "펀드" in r["index"].columns
+    assert r["index"]["펀드"].iloc[0] == pytest.approx(0.0)
+    assert r["index"]["펀드"].iloc[-1] == pytest.approx(1980.0 / 2000.0 - 1.0)   # -1%
+    assert r["latest"]["펀드"][0] == pytest.approx(-0.01)
+    assert r["latest"]["펀드"][1] == pytest.approx(1980.0 / 2100.0 - 1.0)        # 당일 = 직전 기준가 대비
+
+    r2 = core.compute_index_vs_account(empty_tx, asset_hist, idx, 1_000_000.0)
+    assert "펀드" not in r2["index"].columns
+    assert "펀드" not in r2["latest"]
+
+
+def test_snapshot_fund_nav_history_overwrites_same_date(monkeypatch, tmp_path):
+    f = tmp_path / "fund_nav_history.csv"
+    monkeypatch.setattr(core, "FUND_NAV_HISTORY_FILE", f)
+    core.snapshot_fund_nav_history(2000.0, on_date="2026-01-05")
+    core.snapshot_fund_nav_history(2010.0, on_date="2026-01-06")
+    core.snapshot_fund_nav_history(1995.0, on_date="2026-01-05")   # 같은 날짜 → 덮어씀
+    out = core.load_fund_nav_history()
+    assert list(out["날짜"]) == ["2026-01-05", "2026-01-06"]
+    assert float(out[out["날짜"] == "2026-01-05"]["기준가"].iloc[0]) == 1995.0

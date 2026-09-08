@@ -11,11 +11,12 @@ from constants import UP_COLOR, DOWN_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, compute_pnl_actions, _index_day_moves,
-    load_bigcap_history, synthetic_kospi_ex_bigcap,
+    load_bigcap_history, synthetic_kospi_ex_bigcap, load_fund_nav_history,
 )
 
 KOSPI_COLOR = "#f59e0b"   # 지수 참조선(코스피) — 앰버
 KOSDAQ_COLOR = "#14b8a6"  # 지수 참조선(코스닥) — 틸
+FUND_COLOR = "#8b5cf6"    # VIP 가치투자 펀드 참조선 — 바이올렛 (§6-21)
 _PA_COLORS = {"FA": UP_COLOR, "MO": "#22c55e", "MA": DOWN_COLOR}  # FA 빨강 / MO 녹색 / MA 파랑
 
 
@@ -276,7 +277,9 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             "벤치": me["벤치누적"] if "벤치누적" in me else None,
             "주식": me["주식수익"] if "주식수익" in me else None,
             "계좌": me["계좌수익"] if "계좌수익" in me else None,
+            "펀드": idxc["펀드"] if "펀드" in idxc else None,
         }
+        _has_fund = "펀드" in idxc.columns and latest.get("펀드") is not None
 
         def _recent5(key):
             s = _s5.get(key)
@@ -314,6 +317,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             + _row(kospi_label, KOSPI_COLOR, False, "코스피", False)
             + _row("코스닥", KOSDAQ_COLOR, False, "코스닥", False)
             + _row("혼합지수", DOWN_COLOR, False, "벤치", False)
+            + (_row("VIP 펀드", FUND_COLOR, False, "펀드", False) if _has_fund else "")
             + _row("내 주식", T["text"], False, "주식", True)
             + _row("내 계좌", T["muted2"], True, "계좌", True)
             + "</table>"
@@ -420,6 +424,17 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             customdata=[[_fmt(c), _fmt(_blend_day(d))] for c, d in zip(_blend_cum, idxc["날짜"])],
             hovertemplate=_ht("혼합지수"),
         ))
+        if _has_fund:
+            _fc = list(pd.to_numeric(idxc["펀드"], errors="coerce"))
+            _fd = [None] + [(_fc[i] - _fc[i - 1]) if (_fc[i] is not None and _fc[i - 1] is not None
+                             and not pd.isna(_fc[i]) and not pd.isna(_fc[i - 1])) else None
+                            for i in range(1, len(_fc))]
+            fig2.add_trace(go.Scatter(
+                x=idxc["날짜"], y=idxc["펀드"], name="VIP 펀드", mode="lines",
+                line=dict(color=FUND_COLOR, width=1.6),
+                customdata=[[_fmt(c), _fmt(d)] for c, d in zip(_fc, _fd)],
+                hovertemplate=_ht("VIP 펀드"),
+            ))
         fig2.add_trace(go.Scatter(
             x=me["날짜"], y=me["주식수익"], name="내 주식", mode="lines+markers",
             line=dict(color=T["text"], width=2.8), marker=dict(size=5),
@@ -536,7 +551,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     # ---- 지수 대비 계좌 (메인: 코스피/코스닥) ----
     st.markdown(f"##### Account : Index{_wtag}", unsafe_allow_html=True)
     iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
-                                    state.get("fee_rate", 0.0), kospi_weight=wk)
+                                    state.get("fee_rate", 0.0), kospi_weight=wk,
+                                    fund_nav_hist=load_fund_nav_history())
     _render_iva_panel(iva, idx_hist, "코스피", "cwrap")
 
     # ---- 코스피 추이: 일반(빨강) vs 삼성·삼성우·하이닉스 제외(파랑). 실제 지수 포인트로 표시,

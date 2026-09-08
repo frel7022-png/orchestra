@@ -350,6 +350,34 @@ def snapshot_index_history(kospi: float, kosdaq: float, on_date: str | None = No
     save_index_history(hist)
 
 
+FUND_NAV_HISTORY_FILE = HERE / "fund_nav_history.csv"  # 날짜, 기준가 — VIP한국형가치투자[주식]A-e 펀드 추적(§6-21)
+
+
+def load_fund_nav_history() -> pd.DataFrame:
+    """날짜별 펀드 기준가. index_history.csv와 같은 성격의 로컬 CSV(§1-5)."""
+    if FUND_NAV_HISTORY_FILE.exists():
+        return pd.read_csv(FUND_NAV_HISTORY_FILE)
+    return pd.DataFrame(columns=["날짜", "기준가"])
+
+
+def save_fund_nav_history(df: pd.DataFrame) -> None:
+    df.to_csv(FUND_NAV_HISTORY_FILE, index=False)
+
+
+def snapshot_fund_nav_history(nav: float, on_date: str | None = None) -> None:
+    """펀드 기준가 스냅샷(같은 날짜 덮어씀). 네이버가 펀드 시세 API를 접었고 KOFIA/funetf는
+    SPA라, 기준가는 사용자가 메리츠증권 앱에서 읽어 `ingest_daily.py`에 `todaytrans/fund_nav.txt`로
+    넣어주는 수동 경로(§6-21). resolve_trading_date를 안 쓰는 이유: 사용자가 이미 '그 거래일'
+    값을 정확히 골라 넣으므로 on_date를 그대로 신뢰한다."""
+    if not nav or float(nav) <= 0:
+        return
+    d = on_date or resolve_trading_date()
+    hist = load_fund_nav_history()
+    hist = hist[hist["날짜"] != d]
+    hist = pd.concat([hist, pd.DataFrame([{"날짜": d, "기준가": float(nav)}])])
+    save_fund_nav_history(hist.sort_values("날짜"))
+
+
 CAPTURE_ANOMALY_FILE = HERE / "report" / "capture_anomalies.csv"
 
 
@@ -1837,7 +1865,8 @@ def _index_day_moves(index_hist: pd.DataFrame) -> pd.DataFrame:
 
 def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_hist: pd.DataFrame,
                               initial_capital: float, fee_rate: float = 0.0,
-                              kospi_weight: float | None = None) -> dict:
+                              kospi_weight: float | None = None,
+                              fund_nav_hist: pd.DataFrame | None = None) -> dict:
     """'지수 대비 계좌' 그래프 데이터(§6-17). 값은 전부 소수(0.0145 = +1.45%).
 
     - 계좌수익(t)  = 총자산(t)/최초자본 - 1  — 앱 요약카드의 그 값. 예수금이 눌러주는 '완충된' 선.
@@ -1858,8 +1887,9 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
                         캡처계좌, 캡처주식, 초과계좌, 초과주식, 바구니]
               (바구니 = "하락"/"상승"/"even"/"". 캡처* = 하락·상승일의 c = 내당일÷벤치당일,
                초과* = even일의 e = 내당일−벤치당일(%p). 나머지 바구니에선 각각 NaN.)
-      index:  DataFrame[날짜, 코스피, 코스닥]  (index_hist의 모든 거래일, 누적)
-      latest: {"코스피"/"코스닥"/"주식"/"계좌"/"벤치": (누적, 당일)} — 최신 시점 값.
+      index:  DataFrame[날짜, 코스피, 코스닥(, 펀드)]  (index_hist의 모든 거래일, 누적.
+              fund_nav_hist를 주면 "펀드" 컬럼도 붙음 — §6-21)
+      latest: {"코스피"/"코스닥"/"주식"/"계좌"/"벤치"(/"펀드"): (누적, 당일)} — 최신 시점 값.
       cap:    {"acct": {...}, "stock": {...}} — 각각 내 계좌 / 내 주식(Rs) 기준.
               하위 키: dc(하락일 Σ내당일/Σ벤치당일) / uc(상승일 Σ내당일/Σ벤치당일) /
                        even(even일 e 단순평균, 소수) /
@@ -1888,6 +1918,30 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         return empty
 
     idx_cum = _index_cum_returns(index_hist, anchor)
+
+    # 펀드(§6-21): anchor일 기준가 대비 누적등락을 idx_cum의 각 날짜에 붙인다(그날 이하 가장
+    # 최근 기준가 — 펀드 기준가 발표가 하루 밀릴 수 있어서). fund_nav_hist 없으면 컬럼 안 만듦
+    # (SamHynix 패널은 이 인자를 안 넘김).
+    fund_cum_last = fund_day_last = None
+    if fund_nav_hist is not None and not fund_nav_hist.empty:
+        fh = fund_nav_hist.copy()
+        fh["날짜"] = fh["날짜"].astype(str)
+        fh = fh[fh["날짜"] >= anchor].sort_values("날짜").reset_index(drop=True)
+        fnav = pd.to_numeric(fh["기준가"], errors="coerce")
+        if len(fh) and fnav.iloc[0] > 0:
+            base_f = float(fnav.iloc[0])
+            fdates, fvals = list(fh["날짜"]), list(fnav / base_f - 1.0)
+
+            def _fund_on(dd):
+                prior = [v for bd, v in zip(fdates, fvals) if bd <= dd]
+                return float(prior[-1]) if prior else None
+
+            idx_cum = idx_cum.copy()
+            idx_cum["펀드"] = [_fund_on(str(x)) for x in idx_cum["날짜"]]
+            fund_cum_last = float(fvals[-1])
+            if len(fnav) >= 2 and fnav.iloc[-2] > 0:
+                fund_day_last = float(fnav.iloc[-1] / fnav.iloc[-2] - 1.0)
+
     cash_map = _cash_by_date(tx, initial_capital, fee_rate)
 
     t = tx.copy() if tx is not None and not tx.empty else pd.DataFrame(columns=["날짜", "구분", "수량", "단가"])
@@ -1956,6 +2010,8 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         qd = _last(moves["코스닥d"]) if len(moves) else None
         latest["코스피"] = (float(idx_cum["코스피"].iloc[-1]), kd)
         latest["코스닥"] = (float(idx_cum["코스닥"].iloc[-1]), qd)
+    if fund_cum_last is not None:
+        latest["펀드"] = (fund_cum_last, fund_day_last)
     if not me.empty:
         latest["주식"] = (_last(me["주식수익"]), _last(me["주식당일"]))
         latest["계좌"] = (_last(me["계좌수익"]), _last(me["계좌당일"]))
