@@ -12,11 +12,11 @@ from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, compute_pnl_actions, _index_day_moves,
     load_bigcap_history, synthetic_kospi_ex_bigcap, load_fund_nav_history,
+    compute_vip_vs_orchestra,
 )
 
 KOSPI_COLOR = "#f59e0b"   # 지수 참조선(코스피) — 앰버
 KOSDAQ_COLOR = "#14b8a6"  # 지수 참조선(코스닥) — 틸
-FUND_COLOR = "#8b5cf6"    # VIP 가치투자 펀드 참조선 — 바이올렛 (§6-21)
 _PA_COLORS = {"FA": UP_COLOR, "MO": "#22c55e", "MA": DOWN_COLOR}  # FA 빨강 / MO 녹색 / MA 파랑
 
 
@@ -277,9 +277,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             "벤치": me["벤치누적"] if "벤치누적" in me else None,
             "주식": me["주식수익"] if "주식수익" in me else None,
             "계좌": me["계좌수익"] if "계좌수익" in me else None,
-            "펀드": idxc["펀드"] if "펀드" in idxc else None,
         }
-        _has_fund = "펀드" in idxc.columns and latest.get("펀드") is not None
 
         def _recent5(key):
             s = _s5.get(key)
@@ -317,7 +315,6 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             + _row(kospi_label, KOSPI_COLOR, False, "코스피", False)
             + _row("코스닥", KOSDAQ_COLOR, False, "코스닥", False)
             + _row("혼합지수", DOWN_COLOR, False, "벤치", False)
-            + (_row("VIP 펀드", FUND_COLOR, False, "펀드", False) if _has_fund else "")
             + _row("내 주식", T["text"], False, "주식", True)
             + _row("내 계좌", T["muted2"], True, "계좌", True)
             + "</table>"
@@ -424,17 +421,6 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             customdata=[[_fmt(c), _fmt(_blend_day(d))] for c, d in zip(_blend_cum, idxc["날짜"])],
             hovertemplate=_ht("혼합지수"),
         ))
-        if _has_fund:
-            _fc = list(pd.to_numeric(idxc["펀드"], errors="coerce"))
-            _fd = [None] + [(_fc[i] - _fc[i - 1]) if (_fc[i] is not None and _fc[i - 1] is not None
-                             and not pd.isna(_fc[i]) and not pd.isna(_fc[i - 1])) else None
-                            for i in range(1, len(_fc))]
-            fig2.add_trace(go.Scatter(
-                x=idxc["날짜"], y=idxc["펀드"], name="VIP 펀드", mode="lines",
-                line=dict(color=FUND_COLOR, width=1.6),
-                customdata=[[_fmt(c), _fmt(d)] for c, d in zip(_fc, _fd)],
-                hovertemplate=_ht("VIP 펀드"),
-            ))
         fig2.add_trace(go.Scatter(
             x=me["날짜"], y=me["주식수익"], name="내 주식", mode="lines+markers",
             line=dict(color=T["text"], width=2.8), marker=dict(size=5),
@@ -606,6 +592,69 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
             _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
+
+    # ---- VIP vs Orchestra (§6-21): VIP 가치투자 펀드 vs 내 계좌(Orchestra), 둘 다 8/14 = 0 ----
+    with st.expander("VIP vs Orchestra", expanded=False):
+        vo = compute_vip_vs_orchestra(iva)
+        if not vo:
+            st.caption("fund_nav_history.csv 비어있음 — 세션에 펀드 기준가를 알려주세요.")
+        else:
+            v_cum, v_day = vo["vip"]
+            o_cum, o_day = vo["orch"]
+
+            def _c(o, v):   # Orchestra가 VIP 이기면 빨강 / 지면 파랑
+                if o is None or v is None:
+                    return T["text"]
+                return UP_COLOR if o >= v else DOWN_COLOR
+
+            def _p(x):
+                return "—" if x is None else f"{x * 100:+.2f}%"
+
+            st.markdown(
+                "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:2px 0 6px'>"
+                f"<tr style='color:{T['muted2']};font-size:10px'>"
+                "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>누적</th>"
+                "<th style='text-align:right'>당일</th></tr>"
+                f"<tr><td style='color:{DOWN_COLOR}'>● VIP</td>"
+                f"<td style='text-align:right;color:{T['text']}'>{_p(v_cum)}</td>"
+                f"<td style='text-align:right;color:{T['text']}'>{_p(v_day)}</td></tr>"
+                f"<tr><td style='color:{UP_COLOR}'>● Orchestra</td>"
+                f"<td style='text-align:right;color:{_c(o_cum, v_cum)}'>{_p(o_cum)}</td>"
+                f"<td style='text-align:right;color:{_c(o_day, v_day)}'>{_p(o_day)}</td></tr>"
+                "</table>",
+                unsafe_allow_html=True,
+            )
+
+            fig_vo = go.Figure()
+            fig_vo.add_trace(go.Scatter(
+                x=[d for d, _ in vo["vip_line"]], y=[y for _, y in vo["vip_line"]],
+                name="VIP", mode="lines", line=dict(color=DOWN_COLOR, width=1.8),
+                hovertemplate="<b>VIP</b> %{y:+.2%}<extra></extra>"))
+            fig_vo.add_trace(go.Scatter(
+                x=[d for d, _ in vo["orch_line"]], y=[y for _, y in vo["orch_line"]],
+                name="Orchestra", mode="lines+markers", line=dict(color=UP_COLOR, width=2.4),
+                marker=dict(size=5),
+                hovertemplate="<b>Orchestra</b> %{y:+.2%}<extra></extra>"))
+            fig_vo.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
+            fig_vo.update_layout(
+                height=250, margin=dict(l=44, r=8, t=8, b=26),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=T["text"], size=11),
+                legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0, font=dict(size=10)),
+                hovermode="x unified",
+                hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"],
+                                font=dict(size=11, color=T["text"])),
+                xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=".1%",
+                           tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                dragmode=False,
+            )
+            components.html(
+                "<style>body{margin:0;background:transparent}</style>"
+                + fig_vo.to_html(include_plotlyjs="cdn", full_html=False, default_width="100%",
+                                 config={"displayModeBar": False, "responsive": True}),
+                height=262,
+            )
 
     st.divider()
 

@@ -2113,6 +2113,45 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
             "sensitivity_basis": "혼합" if wk is not None else "코스피"}
 
 
+def compute_vip_vs_orchestra(iva: dict) -> dict:
+    """§6-21 'VIP vs Orchestra' 전용 패널 데이터. iva = compute_index_vs_account 결과
+    (fund_nav_hist를 넘겨서 index에 '펀드' 컬럼이 있어야 함 — 없으면 {} 반환, 패널 안 그림).
+
+    둘 다 anchor일(=asset_hist·index_hist 공통 시작일, 보통 8/14) = 0 으로 리베이스한 누적수익률:
+      - VIP       = idx_cum['펀드']  (이미 anchor 기준가 대비 누적)
+      - Orchestra = me['계좌수익']을 anchor(첫 스냅샷) 대비로 재기준화:
+                    (1+r_t)/(1+r_0) - 1   (계좌수익은 계좌개설=최초자본 기준 절대값이라,
+                    8/14 이전에 번 것까지 섞여 VIP(8/14=0)와 사과-오렌지가 되는 걸 막음)
+
+    반환: {
+      vip_line:  [(날짜, 누적), ...],   # 매 거래일
+      orch_line: [(날짜, 누적), ...],   # 스냅샷 날짜만
+      vip:  (누적, 당일),
+      orch: (누적, 당일),              # 당일은 latest 값 그대로 (diff라 리베이스 영향 미미)
+    }  — 펀드 데이터 없으면 {}.
+    """
+    idx_cum, me, latest = iva.get("index"), iva.get("me"), iva.get("latest", {})
+    if idx_cum is None or me is None or "펀드" not in getattr(idx_cum, "columns", []):
+        return {}
+    fser = pd.to_numeric(idx_cum["펀드"], errors="coerce")
+    if fser.dropna().empty or me.empty:
+        return {}
+
+    vip_line = [(str(d), float(v)) for d, v in zip(idx_cum["날짜"], fser) if pd.notna(v)]
+
+    acct = pd.to_numeric(me["계좌수익"], errors="coerce")
+    r0 = float(acct.iloc[0]) if pd.notna(acct.iloc[0]) else 0.0
+    orch_reb = (1.0 + acct) / (1.0 + r0) - 1.0
+    orch_line = [(str(d), float(v)) for d, v in zip(me["날짜"], orch_reb) if pd.notna(v)]
+
+    vip_cum = vip_line[-1][1] if vip_line else None
+    orch_cum = orch_line[-1][1] if orch_line else None
+    vip_day = latest.get("펀드", (None, None))[1]
+    orch_day = latest.get("계좌", (None, None))[1]
+    return {"vip_line": vip_line, "orch_line": orch_line,
+            "vip": (vip_cum, vip_day), "orch": (orch_cum, orch_day)}
+
+
 # ------------------------------------------------------------------ #
 # 지표 계산
 # ------------------------------------------------------------------ #

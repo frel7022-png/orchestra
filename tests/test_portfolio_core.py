@@ -1163,6 +1163,30 @@ def test_compute_index_vs_account_fund_line(monkeypatch, tmp_path):
     assert "펀드" not in r2["latest"]
 
 
+def test_compute_vip_vs_orchestra_rebases_orchestra_to_anchor(monkeypatch, tmp_path):
+    """§6-21: VIP는 idx_cum['펀드'](이미 anchor=0), Orchestra는 me['계좌수익']을 첫 스냅샷
+    대비로 재기준화 → 둘 다 anchor일 0에서 출발. 색은 UI가 정하고 여기선 값만."""
+    dates = ["2026-01-05", "2026-01-06", "2026-01-07"]
+    # 8/14(anchor)에 계좌가 이미 +2% 였다가 오늘 +3% → 리베이스하면 anchor 대비 ≈ +0.98%
+    tot = [1_020_000.0, 1_010_000.0, 1_030_000.0]
+    asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, tot)])
+    idx = _idx_hist([[d, 100.0, 200.0] for d in dates])
+    empty_tx = pd.DataFrame(columns=["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"])
+    fund = pd.DataFrame({"날짜": dates, "기준가": [2000.0, 2020.0, 1990.0]})
+
+    iva = core.compute_index_vs_account(empty_tx, asset_hist, idx, 1_000_000.0, fund_nav_hist=fund)
+    vo = core.compute_vip_vs_orchestra(iva)
+    assert vo["vip_line"][0][1] == pytest.approx(0.0)
+    assert vo["orch_line"][0][1] == pytest.approx(0.0)                     # anchor에서 0
+    assert vo["vip"][0] == pytest.approx(1990.0 / 2000.0 - 1.0)            # -0.5%
+    # Orchestra 누적 = (1+0.03)/(1+0.02) - 1
+    assert vo["orch"][0] == pytest.approx((1 + 0.03) / (1 + 0.02) - 1.0, rel=1e-6)
+
+    # 펀드 데이터 없으면 {}
+    assert core.compute_vip_vs_orchestra(
+        core.compute_index_vs_account(empty_tx, asset_hist, idx, 1_000_000.0)) == {}
+
+
 def test_snapshot_fund_nav_history_overwrites_same_date(monkeypatch, tmp_path):
     f = tmp_path / "fund_nav_history.csv"
     monkeypatch.setattr(core, "FUND_NAV_HISTORY_FILE", f)

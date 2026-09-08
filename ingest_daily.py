@@ -21,7 +21,6 @@
 생길 때마다(하루에 여러 번이어도 상관없음) 직접 실행하는 방식으로 반영한다.
 """
 
-import os
 import sys
 
 import portfolio_core as core
@@ -94,19 +93,8 @@ def main():
     except Exception as e:
         print(f"[경고] bigcap_history 갱신 실패(무시): {e}")
 
-    # 펀드 기준가(§6-21): 자동 조회 경로가 없어서 사용자가 메리츠 앱에서 읽어 todaytrans/fund_nav.txt
-    # (숫자 한 줄)로 넣어준다. 있으면 그 값을, 없으면 조용히 넘어감(매매일지 반영 자체는 정상).
-    fund_txt = os.path.join(os.path.dirname(file_path) or ".", "fund_nav.txt")
-    try:
-        if os.path.exists(fund_txt):
-            with open(fund_txt, encoding="utf-8") as ff:
-                nav = float(ff.read().strip().replace(",", ""))
-            core.snapshot_fund_nav_history(nav, on_date=trade_date)
-            print(f"[펀드] {trade_date} 기준가 {nav:,.2f} fund_nav_history 반영")
-        else:
-            print(f"[펀드] {fund_txt} 없음 — 펀드 기준가 이번엔 건너뜀")
-    except Exception as e:
-        print(f"[경고] fund_nav_history 갱신 실패(무시): {e}")
+    # 펀드 기준가(§6-21)는 자동 조회 경로가 없어서 세션이 채팅으로 값을 받아
+    # fund_nav_history.csv에 직접 append한다(ingest에서 안 다룸).
 
     # 신규 종목은 아직 종목코드가 비어있을 수 있는데(코드 캐시에 없던 이름), 그러면 바로 아래
     # watchlist 자동 편입이 걸러버린다. 백필 전에 코드 없는 종목만 네이버로 가볍게 조회해 채운다

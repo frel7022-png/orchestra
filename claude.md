@@ -206,10 +206,12 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
 ### 거래 기록 탭
 - 최초 자본 대비 손익 요약 카드
 - 실현손익 그래프 (누적 실현손익 vs 미실현손실 추이)
-- 지수 대비 계좌 그래프: 코스피/코스닥/혼합지수/**VIP 펀드**(§6-21) vs 내 주식수익(예수금 제외)/
-  계좌수익, 각 선의 누적+5일+당일 표(내 주식·계좌는 보유비중 반영 혼합지수 대비 빨강/파랑) +
-  하락/상승/even 캡처 표 (§6-17). VIP 펀드 선은 `fund_nav_history.csv` 있을 때만 뜸 —
-  SamHynix extracted 패널엔 안 나옴(그 패널은 `fund_nav_hist`를 안 넘김).
+- 지수 대비 계좌 그래프: 코스피/코스닥/혼합지수 vs 내 주식수익(예수금 제외)/계좌수익, 각 선의
+  누적+5일+당일 표(내 주식·계좌는 보유비중 반영 혼합지수 대비 빨강/파랑) + 하락/상승/even
+  캡처 표 (§6-17)
+- SamHYnix extracted expander: 위 그래프의 코스피 다리를 "삼성·삼성우·하이닉스 제외 코스피"로
+  바꾼 버전 (§6-19)
+- VIP vs Orchestra expander: VIP 가치투자 펀드 vs 내 계좌, 둘 다 8/14 기준 (§6-21)
 - 누적 매수/매도(건수+금액+일평균건수) + 누적 실현손익(금액+매수대비%) 요약 (§6-13)
 - 거래 내역 캘린더
 
@@ -1052,32 +1054,42 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
 - **new1 전용** (2026-09-07 시점. meritz는 USD 거래가 섞여 사이클 로직이 더 복잡 — 확정 후
   포팅 검토).
 
-### 6-21. VIP 가치투자 펀드를 "지수 대비 계좌" 그래프에서 같이 추적 (2026-09-08)
-- **동기**: 내 오케스트라 계좌를 코스피/코스닥뿐 아니라 실제 가치투자 펀드 하나와도 같은
-  그래프에서 8/14 기준으로 비교하고 싶다는 요청. 펀드:
-  **VIP한국형가치투자증권자투자신탁[주식]A-e클래스** (KOFIA/펀드코드 `K553W5E17302`, 총보수 연 1.96%).
+### 6-21. "VIP vs Orchestra" — 가치투자 펀드 하나와 내 계좌를 8/14부터 맞비교 (2026-09-08)
+- **동기**: 내 계좌를 코스피/코스닥 말고 **실제 가치투자 펀드 하나**와 8/14부터 나란히 놓고
+  "누가 이기나"만 보고 싶다는 요청. 펀드: **VIP한국형가치투자증권자투자신탁[주식]A-e클래스**
+  (KOFIA/펀드코드 `K553W5E17302`, 총보수 연 1.96%).
+  - **처음엔 메인 "Account : Index" 패널 표/그래프에 "VIP 펀드" 줄을 끼워넣었다가, 사용자가
+    "그게 아니라 전용 섹션을 원했다"고 해서 뺐음**(2026-09-08). 이때 받은 피드백: "얘기하다
+    바로 수행하지 말고 스펙 확정 후 구현" → [[feedback_confirm_spec_before_implementing]].
 - **데이터 소스가 자동이 아님**: 네이버는 펀드 시세 API를 접었고(통합검색 카드에 기준가가
-  뜨긴 하는데 T+2쯤 밀린 값이라 못 씀 — 2026-09-08 확인: 카드값 1,982 = 실제 9/04 기준가),
-  KOFIA 전자공시·funetf는 SPA/WebSquare라 스크레이핑이 불안정. → **사용자가 메리츠증권 앱에서
-  기준가를 읽어 수동으로 넣는다**(§1-7 "수동 입력 UI 안 만듦" 원칙과 안 충돌 — CLI/파일 경로,
-  ingest_daily.py·import_watchlist.py와 같은 성격).
-- **입력 경로**: `todaytrans/fund_nav.txt`에 숫자 한 줄(예: `2024`)을 넣어두면 `ingest_daily.py`가
-  읽어서 `snapshot_fund_nav_history(nav, on_date=trade_date)` 호출. 파일 없으면 그냥 건너뜀
-  (매매일지 반영 자체는 정상). 세션이 채팅으로 값을 받아 직접 append해도 됨.
-- **데이터 파일**: `fund_nav_history.csv`(날짜, 기준가). 2026-08-14부터 사용자가 준 17일치로
-  시작(§1-5대로 세션이 git commit). `index_history.csv`와 같은 로컬 CSV.
-- **계산**: `compute_index_vs_account(..., fund_nav_hist=load_fund_nav_history())` — anchor일
-  (8/14) 기준가 대비 누적등락을 `index` DataFrame의 각 날짜에 `펀드` 컬럼으로 붙이고(그날 이하
-  가장 최근 기준가 — 발표 하루 밀림 대비), `latest["펀드"] = (누적, 당일)`. `fund_nav_hist`를
-  안 넘기면 `펀드` 컬럼/키가 아예 안 생김 — **SamHynix extracted 패널은 안 넘겨서 펀드 선이
-  안 나온다**(ex-반도체 합성지수에 펀드까지 겹치면 혼란).
-- **UI** (`ui_transactions_tab._render_iva_panel`): 메인 "Account : Index" 패널의 표에
-  "VIP 펀드" 줄(바이올렛 `FUND_COLOR = #8b5cf6`) + 선그래프에 같은 색 선 하나 추가.
-  `_has_fund = "펀드" in idxc.columns and latest.get("펀드")` 일 때만.
-- **읽는 법 / 주의**: 펀드 기준가는 **보수 차감 후**(연 1.96% ≈ 0.005%/일)고 국내주식형은
-  T+1~T+2 가격이라 펀드 선이 내 계좌보다 살짝 매끄럽고 하루쯤 밀려 보인다. "가치투자 프로
-  대비 내가 어떤가"엔 충분하지만 틱 단위로 맞물리진 않음. **내 주식(Rs, 예수금 제외)과
-  나란히 보는 게 사과 대 사과**(둘 다 KRW 100% 주식).
-- **회귀 테스트 2개**: `test_compute_index_vs_account_fund_line`(펀드 컬럼·latest, 안 주면 없음),
+  뜨긴 하는데 T+2쯤 밀린 값 — 2026-09-08 확인: 카드값 1,982 = 실제 9/04 기준가),
+  KOFIA 전자공시·funetf는 SPA/WebSquare라 스크레이핑 불안정. → **사용자가 메리츠증권 앱에서
+  기준가를 읽어 채팅으로 알려주면 세션이 `fund_nav_history.csv`에 직접 append**한다
+  (ingest_daily.py는 이 파일을 안 건드림). `index_history.csv`와 같은 성격의 로컬 CSV,
+  §1-5대로 세션이 git commit. 8/14부터 사용자가 준 17일치로 시작.
+- **함수**:
+  - `load/save/snapshot_fund_nav_history` (`fund_nav_history.csv`, 날짜·기준가. snapshot은 같은
+    날짜 덮어씀, resolve_trading_date 안 씀 — 사용자가 이미 그 거래일 값을 골라 줌).
+  - `compute_index_vs_account(..., fund_nav_hist=...)` — 넘기면 `index` DataFrame에 `펀드` 컬럼
+    (anchor=8/14 기준가 대비 누적, 그날 이하 가장 최근 기준가), `latest["펀드"]=(누적,당일)`.
+    **안 넘기면 컬럼/키 안 생김** → SamHynix extracted 패널은 안 넘겨서 영향 없음.
+    메인 "Account : Index" 패널도 값은 받지만 `_render_iva_panel`이 펀드 줄/선은 안 그림.
+  - `compute_vip_vs_orchestra(iva)` — 위 iva(펀드 컬럼 있는) 하나 받아서 전용 패널 데이터 반환.
+    **둘 다 anchor(8/14) = 0 리베이스**: VIP = `idx_cum["펀드"]` 그대로, **Orchestra =
+    `me["계좌수익"]`을 첫 스냅샷 대비로 `(1+r_t)/(1+r_0)-1`**. (계좌수익은 계좌개설=최초자본
+    기준 절대값이라 8/14 이전 손익이 섞임 → 리베이스해야 VIP와 사과-사과. 사용자가 8/14
+    맞비교 명시.) 펀드 데이터 없으면 `{}`. 반환: `vip_line`/`orch_line`(각 (날짜,누적) 리스트),
+    `vip`/`orch` = (누적, 당일).
+- **UI** (`ui_transactions_tab.py`, 거래 기록 탭 **맨 밑 SamHynix extracted 밑**):
+  `st.expander("VIP vs Orchestra")` → 표 + 그래프.
+  - **표**: 2행(VIP / Orchestra) × 2열(누적 / 당일). **Orchestra = 내 계좌**(예수금 포함), 내 주식 아님.
+    Orchestra 셀 = VIP보다 앞서면 빨강(`UP_COLOR`) / 뒤지면 파랑(`DOWN_COLOR`), 누적·당일 각각.
+    VIP 행은 검정.
+  - **그래프**: VIP 파랑(`DOWN_COLOR`) / Orchestra 빨강(`UP_COLOR`), 8/14 기준 누적. expander
+    안이라 `components.html`(iframe)+`responsive:true`로 렌더(SamHynix와 같은 이유).
+- **읽는 법 / 주의**: 펀드 기준가는 보수 차감 후(연 1.96% ≈ 0.005%/일) + 국내주식형 T+1~T+2
+  가격이라 VIP 선이 살짝 매끄럽고 하루쯤 밀려 보인다. 틱 단위로 맞물리진 않음.
+- **회귀 테스트 3개**: `test_compute_index_vs_account_fund_line`,
+  `test_compute_vip_vs_orchestra_rebases_orchestra_to_anchor`,
   `test_snapshot_fund_nav_history_overwrites_same_date`.
-- **new1 전용** (meritz 미적용 — 요청 없었음).
+- **new1 전용** (meritz 미적용).
