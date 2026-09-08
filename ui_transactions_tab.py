@@ -12,7 +12,7 @@ from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, compute_pnl_actions, _index_day_moves,
     load_bigcap_history, synthetic_kospi_ex_bigcap, load_fund_nav_history,
-    compute_vip_vs_orchestra, load_both_accounts,
+    compute_vip_vs_orchestra,
 )
 
 KOSPI_COLOR = "#f59e0b"   # 지수 참조선(코스피) — 앰버
@@ -310,7 +310,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             )
 
         idx_table_html = (
-            "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:-2px 0 4px'>"
+            "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:3px 0 4px'>"
             f"<tr style='color:{T['muted2']};font-size:10px'>"
             "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>누적</th>"
             "<th style='text-align:right'>5일</th><th style='text-align:right'>당일</th></tr>"
@@ -509,7 +509,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
   #{carousel_id} .trk {{ display:flex; overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
     -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
   #{carousel_id} .trk::-webkit-scrollbar {{ display:none; }}
-  #{carousel_id} .sl {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always; }}
+  #{carousel_id} .sl {{ flex:0 0 100%; min-width:0; scroll-snap-align:center; scroll-snap-stop:always;
+    display:flex; flex-direction:column; justify-content:center; padding-top:4px; box-sizing:border-box; }}
   #{carousel_id} .dt {{ display:flex; justify-content:center; gap:10px; padding:4px 0 0; }}
   #{carousel_id} .d {{ width:8px; height:8px; border-radius:50%; background:{T['muted2']}; opacity:.35;
     cursor:pointer; transition:opacity .18s, background .18s; }}
@@ -536,15 +537,9 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
 </script>
 """, height=550)
 
-    # ---- 지수 대비 계좌 (메인: 코스피/코스닥) ----
-    st.markdown(f"##### Account : Index{_wtag}", unsafe_allow_html=True)
-    iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
-                                    state.get("fee_rate", 0.0), kospi_weight=wk,
-                                    fund_nav_hist=load_fund_nav_history())
-    _render_iva_panel(iva, idx_hist, "코스피", "cwrap")
-
-    # ---- 코스피 추이: 일반(빨강) vs 삼성·삼성우·하이닉스 제외(파랑). 실제 지수 포인트로 표시,
-    #      hover엔 그 시점의 전일 대비 등락률(%). ----
+    # ---- KOSPI 2-Track Trend: 일반(빨강) vs 삼성·삼성우·하이닉스 제외(파랑). 실제 지수 포인트로
+    #      표시, hover엔 그 시점의 전일 대비 등락률(%). (2026-09-08: Account:Index 자리로 옮김 —
+    #      Account:Index는 밑에서 expander로 접힘.) ----
     _bg_k = load_bigcap_history()
     if not idx_hist.empty and not _bg_k.empty:
         _ih = idx_hist.sort_values("날짜").reset_index(drop=True)
@@ -578,6 +573,17 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         )
         st.plotly_chart(fig_k, use_container_width=True, config={"displayModeBar": False})
 
+    # ---- Account : Index (§6-17): 코스피/코스닥 vs 내 주식·내 계좌. 2026-09-08부터 expander로
+    #      접힘(SamHynix extracted 위, 같은 포맷). iva는 밑 VIP 패널도 쓰므로 expander 밖에서 계산. ----
+    iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
+                                    state.get("fee_rate", 0.0), kospi_weight=wk,
+                                    fund_nav_hist=load_fund_nav_history())
+    with st.expander("Account : Index", expanded=False):
+        if _wtag:
+            st.markdown(f"<div style='margin:-4px 0 2px'>{_wtag.strip()}</div>",
+                        unsafe_allow_html=True)
+        _render_iva_panel(iva, idx_hist, "코스피", "cwrap")
+
     # ---- SamHynix extracted (§6-19): 혼합지수의 코스피 다리를 '삼성전자·삼성전자우·SK하이닉스
     #      제외 코스피'로 바꾼 버전. ----
     with st.expander("SamHYnix extracted", expanded=False):
@@ -595,9 +601,11 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
             _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
 
-    # ---- VIP vs Orchestra vs Orchestration (§6-21): VIP 펀드 / new1 계좌 / meritz 계좌, 셋 다 8/14=0 ----
-    with st.expander("VIP vs Orchestra vs Orchestration", expanded=False):
-        vo = compute_vip_vs_orchestra(iva, load_both_accounts())
+    # ---- VIP vs Orchestra (§6-21): VIP 펀드 vs new1 계좌(Orchestra), 둘 다 8/14=0.
+    #      Orchestration(meritz)은 여기선 안 보여줌 — meritz 앱에서만 3-way (사용자 요청 2026-09-08).
+    #      both_accounts.csv / sync_both_accounts.py 인프라는 meritz가 읽으므로 그대로 유지. ----
+    with st.expander("VIP vs Orchestra", expanded=False):
+        vo = compute_vip_vs_orchestra(iva)
         if not vo:
             st.caption("fund_nav_history.csv 비어있음 — 세션에 펀드 기준가를 알려주세요.")
         else:
