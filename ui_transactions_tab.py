@@ -116,32 +116,32 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 return "—" if v is None else f"{v:+.2f}%"
 
             _lab = ["FA", "MO", "MA"]
-            _fullname = {"FA": "FA (First in, All out)", "MO": "MO (Multiple Out)",
-                         "MA": "MA (Multiple in, All out)"}
 
             def _plcol(v):  # 손익률: 음수=파랑(손실), 양수=빨강
                 return DOWN_COLOR if v is not None and v < 0 else UP_COLOR
 
-            # --- 표: 이름 | 실현 | 비중 | 손익률 (전부 한 줄, 안 잘리게) ---
+            # --- 표: 이름 | 실현 | 비중 | 손익률 — 짧은 이름(FA/MO/MA)으로 모바일 폭에 딱 맞춤.
+            #     풀네임은 밑에 캡션 한 줄로. ---
             _td = "white-space:nowrap"
             _trs = "".join(
-                f"<tr><td style='color:{_PA_COLORS[b]};font-weight:700;{_td}'>{_fullname[b]}</td>"
+                f"<tr><td style='color:{_PA_COLORS[b]};font-weight:700'>{b}</td>"
                 f"<td style='text-align:right;{_td}'>{bk[b]['realized']:,.0f}</td>"
-                f"<td style='text-align:right;{_td}'>{bk[b]['pct']:.1f}%</td>"
+                f"<td style='text-align:right'>{bk[b]['pct']:.1f}%</td>"
                 f"<td style='text-align:right;{_td}'>{bk[b]['avg_pct']:+.2f}%</td></tr>"
                 for b in _lab
             )
             st.markdown(
-                "<div style='overflow-x:auto'>"
-                "<table style='width:100%;font-size:11px;border-collapse:collapse;margin:0 0 4px'>"
+                "<table style='width:100%;font-size:11px;border-collapse:collapse;margin:0 0 2px;table-layout:fixed'>"
                 f"<tr style='font-size:10px;color:{T['muted2']}'>"
-                f"<th style='text-align:left'>&nbsp;</th><th style='text-align:right;{_td}'>실현</th>"
-                f"<th style='text-align:right'>비중</th><th style='text-align:right;{_td}'>손익률</th></tr>"
+                "<th style='text-align:left;width:22%'>&nbsp;</th><th style='text-align:right'>실현</th>"
+                "<th style='text-align:right;width:20%'>비중</th><th style='text-align:right'>손익률</th></tr>"
                 + _trs
                 + f"<tr style='border-top:1px solid {T['border']};color:{T['text']};font-weight:700'>"
-                  f"<td style='{_td}'>Total</td><td style='text-align:right;{_td}'>{pa['total']:,.0f}</td>"
+                  f"<td>Total</td><td style='text-align:right;{_td}'>{pa['total']:,.0f}</td>"
                   "<td style='text-align:right'>100%</td><td style='text-align:right'>—</td></tr>"
-                "</table></div>",
+                "</table>"
+                f"<div style='font-size:9.5px;color:{T['muted2']};margin:0 0 4px'>"
+                "FA=First in, All out · MO=Multiple Out · MA=Multiple in, All out</div>",
                 unsafe_allow_html=True,
             )
 
@@ -532,7 +532,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     }});
   }})();
 </script>
-""", height=590)
+""", height=505)
 
     # ---- 지수 대비 계좌 (메인: 코스피/코스닥) ----
     st.markdown(f"##### Account : Index{_wtag}", unsafe_allow_html=True)
@@ -639,8 +639,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             fig_vo.update_layout(
                 height=250, margin=dict(l=44, r=8, t=8, b=26),
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color=T["text"], size=11),
-                legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0, font=dict(size=10)),
+                font=dict(color=T["text"], size=11), showlegend=False,
                 hovermode="x unified",
                 hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"],
                                 font=dict(size=11, color=T["text"])),

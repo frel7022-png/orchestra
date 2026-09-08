@@ -67,7 +67,7 @@ st.markdown(f"""
     .capital-line b {{ font-size:14px; }}
 
     .daily-trade-box {{ margin-top:10px; padding-top:10px; border-top:1px solid {T['border']}; font-size:12.5px; color:{T['muted']}; }}
-    .daily-trade-count {{ font-size:13px; color:{T['text']}; font-weight:700; }}
+    .daily-trade-count {{ font-size:13px; color:{T['text']}; font-weight:400; }}
     .daily-trade-count span {{ font-weight:400; color:{T['muted']}; margin-left:4px; }}
 
     .legend-wrap {{ display:flex; flex-wrap:wrap; gap:7px 14px; margin-top:10px; margin-bottom:20px; justify-content:center; }}
