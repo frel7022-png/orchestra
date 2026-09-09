@@ -134,7 +134,7 @@ def main():
         print("보유종목:")
         for _, r in holdings2.sort_values("종목명").iterrows():
             print(f"  - {r['종목명']}: {r['수량']:.0f}주 @ 평단가 {r['평단가']:,.0f}원"
-                  f" (종목코드 {r['종목코드'] or '미확인'}, 섹터 {r['섹터'] or '미분류'})")
+                  f" (종목코드 {r['종목코드'] or '미확인'}, 섹터 {r['섹터'] or '기타2'})")
 
 
 if __name__ == "__main__":

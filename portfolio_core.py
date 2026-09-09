@@ -49,26 +49,17 @@ TX_COLUMNS = ["id", "날짜", "종목명", "구분", "수량", "단가", "실현
 
 DAILY_IMPORT_TAG = "일일매매일지"  # 이 메모가 붙은 거래는 같은 날짜 재반영 시 교체 대상
 
-# 섹터 비중 보기 전용 그룹 매핑 (종목별 보유현황의 세부 섹터는 그대로 유지됨)
+# 섹터 그룹 매핑. 2026-09-09부터 섹터 체계를 "수정 섹터" 27개(+기타2)로 전면 교체함
+# (temporary/피싱_섹터.xlsx, §6-24) — 그 27개는 이미 최종 그룹 단위라 그대로 통과시키고,
+# 여기엔 혹시 과거에 팔았던 종목이 옛 세분류 섹터를 달고 재매수될 때를 대비한 레거시→신체계
+# 흡수 매핑만 최소로 남겨둔다. (예전엔 인터넷→반도체, 화장품→소비재 같은 병합이 있었는데
+# 새 체계에선 인터넷·화장품·게임·조선·의료기기가 전부 독립 섹터라 그 병합을 걷어냈다.)
 SECTOR_GROUP_MAP = {
-    "유통": "유통 물류",
-    "물류": "유통 물류",
     "반도체소재": "반도체",
     "반도체장비": "반도체",
-    "인터넷": "반도체",
     "건자재": "건설",
-    "건설": "건설",
-    "제지": "소비재",
-    "섬유의류": "소비재",
-    "화장품": "소비재",
-    "제약바이오": "의료바이오",
-    "제약바이어": "의료바이오",  # 오타 대비
-    "의료기기": "의료바이오",
-    "해운": "해운",
-    "조선": "해운",
     "엔터테인먼트": "엔터",
-    "게임": "엔터",
-    "렌탈서비스": "서비스",
+    "렌탈서비스": "렌탈",
 }
 
 
@@ -230,7 +221,7 @@ def load_holdings() -> pd.DataFrame:
         sector_cache = load_sector_cache()
         need_sector = df["섹터"] == ""
         if need_sector.any() and sector_cache:
-            df.loc[need_sector, "섹터"] = df.loc[need_sector, "종목명"].map(sector_cache).fillna("")
+            df.loc[need_sector, "섹터"] = df.loc[need_sector, "종목명"].map(sector_cache).fillna("기타2")
 
         return df[HOLD_COLUMNS]
     return pd.DataFrame(columns=HOLD_COLUMNS)
@@ -611,7 +602,7 @@ def load_watchlist() -> pd.DataFrame:
             if col not in df.columns:
                 df[col] = ""
         sector_cache = load_sector_cache()
-        df["섹터"] = df["종목명"].map(sector_cache).fillna("미분류")
+        df["섹터"] = df["종목명"].map(sector_cache).fillna("기타2")
         return df[["종목명", "종목코드", "섹터"]]
     return pd.DataFrame(columns=["종목명", "종목코드", "섹터"])
 
@@ -769,7 +760,7 @@ def load_watchlist_history_db(supabase_url: str, supabase_key: str) -> pd.DataFr
 
     df = pd.DataFrame(rows)
     df["종목명"] = df["stock_code"].map(lambda c: wl.get(c, {}).get("stock_name", c))
-    df["섹터"] = df["stock_code"].map(lambda c: wl.get(c, {}).get("sector") or "미분류")
+    df["섹터"] = df["stock_code"].map(lambda c: wl.get(c, {}).get("sector") or "기타2")
     df = df.rename(columns={"stock_code": "종목코드", "trade_date": "날짜",
                              "close_price": "종가", "change_pct": "등락률"})
     return df[["종목코드", "종목명", "섹터", "날짜", "종가", "등락률"]]
@@ -816,7 +807,7 @@ def load_investor_flow_db(supabase_url: str, supabase_key: str) -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
     df["종목명"] = df["stock_code"].map(lambda c: wl.get(c, {}).get("stock_name", c))
-    df["섹터"] = df["stock_code"].map(lambda c: wl.get(c, {}).get("sector") or "미분류")
+    df["섹터"] = df["stock_code"].map(lambda c: wl.get(c, {}).get("sector") or "기타2")
     df = df.rename(columns={"stock_code": "종목코드", "trade_date": "날짜", "volume": "거래량",
                              "institution_net": "기관순매수", "foreign_net": "외국인순매수",
                              "foreign_pct": "외국인보유율"})
@@ -2209,7 +2200,7 @@ def compute_metrics(df: pd.DataFrame, cash: float):
     df = df.copy()
     for col in ("수량", "평단가", "현재가", "등락률"):
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-    df["섹터"] = df["섹터"].replace("", "미분류").fillna("미분류")
+    df["섹터"] = df["섹터"].replace("", "기타2").fillna("기타2")
 
     df["평가금액"] = df["수량"] * df["현재가"]
     df["매입금액"] = df["수량"] * df["평단가"]
@@ -2277,7 +2268,7 @@ def apply_transaction(holdings: pd.DataFrame, state: dict, name: str, kind: str,
             new_row.update({
                 "종목명": name,
                 "종목코드": (code_cache or {}).get(name, ""),
-                "섹터": (sector_cache or {}).get(name, "미분류"),
+                "섹터": (sector_cache or {}).get(name, "기타2"),
                 "수량": qty, "평단가": price, "현재가": price,
                 "등락률": 0.0, "업데이트시각": now_kst_str(),
             })
