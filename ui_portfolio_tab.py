@@ -429,7 +429,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # (주식 총자산 대비 비중 기준 순위로 고정 배정 — 예전에는 이 매핑이 두 벌 따로 있어서
     #  종목카드 섹터 태그 색이 파이차트/막대와 다르게 나오는 경우가 있었음)
     stock_weights = compute_sector_weights(df)  # {섹터그룹: 주식 총자산 대비 %}
-    stock_weight_rank = sorted(stock_weights.items(), key=lambda x: x[1], reverse=True)
+    # 비중 큰 순 정렬하되 "기타2"(153 밖 미분류 묶음, §6-24)는 비중과 무관하게 항상 맨 밑
+    stock_weight_rank = sorted(stock_weights.items(), key=lambda x: (x[0] == "기타2", -x[1]))
     color_map = {name: SECTOR_PALETTE[i % len(SECTOR_PALETTE)] for i, (name, _) in enumerate(stock_weight_rank)}
 
     # ---- 섹터 비중 도넛 + 목표 비중 관리 ----
@@ -442,7 +443,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         sector_val = df_grp.groupby("섹터그룹")["평가금액"].sum().to_dict()
         if include_cash and state["cash"] > 0:
             sector_val[CASH_LABEL] = state["cash"]
-        sector_items = sorted(sector_val.items(), key=lambda x: x[1], reverse=True)
+        sector_items = sorted(sector_val.items(), key=lambda x: (x[0] == "기타2", -x[1]))  # 기타2는 맨 밑
         denom = sum(v for _, v in sector_items)
 
         if denom > 0 and sector_items:
