@@ -1,0 +1,319 @@
+<title>오리진과 헷지, 지금 한 몸이다</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d;   /* 상승·이익 — 국내 관례 빨강 */
+    --loss:#2c5fc4;   /* 하락·손실 — 국내 관례 파랑 */
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:56px 24px 96px}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{
+    font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-faint); font-weight:600; margin-bottom:14px;
+  }
+  h1{
+    font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400;
+    font-size:2.5rem; line-height:1.18; letter-spacing:-.01em;
+    margin:0 0 18px; text-wrap:balance;
+  }
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{
+    margin-top:22px; padding-top:16px; border-top:1px solid var(--rule);
+    font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap;
+  }
+
+  h2{
+    font-size:1.02rem; font-weight:700; letter-spacing:.01em;
+    margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule);
+    display:flex; align-items:baseline; gap:10px;
+  }
+  h2 .n{
+    font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent);
+    font-weight:500;
+  }
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px; color:var(--ink)}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{
+    background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--warn);
+    border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow);
+  }
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+
+  table{
+    width:100%; border-collapse:collapse; margin:20px 0; font-size:14px;
+  }
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:9px 12px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{
+    border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft);
+    font-size:12.5px; letter-spacing:.02em;
+  }
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  .row-head td:first-child{font-weight:600}
+  td .sub{display:block; font-size:11.5px; color:var(--ink-faint); font-family:"IBM Plex Sans KR"}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+
+  .bars{margin:22px 0}
+  .bar-row{display:grid; grid-template-columns:96px 1fr 46px; gap:10px; align-items:center; margin:6px 0; font-size:13px}
+  .bar-row .lab{color:var(--ink-soft); text-align:right; font-size:12.5px}
+  .track{background:var(--rule-soft); border-radius:4px; height:16px; position:relative; overflow:hidden}
+  .fill{position:absolute; inset:0 auto 0 0; border-radius:4px}
+  .fill.o{background:var(--gain); opacity:.82}
+  .fill.h{background:var(--loss); opacity:.78}
+  .bar-row .val{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-soft)}
+  .legend{display:flex; gap:16px; font-size:12px; color:var(--ink-soft); margin:4px 0 0 106px}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .dot{width:9px; height:9px; border-radius:2px; display:inline-block}
+  .dot.o{background:var(--gain)} .dot.h{background:var(--loss)}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+  .rec li::before{content:counter(rec); counter-increment:rec; color:var(--accent); font-family:"IBM Plex Mono",monospace; font-weight:500; font-size:12px; top:1px}
+  .rec{counter-reset:rec}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .bar-row{grid-template-columns:72px 1fr 42px}
+    .legend{margin-left:82px}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table{box-shadow:none}
+    h2{break-after:avoid} table,.bars,.verdict{break-inside:avoid}
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">계좌 구조 점검 · Orchestra × Orchestration</div>
+  <h1>오리진과 헷지, 지금은 한 몸이다</h1>
+  <p class="dek">new1(Orchestra)과 meritz(Orchestration)를 “코어 + 헷지”로 나눠 굴리고 있지만,
+  2026년 9월 9일 현재 두 계좌는 <strong>같은 국내 밸류 포트폴리오의 크기만 다른 복제본</strong>이다.
+  헷지 역할을 하던 축(나스닥·반도체)이 비어 있어, 분산 효과가 거의 사라진 상태다.</p>
+  <div class="meta">
+    <span>작성 2026-09-09 (장중 스냅샷 기준)</span>
+    <span>표본 8/14 ~ 9/9 · 거래일 17일</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <p class="lead">판정: 계좌를 둘로 나눈 값을 못 뽑고 있다.</p>
+  <p>meritz가 보유한 <strong>39종목 전부가 new1의 73종목 안에 들어 있다</strong>(100% 부분집합).
+  섹터 구성도 사실상 동일 — 둘 다 식품·의료바이오·의류·소비재에 몰린 저부채 밸류 북이다.
+  둘의 실질적 차이는 <strong>meritz가 현금을 더 들고 있다는 것 하나</strong>(50% vs 33%)뿐이다.</p>
+  <p>원래 헷지를 맡던 나스닥·반도체 슬리브(RedWire, USD)는 “묵혀둔다”며 아카이브됐고,
+  그 자리를 메운 게 없다. 그래서 <strong>new1의 최대 구조적 리스크(삼성·SK하이닉스 0%)를
+  meritz가 전혀 덮어주지 못한다.</strong> 반도체 주도장이 이어지면 두 계좌가 같이 뒤처진다.</p>
+</div>
+
+<h2><span class="n">01</span> 한눈에</h2>
+<div class="scroll">
+<table>
+  <thead>
+    <tr><th>지표</th><th>Orchestra · new1</th><th>Orchestration · meritz</th></tr>
+  </thead>
+  <tbody>
+    <tr class="row-head"><td>역할</td><td>오리진 (코어)</td><td>헷지 (2차 계층)</td></tr>
+    <tr><td>최초자본</td><td class="num">10,000,000</td><td class="num">8,000,000</td></tr>
+    <tr><td>총자산</td><td class="num">10,064,692</td><td class="num">8,023,751</td></tr>
+    <tr><td>누적수익 <span class="sub">계좌개설 기준</span></td>
+        <td class="num gain">+0.65%</td><td class="num gain">+0.30%</td></tr>
+    <tr><td>누적수익 <span class="sub">8/14 리베이스</span></td>
+        <td class="num loss">−0.50%</td><td class="num gain">+0.30%</td></tr>
+    <tr><td>예수금 비중</td><td class="num">33.4%</td><td class="num">50.1%</td></tr>
+    <tr><td>보유 종목 수</td><td class="num">73</td><td class="num">39</td></tr>
+    <tr><td>평가손익 <span class="sub">미실현</span></td>
+        <td class="num loss">−354,649</td><td class="num loss">−82,313</td></tr>
+    <tr><td>하락 방어 ERA <span class="sub">하락일 방어 성공</span></td>
+        <td class="num">9 / 9</td><td class="num">9 / 9</td></tr>
+    <tr><td>상승 참여 PCT <span class="sub">상승일 승리</span></td>
+        <td class="num loss">2 / 8</td><td class="num loss">0 / 7</td></tr>
+    <tr><td>DC 하락 캡처 <span class="sub">계좌 · 낮을수록 방어</span></td>
+        <td class="num">0.10</td><td class="num">0.03</td></tr>
+    <tr><td>UC 상승 캡처 <span class="sub">계좌 · 높을수록 참여</span></td>
+        <td class="num">0.07</td><td class="num">0.08</td></tr>
+    <tr><td>USD·나스닥 노출</td><td class="num">0</td><td class="num">0</td></tr>
+  </tbody>
+</table>
+</div>
+<p>두 계좌 다 <strong>하락일은 100% 방어</strong>(ERA 9/9)했다. 여기까진 설계대로다.
+문제는 그 아래 줄들 — 상승 참여율이 바닥이고(meritz는 0/7), 두 계좌의 성격 지표가
+거의 겹친다는 점이다.</p>
+
+<h2><span class="n">02</span> 근거 ① — 보유종목이 100% 포개진다</h2>
+<p>meritz의 39종목은 <strong>하나도 빠짐없이</strong> new1의 73종목 안에 있다. meritz만
+따로 들고 있는 이름은 <strong>0개</strong>다. 즉 meritz는 new1에서 상위 종목을 추려 담은
+축소판이지, 다른 판단으로 고른 별도 바스켓이 아니다.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>겹침</th><th>new1 주식평가액 중</th><th>meritz 주식평가액 중</th></tr></thead>
+  <tbody>
+    <tr><td>공통 39종목이 차지하는 비중</td><td class="num">68.1%</td><td class="num">100.0%</td></tr>
+    <tr><td>Top5 <span class="sub">두 계좌 공통</span></td>
+      <td colspan="2" style="text-align:left">CJ제일제당 · 서흥 · 오리온 · 영원무역 · OCI홀딩스 — 순위까지 거의 동일</td></tr>
+  </tbody>
+  <caption>meritz는 new1 ⊃ meritz. 두 계좌를 합쳐도 새로 더해지는 종목이 없다 → 합산 분산효과 ≈ new1 단독.</caption>
+</table>
+</div>
+
+<h2><span class="n">03</span> 근거 ② — 섹터·팩터가 같다</h2>
+<div class="bars">
+  <div class="bar-row"><span class="lab">식품</span>
+    <span class="track"><span class="fill o" style="width:58%"></span></span><span class="val">23 / 26</span></div>
+  <div class="bar-row"><span class="lab">의료바이오</span>
+    <span class="track"><span class="fill h" style="width:46%"></span></span><span class="val">15 / 18</span></div>
+  <div class="bar-row"><span class="lab">의류</span>
+    <span class="track"><span class="fill o" style="width:26%"></span></span><span class="val">6 / 10</span></div>
+  <div class="bar-row"><span class="lab">소비재</span>
+    <span class="track"><span class="fill h" style="width:21%"></span></span><span class="val">8 / 8</span></div>
+  <div class="bar-row"><span class="lab">유통·물류</span>
+    <span class="track"><span class="fill o" style="width:19%"></span></span><span class="val">8 / 6</span></div>
+  <div class="bar-row"><span class="lab">반도체(대형)</span>
+    <span class="track"><span class="fill h" style="width:3%"></span></span><span class="val">0 / 0</span></div>
+  <div class="legend">
+    <span><span class="dot o"></span>Orchestra %</span>
+    <span><span class="dot h"></span>Orchestration %</span>
+  </div>
+</div>
+<p>둘 다 상위 5개 섹터가 <strong>식품·의료바이오·의류·소비재·유통</strong>으로 동일하고
+비중 순서도 같다. 저부채·필수재 밸류라는 <strong>하나의 팩터</strong>에 두 계좌가 같이 올라타
+있다. 팩터가 어긋나야 헷지인데, 지금은 같은 배를 두 번 탄 셈이다.</p>
+
+<h2><span class="n">04</span> 근거 ③ — 같은 날 같은 방향으로 움직인다</h2>
+<p>8/14를 0으로 맞춘 두 계좌의 누적수익 곡선은 거의 붙어 다닌다. 8/18 동반 하락,
+8/25~28 동반 상승, 9/2 동반 하락. 갈라진 날은 손에 꼽는다.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>구간</th><th>Orchestra</th><th>Orchestration</th><th>메모</th></tr></thead>
+  <tbody>
+    <tr><td>8/18 (첫 거래일)</td><td class="num loss">−0.75%</td><td class="num loss">−0.01%</td><td style="text-align:left">동반 하락</td></tr>
+    <tr><td>8/25</td><td class="num gain">+1.26%</td><td class="num gain">+1.27%</td><td style="text-align:left">동반 급등 (일간)</td></tr>
+    <tr><td>9/2</td><td class="num loss">−0.88%</td><td class="num loss">−0.06%</td><td style="text-align:left">동반 하락</td></tr>
+    <tr><td>9/9 <span class="sub">반도체 주도장</span></td><td class="num loss">−0.50%</td><td class="num gain">+0.30%</td><td style="text-align:left">갈림 — 현금 50% 완충</td></tr>
+  </tbody>
+  <caption>일간변화 상관계수 r ≈ 0.47, meritz 일간 변동폭은 Orchestra의 0.62배. 상관이 완전히 1이
+  아닌 건 meritz가 현금을 절반 들고 있어 신호가 희석돼서지, 다른 자산을 담아서가 아니다.</caption>
+</table>
+</div>
+
+<h2><span class="n">05</span> 근거 ④ — 헷지축이 비어 있다</h2>
+<p>구조의 원래 의도는 <strong>new1 = 국내 밸류, meritz = 나스닥·반도체·성장(RedWire, USD)</strong>으로
+서로 다른 엔진을 물리는 것이었다. 그런데 RedWire를 “묵혀둔다”며 아카이브한 뒤로 meritz는
+<strong>통화 100% 원화, 국내 밸류 100%</strong>가 됐다.</p>
+<div class="callout">
+  <div class="h">지금 덮이지 않는 리스크</div>
+  코스피 시가총액의 절반 이상이 삼성전자·삼성전자우·SK하이닉스다. 이 계좌 구조는 그 셋을
+  하나도 안 담는다. 9/9처럼 반도체가 3~4%씩 달리는 날, <strong>두 계좌가 함께</strong> 지수를
+  못 따라간다. meritz가 이 갭을 메워주도록 설계됐었는데, 지금은 같이 뒤처지는 쪽에 서 있다.
+</div>
+
+<h2><span class="n">06</span> 그래서, 잘 되고 있는 건 뭔가</h2>
+<ul>
+  <li><strong>하락 방어는 진짜다.</strong> 8/14 이후 하락일 <strong>전부</strong>(ERA 9/9) 두 계좌 모두
+  방어. 밸류 + 현금 쿠션이 제 역할을 하고 있다. 9/8 하락일엔 Orchestra가 오히려 +0.14%.</li>
+  <li><strong>meritz의 현금 50%가 완충한다.</strong> 9/9 하락 구간에서 Orchestra −0.50% vs
+  Orchestration +0.30%. 다만 이건 “다른 자산의 헷지”가 아니라 “덜 투자된 상태”의 효과다.</li>
+  <li><strong>손실 규모가 관리되고 있다.</strong> 표본 전체가 약세장이었는데 두 계좌 합산 미실현손실이
+  자산 대비 2~4%대. 손절 없이 버티는 중.</li>
+</ul>
+
+<h2><span class="n">07</span> 안 되고 있는 것</h2>
+<ul>
+  <li><strong>분산이 안 된다.</strong> 두 계좌 = 사실상 한 계좌. 종목·섹터·팩터가 겹쳐서, 나눠 굴리는
+  운영 오버헤드(매매일지 2번, 스냅샷 2번, 리포트 2번)만 있고 리스크 분산 이득은 거의 0.</li>
+  <li><strong>meritz의 UC 0/7.</strong> 상승일을 한 번도 못 이겼다. 현금 50%로 상승장을 아예 포기한
+  상태 — “헷지”라기보다 “절반 쉬는 복제본”. 헷지라면 상승장에서 <em>다른 이유로</em> 벌어야 한다.</li>
+  <li><strong>상승 참여가 구조적으로 막혀 있다.</strong> Orchestra PCT 2/8. 이 표본의 상승일이 죄다
+  반도체 멜트업이라 반도체 0%인 두 계좌 다 못 따라간다. 국면이 바뀌기 전까지 이 약점은 고정.</li>
+</ul>
+
+<h2><span class="n">08</span> 제안</h2>
+<p>“둘로 나눈다”는 결정을 유지하려면, 두 계좌가 <strong>다른 것</strong>을 해야 한다. 세 갈래:</p>
+<ul class="rec">
+  <li><strong>헷지축 복구.</strong> meritz에 나스닥·반도체 슬리브를 되살린다 — RedWire 재가동, 또는
+  국내 반도체/성장주(예: SK하이닉스·한미반도체 급)로 meritz의 10~20%. 그러면 9/9 같은 날 두
+  계좌가 갈라지고, 합산 곡선이 매끄러워진다. <em>가장 원래 의도에 가까움.</em></li>
+  <li><strong>meritz를 “드라이파우더”로 명시.</strong> 헷지를 포기하는 대신, meritz의 현금 50%를
+  “지수 −X% 트리거에 Orchestra로 투입하는 실탄”으로 규칙화한다. 분산은 아니지만 역할이
+  분명해지고, 지금의 애매한 “현금 많은 복제본” 상태를 정리한다.</li>
+  <li><strong>팩터 분리.</strong> new1 = 딥밸류·저부채 유지, meritz = 모멘텀·실적개선·리레이팅 후보로
+  재정의. 같은 국내 주식이어도 고르는 기준이 반대면 상관이 떨어진다. 운영은 지금과 동일.</li>
+</ul>
+<p>어느 쪽이든, 지금처럼 <strong>meritz가 new1의 부분집합인 상태만은 벗어나야</strong> 계좌를 둘로
+쓰는 의미가 생긴다.</p>
+
+<h2><span class="n">09</span> 부록 — Top 15 보유 비교</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>종목</th><th>Orchestra 비중</th><th>Orchestration 비중</th><th>공통</th></tr></thead>
+  <tbody>
+    <tr><td>CJ제일제당</td><td class="num">8.1%</td><td class="num">9.1%</td><td>●</td></tr>
+    <tr><td>서흥</td><td class="num">5.0%</td><td class="num">8.9%</td><td>●</td></tr>
+    <tr><td>오리온</td><td class="num">3.6%</td><td class="num">9.1%</td><td>●</td></tr>
+    <tr><td>영원무역</td><td class="num">3.3%</td><td class="num">7.5%</td><td>●</td></tr>
+    <tr><td>OCI홀딩스</td><td class="num">3.3%</td><td class="num">5.4%</td><td>●</td></tr>
+    <tr><td>JYP Ent.</td><td class="num">3.5%</td><td class="num">3.0%</td><td>●</td></tr>
+    <tr><td>SK텔레콤</td><td class="num">1.4%</td><td class="num">4.6%</td><td>●</td></tr>
+    <tr><td>한국단자</td><td class="num">2.5%</td><td class="num">4.2%</td><td>●</td></tr>
+    <tr><td>코오롱티슈진</td><td class="num">2.3%</td><td class="num">3.9%</td><td>●</td></tr>
+    <tr><td>GS리테일</td><td class="num">1.9%</td><td class="num">3.1%</td><td>●</td></tr>
+    <tr><td>NAVER</td><td class="num">3.2%</td><td class="num">—</td><td></td></tr>
+    <tr><td>신세계인터내셔날</td><td class="num">2.8%</td><td class="num">2.9%</td><td>●</td></tr>
+    <tr><td>메리츠금융지주</td><td class="num">1.9%</td><td class="num">—</td><td></td></tr>
+    <tr><td>대한화섬</td><td class="num">1.7%</td><td class="num">—</td><td></td></tr>
+    <tr><td>현대백화점</td><td class="num">1.5%</td><td class="num">—</td><td></td></tr>
+  </tbody>
+  <caption>meritz는 “—” 표시된 이름이 없다(= new1의 부분집합). new1에만 있는 종목도 대부분
+  소형 신규 편입이라 팩터를 바꾸진 않는다.</caption>
+</table>
+</div>
+
+<footer>
+  Orchestra × Orchestration 계좌 구조 점검 · 2026-09-09 · new1/report/<br>
+  수치는 장중 스냅샷 기준(보유 시세 9/9 실시간). 8/14 리베이스 = 8/14 종가를 0으로 놓은 누적수익.
+  DC/UC·ERA·PCT 정의는 앱 “지수 대비 계좌” 패널과 동일.
+</footer>
+</div>
