@@ -712,6 +712,69 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         )
                     st.markdown("".join(row_parts), unsafe_allow_html=True)
 
+    # ---- Bench: 한 번도 매수한 적 없는 관심종목 (소외종목) ----
+    # watchlist 중 transactions에 매수 이력이 0인 종목만. Fishing과 같은 행 포맷이지만
+    # ±3% 필터·순위변동 배지는 없다(전부 표시). 정렬: 매수횟수 asc(지금은 전부 0이라 사실상
+    # 무의미) → 선택 기준(누적/전일)·방향(DOWN/UP) → 현재가 desc("단가 높은 순" 타이브레이크,
+    # 화면엔 안 보임). 미보유 종목이 50개 이하로 줄면 상위 30개만 — 그때 모집단을 watchlist
+    # 전체로 넓힐지는 재논의(2026-09-09, 사용자가 "q6는 나중" 이라고 보류). Fishing의
+    # 새로고침이 채워둔 st.session_state["fishing_prices"]를 그대로 재사용(별도 조회 안 함).
+    with st.expander("Bench", expanded=False):
+        bench_prices = st.session_state.get("fishing_prices", pd.DataFrame())
+        if bench_prices.empty:
+            st.caption("Fishing에서 새로고침을 먼저 눌러주세요.")
+        else:
+            wl_names = load_watchlist()["종목명"].tolist()
+            ever_bought = set(tx.loc[tx["구분"] == "매수", "종목명"])
+            buy_counts = tx[tx["구분"] == "매수"].groupby("종목명").size().to_dict()
+            never = [n for n in wl_names if n not in ever_bought]
+            never_set = set(never)
+
+            bench_rows = []
+            for _, r in bench_prices.iterrows():
+                if r["종목명"] not in never_set:
+                    continue
+                try:
+                    origin, last, pct_ref = float(r["최초가"]), float(r["최근가"]), float(r["전일대비"])
+                except (TypeError, ValueError):
+                    continue
+                pct_origin = (last - origin) / origin * 100 if origin else 0.0
+                bench_rows.append({"종목명": r["종목명"], "현재가": last, "pct_ref": pct_ref,
+                                   "pct_origin": pct_origin, "buy_count": buy_counts.get(r["종목명"], 0)})
+
+            st.caption(f"관심종목 {len(wl_names)}개 중 한 번도 매수 안 한 종목 {len(never)}개")
+
+            bc1, bc2 = st.columns(2)
+            with bc1:
+                bench_basis = st.radio("기준", ["누적", "전일"], horizontal=True,
+                                       label_visibility="collapsed", key="bench_basis")
+            with bc2:
+                bench_dir = st.radio("방향", ["DOWN", "UP"], horizontal=True,
+                                     label_visibility="collapsed", key="bench_dir")
+
+            bench_metric = "pct_origin" if bench_basis == "누적" else "pct_ref"
+            bench_rows.sort(key=lambda x: (
+                x["buy_count"],
+                -x[bench_metric] if bench_dir == "UP" else x[bench_metric],
+                -x["현재가"],
+            ))
+            bench_shown = bench_rows if len(never) > 50 else bench_rows[:30]
+
+            if not bench_shown:
+                st.caption("표시할 종목이 없습니다.")
+            else:
+                bench_parts = []
+                for i, f in enumerate(bench_shown, 1):
+                    bench_parts.append(
+                        f'<div class="updown-row"><span class="rank">{i}</span>'
+                        f'<span class="name">{f["종목명"]}</span>'
+                        f'<span class="pct" style="color:{UP_COLOR if f["pct_origin"] >= 0 else DOWN_COLOR}">'
+                        f'{"+" if f["pct_origin"] >= 0 else ""}{f["pct_origin"]:.1f}%</span>'
+                        f'<span class="pct" style="color:{UP_COLOR if f["pct_ref"] >= 0 else DOWN_COLOR}">'
+                        f'{"+" if f["pct_ref"] >= 0 else ""}{f["pct_ref"]:.1f}%</span></div>'
+                    )
+                st.markdown("".join(bench_parts), unsafe_allow_html=True)
+
     # ---- Volume / Foreigner: 거래량·외국인 수급이 평소보다 튀는 종목 (2026-08-24 신설) ----
     # investor_flow(종목별)/market_flow(시장 전체) 테이블을 조회해서 compute_volume_flags/
     # compute_foreign_flags로 "오늘 vs 그동안 쌓인 평균" 차이가 큰 순으로 보여준다.
