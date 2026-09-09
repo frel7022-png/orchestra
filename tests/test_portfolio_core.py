@@ -103,6 +103,24 @@ def test_rebuild_portfolio_basic_cash_and_holdings():
     assert state["cash"] == pytest.approx(1_000_000 - 10 * 1000 + 4 * 1200)
 
 
+def test_deposit_row_bumps_cash_only():
+    """구분="입금" 행(예탁금 이용료 등)은 예수금만 늘리고 보유종목/실현손익/사이클엔
+    영향이 없어야 한다. "출금"은 반대."""
+    tx = pd.DataFrame([
+        _tx_row("1", "2026-01-02", "A", "매수", 10, 1000),
+        _tx_row("2", "2026-01-10", "", "입금", 1, 12345, 메모="예탁금이용료"),
+        _tx_row("3", "2026-01-20", "", "출금", 1, 2345, 메모="테스트출금"),
+    ])
+    holdings, state, tx_out = core.rebuild_portfolio_from_transactions(tx, initial_capital=1_000_000)
+
+    assert list(holdings["종목명"]) == ["A"]                       # 입금/출금이 종목을 만들지 않음
+    assert holdings[holdings["종목명"] == "A"].iloc[0]["수량"] == 10
+    assert state["cash"] == pytest.approx(1_000_000 - 10 * 1000 + 12345 - 2345)
+    dep = tx_out[tx_out["구분"].isin(["입금", "출금"])]
+    assert (dep["실현손익"].astype(str).isin(["", "nan", "None"])).all()  # 실현손익 안 붙음
+    assert core._all_cycles(tx) == core._all_cycles(tx[tx["구분"] == "매수"])  # 사이클 계산 불변
+
+
 def test_rebuild_portfolio_same_date_replays_in_original_row_order():
     """같은 날짜 안에서는 tx 안의 원래 행 순서대로(입력순) 재생돼야 한다(§1-1) —
     매수/매도가 같은 날짜에 섞여 있으면 순서에 따라 평단가/실현손익이 달라지므로,

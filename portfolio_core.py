@@ -1699,6 +1699,9 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
     if tx is None or tx.empty:
         return []
     t = tx.copy()
+    t = t[t["구분"].isin(["매수", "매도"])].copy()  # 입금/출금(예수금 이자 등) 행은 사이클과 무관
+    if t.empty:
+        return []
     t["수량"] = pd.to_numeric(t["수량"], errors="coerce").fillna(0.0)
     t["단가"] = pd.to_numeric(t["단가"], errors="coerce").fillna(0.0)
     t["실현손익"] = pd.to_numeric(t["실현손익"], errors="coerce").fillna(0.0)
@@ -2249,6 +2252,12 @@ def apply_transaction(holdings: pd.DataFrame, state: dict, name: str, kind: str,
     holdings = holdings.copy()
     realized = None
     match = holdings.index[holdings["종목명"] == name]
+
+    if kind in ("입금", "출금"):
+        # 예탁금 이용료(예수금 이자) 등 매매와 무관한 현금 증감. 보유종목/실현손익엔 영향 없음.
+        # 메모가 DAILY_IMPORT_TAG가 아니라서 ingest_daily 재반영에도 안 지워진다.
+        state["cash"] += qty * price if kind == "입금" else -(qty * price)
+        return holdings, state, None
 
     if kind == "매수":
         cost = qty * price

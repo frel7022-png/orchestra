@@ -788,12 +788,26 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         for _, r in day_tx.iterrows():
             realized = r["실현손익"]
             right_html = ""
+            memo_html = f' · {r["메모"]}' if str(r["메모"]) not in ("", "nan") else ""
+            if r["구분"] in ("입금", "출금"):
+                amt = float(r["수량"]) * float(r["단가"])
+                sign = "+" if r["구분"] == "입금" else "-"
+                right_html = f'<span style="color:{UP_COLOR if r["구분"] == "입금" else DOWN_COLOR}">{sign}{amt:,.0f}원</span>'
+                card_parts.append(f"""
+            <div class="tx-card">
+                <div class="tx-left">
+                    <span class="name">{str(r["메모"]) if str(r["메모"]) not in ("", "nan") else r["구분"]}</span>
+                    <span class="meta">{r['구분']}</span>
+                </div>
+                <div class="tx-right">{right_html}</div>
+            </div>
+            """)
+                continue
             if r["구분"] == "매도" and str(realized) not in ("", "nan"):
                 rv = float(realized)
                 trc = UP_COLOR if rv >= 0 else DOWN_COLOR
                 trs = "+" if rv >= 0 else ""
                 right_html = f'<span style="color:{trc}">{trs}{rv:,.0f}원</span>'
-            memo_html = f' · {r["메모"]}' if str(r["메모"]) not in ("", "nan") else ""
             card_parts.append(f"""
             <div class="tx-card">
                 <div class="tx-left">
