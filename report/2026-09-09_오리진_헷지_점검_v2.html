@@ -1,0 +1,227 @@
+<title>규율로 갈린 한 쌍</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:56px 24px 96px}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:14px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.5rem; line-height:1.18; letter-spacing:-.01em; margin:0 0 18px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:22px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-size:1.02rem; font-weight:700; letter-spacing:.01em; margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent); font-weight:500}
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent); border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow)}
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+  .correction{background:var(--warn-wash); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:22px 0; font-size:13.5px}
+  .correction .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--warn); margin-bottom:8px}
+  .correction ul{margin:6px 0 0}
+
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:14px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:9px 12px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12.5px; letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  tr.tot td{border-top:1.5px solid var(--rule); font-weight:600}
+  td .sub{display:block; font-size:11.5px; color:var(--ink-faint); font-family:"IBM Plex Sans KR"}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+  .chk{color:var(--accent); font-weight:600}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; box-shadow:var(--shadow)}
+  .stat .k{font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; margin-top:3px}
+  .stat .c{font-size:12px; color:var(--ink-soft); margin-top:2px}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table,.stat{box-shadow:none}
+    h2{break-after:avoid} table,.verdict,.stat-grid{break-inside:avoid}
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">계좌 구조 점검 v2 · Orchestra × Orchestration</div>
+  <h1>규율로 갈린 한 쌍</h1>
+  <p class="dek">v1은 “meritz가 new1의 복제본이라 분산이 안 된다”고 봤다. 그건 <strong>틀린 잣대</strong>였다.
+  두 계좌는 서로를 헷지하는 관계가 아니다 — 반도체·성장 축은 별도의 나스닥 계좌(약 1.35억, 이 둘의 7배)가
+  진다. new1과 meritz는 <strong>같은 국내 밸류 바스켓을 정반대 규율로 굴리는 한 쌍</strong>이고,
+  그 목적(“meritz가 더 낮은 손익률을 유지한다”)은 <strong>또렷하게 달성되고 있다</strong>.</p>
+  <div class="meta">
+    <span>작성 2026-09-09 (v1 정정판)</span>
+    <span>표본 8/14 ~ 9/9 · 거래일 17일</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <p class="lead">판정: 최초 설계대로 작동 중. 유지.</p>
+  <p>같은 39종목을 두 계좌가 함께 들고 있지만, <strong>meritz의 가중 손익률 −2.0% vs new1 −6.8%</strong>.
+  39개 중 <strong>37개</strong>에서 meritz가 더 낫다. meritz는 물타기·회전을 절제하고 진입 원가를 지켰고,
+  new1은 적극적으로 물을 타고 이익을 realize했다. 둘 다 자기 역할을 하고 있다.</p>
+</div>
+
+<div class="correction">
+  <div class="h">v1이 잘못 깐 전제</div>
+  <ul>
+    <li><strong>“new1과 meritz가 서로의 반도체 공백을 메워야 한다”</strong> — 아니다. 그 역할은
+    나스닥 계좌(≈1.35억)가 별도로 진다. 국내 두 계좌에 반도체를 넣을 이유가 없다.</li>
+    <li><strong>“39종목이 겹치니 두 계좌는 한 몸”</strong> — 겹치는 건 <em>보유 종목</em>이지
+    <em>운용 규율</em>이 아니다. meritz가 그 39개에서 이익 실현을 거의 안 했을 뿐,
+    손익률·거래빈도·물타기 강도가 전혀 다르다.</li>
+  </ul>
+</div>
+
+<h2><span class="n">01</span> 진짜 KPI — 같은 39종목, 손익률 비교</h2>
+<div class="stat-grid">
+  <div class="stat">
+    <div class="k">Orchestra · new1</div>
+    <div class="v loss">−6.84%</div>
+    <div class="c">공통 39종목 가중 손익률 · 평가 456.8만 / 원가 490.3만</div>
+  </div>
+  <div class="stat">
+    <div class="k">Orchestration · meritz</div>
+    <div class="v loss">−2.01%</div>
+    <div class="c">공통 39종목 가중 손익률 · 평가 400.4만 / 원가 408.6만</div>
+  </div>
+</div>
+<p>같은 이름, 같은 시장, 같은 약세 구간인데 손익률이 <strong>4.8%p</strong> 벌어진다.
+meritz가 더 나은 종목이 <strong>37 / 39</strong> (밀린 건 비츠로셀·원익QnC 둘, 그나마 둘 다 이익 구간).</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>종목 <span class="sub">공통 상위</span></th><th>new1 손익률</th><th>meritz 손익률</th><th>격차</th></tr></thead>
+  <tbody>
+    <tr><td>앱클론</td><td class="num loss">−24.0%</td><td class="num loss">−4.0%</td><td class="num chk">+20.0</td></tr>
+    <tr><td>JYP Ent.</td><td class="num loss">−10.0%</td><td class="num loss">−0.5%</td><td class="num chk">+9.5</td></tr>
+    <tr><td>한샘</td><td class="num loss">−8.7%</td><td class="num gain">+1.4%</td><td class="num chk">+10.1</td></tr>
+    <tr><td>이마트</td><td class="num loss">−7.4%</td><td class="num gain">+2.2%</td><td class="num chk">+9.6</td></tr>
+    <tr><td>SK텔레콤</td><td class="num loss">−8.0%</td><td class="num gain">+0.4%</td><td class="num chk">+8.4</td></tr>
+    <tr><td>오스테오닉</td><td class="num loss">−9.0%</td><td class="num loss">−0.2%</td><td class="num chk">+8.8</td></tr>
+    <tr><td>CJ제일제당</td><td class="num loss">−5.2%</td><td class="num loss">−0.3%</td><td class="num chk">+4.9</td></tr>
+    <tr><td>서흥</td><td class="num loss">−13.0%</td><td class="num loss">−8.0%</td><td class="num chk">+5.0</td></tr>
+    <tr><td>비츠로셀</td><td class="num gain">+2.8%</td><td class="num gain">+0.8%</td><td class="num loss">−2.0</td></tr>
+    <tr><td>원익QnC</td><td class="num gain">+3.3%</td><td class="num gain">+1.7%</td><td class="num loss">−1.6</td></tr>
+    <tr class="tot"><td>공통 39 가중</td><td class="num loss">−6.84%</td><td class="num loss">−2.01%</td><td class="num chk">+4.83</td></tr>
+  </tbody>
+  <caption>손익률 = (현재가 / 평단가 − 1). meritz는 평단가가 덜 눌려 있어 같은 현재가에서 손익률이 높다.</caption>
+</table>
+</div>
+
+<h2><span class="n">02</span> 격차가 나는 이유 — 규율의 차이</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th></th><th>Orchestra · new1</th><th>Orchestration · meritz</th></tr></thead>
+  <tbody>
+    <tr><td>누적 거래</td><td class="num">487건</td><td class="num">119건</td></tr>
+    <tr><td>누적 매도</td><td class="num">158건</td><td class="num">14건</td></tr>
+    <tr><td>물타기</td><td class="num">33종목 · 104회</td><td class="num">20종목 · 50회</td></tr>
+    <tr><td>물타기 흡수</td><td class="num">+5.56%p</td><td class="num">+3.16%p</td></tr>
+    <tr><td>예수금 비중</td><td class="num">33%</td><td class="num">50%</td></tr>
+    <tr><td>실현손익 누적</td><td class="num gain">+409,342</td><td class="num gain">+106,063</td></tr>
+  </tbody>
+</table>
+</div>
+<p><strong>new1은 하락 구간에 적극적으로 물을 탄다.</strong> 물타기는 하락장에서 평단가를 계속 끌어내려
+손익률(=현재가/평단가−1)을 더 나쁘게 보이게 만든다 — 이건 손실이 아니라 <em>원가를 낮춰 반등 시
+회복 폭을 키우는</em> 전략의 정상 부산물이다. meritz는 그 반대다. 매도 14건, 물타기도 절반 수준,
+현금 50% — 진입 원가를 거의 손대지 않고 그냥 들고 있다. 그래서 손익률이 깨끗하다.</p>
+
+<h2><span class="n">03</span> 그럼 new1이 지고 있는 건가 — 아니다</h2>
+<p>손익률만 보면 new1이 밀리지만, <strong>실현손익은 new1이 4배</strong>(+409,342 vs +106,063)다.
+new1은 “버텨준 종목에서 이익을 현금화하는 엔진”이고, meritz는 “건드리지 않고 복리를 보존하는
+저장고”다. 둘은 다른 것을 최적화한다.</p>
+<div class="callout">
+  <div class="h">역할 요약</div>
+  <strong>new1 = 능동 수확 + 물타기.</strong> 회전이 빠르고, 실현손익을 쌓고, 물타기로 원가를 낮춘다.
+  손익률(paper)은 나쁘게 보이는 게 정상.<br>
+  <strong>meritz = 인내 보유.</strong> 거의 안 팔고, 원가를 지키고, 손익률 우위를 유지한다.
+  현금 50%는 상승장을 포기하는 대가로 방어와 실탄을 산다.
+</div>
+
+<h2><span class="n">04</span> 남는 관찰 — 같이 아플 수 있는 구간</h2>
+<p>두 계좌가 같은 가치 팩터(저부채·필수재) 위에 있어서, 그 팩터가 통째로 눌리는 날엔 둘 다 빠진다
+(일간 상관 r ≈ 0.47, meritz는 현금 때문에 진폭 0.62배). <strong>이건 결함이 아니라 인지사항이다</strong> —
+그 방향의 분산은 나스닥 계좌가 이미 7배 규모로 지고 있으니, 국내 두 계좌가 같은 배를 타는 건
+의도된 집중이다.</p>
+
+<h2><span class="n">05</span> 9/9 재평가</h2>
+<p>v1은 9/9에 두 계좌가 지수를 못 따라간 걸 구조적 문제로 적었다. 정정: <strong>9/9는 삼성 +1.4%,
+SK하이닉스 +3.8%가 끌어올린 상승·반도체 주도장</strong>이었다. 반도체 0%인 국내 밸류 북이 그날
+못 따라가는 건 <strong>국면 의존적 현상</strong>이지 고장이 아니다. 하락일·광범위 반등일에서의 성적이
+이 스타일의 진짜 시험대이고, 거기선 ERA 9/9(하락일 전부 방어)로 잘 버티고 있다.</p>
+
+<h2><span class="n">06</span> 결론</h2>
+<div class="stat-grid">
+  <div class="stat">
+    <div class="k">최초 목적</div>
+    <div class="v" style="font-size:1.05rem; line-height:1.5">meritz가 더 높은 이익률 /<br>더 낮은 손익률 유지</div>
+  </div>
+  <div class="stat">
+    <div class="k">현재</div>
+    <div class="v chk" style="font-size:1.05rem; line-height:1.5">달성<br><span class="c">−2.0% vs −6.8% · 37/39</span></div>
+  </div>
+</div>
+<p>구조를 바꿀 이유 없음. 유지. 다음 점검에서 볼 것 두 가지 —
+<strong>①</strong> meritz의 손익률 우위가 <em>반등장</em>에서도 유지되는지(인내 보유가 회복장에서 물타기보다
+느릴 수 있음), <strong>②</strong> new1의 실현손익(+40.9만)이 실제로 물타기 원금 증식으로 재투입되고
+있는지(P&L Actions의 시드 배수 추적).</p>
+
+<footer>
+  Orchestra × Orchestration 계좌 구조 점검 v2 · 2026-09-09 · new1/report/<br>
+  v1(2026-09-09_오리진_헷지_점검)의 프레임 오류 정정판. 수치는 장중 스냅샷 기준(보유 시세 9/9 실시간).
+  손익률 = 현재가/평단가−1. 나스닥 계좌(≈1.35억)는 이 점검 범위 밖.
+</footer>
+</div>
