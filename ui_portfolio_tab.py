@@ -30,7 +30,8 @@ _CLAUDE_MARK = ("<svg width='13' height='13' viewBox='0 0 24 24' style='vertical
 
 def _claude_read_html(T: dict) -> str:
     """포트폴리오 요약카드 Today's Take 밑에 붙는 'Claude's Read' 블록(§6-22). 네이티브
-    <details>라 클릭 시 rerun 없음. claude_daily_notes.csv 비어있으면 빈 문자열."""
+    <details>라 클릭 시 rerun 없음. **오늘(마지막) 코멘트만** 보여준다 — 지난 것 붙이지 않음
+    (2026-09-09 사용자 요청). claude_daily_notes.csv 비어있으면 빈 문자열."""
     notes = load_claude_notes()
     if notes.empty:
         return ""
@@ -44,14 +45,6 @@ def _claude_read_html(T: dict) -> str:
         return str(txt).replace("\n", "<br>")
 
     cur = notes.iloc[-1]
-    past = notes.iloc[:-1].tail(3).iloc[::-1]
-    past_html = "".join(
-        f"<div style='font-size:11px;color:{T['muted']};line-height:1.55;margin:8px 2px 0;"
-        f"padding-top:7px;border-top:1px dashed {T['border']}'>"
-        f"<span style='color:{T['muted2']};font-weight:600'>{str(r['날짜'])[5:]} {_stars(r['별점'])}</span>"
-        f"<br>{_body(r['코멘트'])}</div>"
-        for _, r in past.iterrows()
-    )
     _sum = (f"list-style:none;cursor:pointer;font-size:13px;color:{_CLAUDE_ORANGE};"
             f"font-weight:600;display:flex;align-items:center;gap:6px")
     return (
@@ -61,7 +54,7 @@ def _claude_read_html(T: dict) -> str:
         f"<span style='font-size:11px;color:{T['muted']};font-weight:400;margin-left:auto'>"
         f"{str(cur['날짜'])[5:]}</span></summary>"
         f"<div style='font-size:12px;color:{T['text']};line-height:1.65;margin:8px 2px 4px'>"
-        f"{_body(cur['코멘트'])}</div>{past_html}</details>"
+        f"{_body(cur['코멘트'])}</div></details>"
     )
 
 

@@ -1112,7 +1112,7 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
 - **뭐냐**: 포트폴리오 첫 화면 요약카드 **Today's Take 바로 밑**에, 그날 장을 세션(어시스턴트)이
   분석적으로 3~5문단 서술 + **별점 ★N/5**(보수적, 중간=★★, ½ 없음)로 평가한 것. Claude 스타버스트
   마크(오렌지 `#D97757`) + 라벨 + 별 + 날짜. 네이티브 `<details>`라 클릭해도 rerun 없음 —
-  펼치면 오늘 코멘트 + 지난 3개.
+  펼치면 **오늘(마지막) 코멘트만** (2026-09-09부터 지난 것 안 붙임).
 - **데이터**: `claude_daily_notes.csv`(날짜, 별점, 코멘트). `portfolio_core.load_claude_notes()`,
   UI는 `ui_portfolio_tab._claude_read_html(T)`. 비어있으면 블록 자체 안 그림.
 - **루틴 (하루 1회, 오후 3:30 KST 이후 = 장 마감 후)**: 매매일지 반영 + `sync_both_accounts.py`
