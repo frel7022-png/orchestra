@@ -602,16 +602,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             if not filtered:
                 st.caption("조건에 해당하는 종목이 없습니다.")
             else:
-                # 관심종목(watchlist)에도 있는 종목은 종목명을 파랑으로 (2026-09-10 사용자 요청)
-                _wl = load_watchlist()
-                _wl_names = set(_wl["종목명"]) if not _wl.empty else set()
-
-                def _updown_name(nm):
-                    style = f' style="color:{DOWN_COLOR}"' if nm in _wl_names else ""
-                    return f'<span class="name"{style}>{nm}</span>'
-
                 rows_html = "".join(
-                    f'<div class="updown-row">{_updown_name(r["종목명"])}'
+                    f'<div class="updown-row"><span class="name">{r["종목명"]}</span>'
                     f'<span class="pct" style="color:{updown_color}">{"+" if r["pct"] >= 0 else ""}{r["pct"]:.1f}%</span>'
                     f'<span class="detail">{r["매도가"]:,.0f} → {r["현재가"]:,.0f}</span></div>'
                     for r in filtered
@@ -692,8 +684,15 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     prev_ranks = get_watchlist_prev_day_ranks(
                         hist_df, fishing_basis, fishing_dir, FISHING_THRESHOLD, today_kst_str())
 
+                    # Up/Down(청산 종목 추적)에도 걸린 종목은 Fishing에서 종목명을 파랑으로
+                    # (2026-09-10 사용자 요청). Up/Down 새로고침을 눌러 결과가 있을 때만.
+                    _ud = st.session_state.get("updown_results") or []
+                    _ud_names = {r["종목명"] for r in _ud
+                                 if r["pct"] <= -2.0 or r["pct"] >= 3.0}
+
                     row_parts = []
                     for i, f in enumerate(flagged, 1):
+                        _name_style = f' style="color:{DOWN_COLOR}"' if f["종목명"] in _ud_names else ""
                         prev_rank = prev_ranks.get(f["종목명"])
                         if prev_rank is None:
                             rank_delta_html = f'<span class="rank-delta" style="color:{NEW_COLOR}">NEW</span>'
@@ -707,7 +706,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                                 rank_delta_html = f'<span class="rank-delta" style="color:{color}">{arrow}{abs(delta)}</span>'
                         row_parts.append(
                             f'<div class="updown-row"><span class="rank">{i}</span>{rank_delta_html}'
-                            f'<span class="name">{f["종목명"]}</span>'
+                            f'<span class="name"{_name_style}>{f["종목명"]}</span>'
                             f'<span class="pct" style="color:{UP_COLOR if f["pct_origin"] >= 0 else DOWN_COLOR}">'
                             f'{"+" if f["pct_origin"] >= 0 else ""}{f["pct_origin"]:.1f}%</span>'
                             f'<span class="pct" style="color:{UP_COLOR if f["pct_ref"] >= 0 else DOWN_COLOR}">'
