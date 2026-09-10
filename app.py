@@ -113,7 +113,7 @@ st.markdown(f"""
     .dividend-row .dividend-tag {{ margin-left:0; }}
     .sector-tag {{ font-size:10.5px; padding:2px 7px; border-radius:5px; font-weight:600; flex-shrink:0; }}
     .stock-grid {{ display:grid; grid-template-columns: 0.7fr 1.05fr 1.05fr 1.3fr; gap:6px; margin-top:4px; }}
-    .cell .entry {{ font-size:9.5px; font-weight:400; color:{T['muted2']}; line-height:1.2; margin-bottom:1px; white-space:nowrap; }}
+    .entry-line {{ text-align:right; font-size:9.5px; font-weight:400; color:{T['muted2']}; line-height:1.2; margin-top:1px; white-space:nowrap; }}
     .cell .top {{ font-size:12.5px; font-weight:700; color:{T['text']}; }}
     .cell .bottom {{ font-size:11px; color:{T['muted']}; margin-top:2px; }}
     .stock-foot {{ display:flex; justify-content:flex-end; margin-top:6px; font-size:10px; color:{T['muted2']}; }}

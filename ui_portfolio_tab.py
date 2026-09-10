@@ -1070,15 +1070,16 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                            and float(r["현재가"]) >= float(_buys.iloc[0]["단가"]))
             _card_cls = "stock-card watered-ok" if _watered_ok else "stock-card"
 
-            # 이익 종목: 손익 셀에 (1) 최초 진입일 + 보유 거래일수 배지, (2) 세금 차감 후 실현액 병기
-            _entry_html = ""
+            # 이익 종목만: (1) 그리드 위 우측정렬 줄에 "최초 진입일(보유 거래일수)",
+            # (2) 손익 금액 옆에 세금 차감 후 실현액 병기. 손실 종목은 둘 다 없음.
+            _entry_row_html = ""
             _pnl_txt = f"{psign}{r['손익']:,.0f}"
             if r["손익"] >= 0:
                 if not _buys.empty:
                     _ed = str(_buys.iloc[0]["날짜"]).split(" ")[0]
                     _p = _ed.split("-")
                     if len(_p) == 3:
-                        _entry_html = f'<div class="entry">{int(_p[1])}/{int(_p[2])}({_biz_held(_ed)}일)</div>'
+                        _entry_row_html = f'<div class="entry-line">{int(_p[1])}/{int(_p[2])}({_biz_held(_ed)}일)</div>'
                 _net = r["손익"] - float(r["평가금액"]) * _fee_rate
                 _pnl_txt += f"({'+' if _net >= 0 else ''}{_net:,.0f})"
 
@@ -1089,16 +1090,12 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         <span class="stock-title-group"><span class="stock-name" style="{name_style}">{r['종목명']}</span></span>
                         <span class="sector-tag" style="background:{sc}22;color:{sc}">{r['섹터']}</span>
                     </div>
-                    {dividend_row_html}
+                    {dividend_row_html}{_entry_row_html}
                     <div class="stock-grid">
                         <div class="cell"><div class="top">{r['수량']:.0f}주</div><div class="bottom">{r['비중']:.1f}%</div></div>
                         <div class="cell"><div class="top">{r['현재가']:,.0f}</div><div class="bottom">{r['평단가']:,.0f}</div></div>
                         <div class="cell"><div class="top">{r['평가금액']:,.0f}</div><div class="bottom">{r['매입금액']:,.0f}</div></div>
-                        <div class="cell">
-                            {_entry_html}
-                            <div class="top" style="color:{pc}">{_pnl_txt}</div>
-                            <div class="bottom"><span style="color:{pc}">{psign}{r['손익률']:.1f}%</span> <span style="color:{cc}">{csign}{r['등락률']:.1f}%</span></div>
-                        </div>
+                        <div class="cell"><div class="top" style="color:{pc}">{_pnl_txt}</div><div class="bottom"><span style="color:{pc}">{psign}{r['손익률']:.1f}%</span> <span style="color:{cc}">{csign}{r['등락률']:.1f}%</span></div></div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
