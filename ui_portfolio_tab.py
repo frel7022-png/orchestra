@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR, DIVIDEND_MID_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_TARGETS
 from portfolio_core import (
@@ -485,7 +486,13 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                             tickfont=dict(size=9, color=_MPG_C), fixedrange=True),
                 dragmode=False,
             )
-            st.plotly_chart(fig_se, use_container_width=True, config={"displayModeBar": False})
+            # expander 안에선 st.plotly_chart가 폭 0으로 안 그려짐(§6-17) → iframe + responsive
+            components.html(
+                "<style>body{margin:0;background:transparent}</style>"
+                + fig_se.to_html(include_plotlyjs="cdn", full_html=False, default_width="100%",
+                                 config={"displayModeBar": False, "responsive": True}),
+                height=272,
+            )
 
             # 8/19~ 구간, 매입 확대 중 씨앗이 메운 비율(W Fuel 커버) + W/o Fuel runway
             _anch = _se[_se["날짜"] >= "2026-08-19"]
