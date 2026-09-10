@@ -1118,8 +1118,13 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
     meritz 폴더의 portfolio_core를 불러 계산(모듈명 겹쳐 같은 프로세스 불가) → 합쳐서 두 레포에 쓴다.
     **어느 앱이든 `ingest_daily.py`를 돌린 뒤 세션이 `python sync_both_accounts.py` 실행 → 두 레포에서
     각각 `both_accounts.csv` git commit/push.** (fund_nav_history.csv와 같은 수동 동기화 루틴.)
-  - `compute_vip_vs_orchestra(iva, both_accounts)` — `both_accounts` 주면 orchestra/orchestration을
-    그 파일에서, 없으면 orchestra만 이 앱 자체 계좌로(orchn_line=None). 반환에 `orchn_line`/`orchn` 추가.
+  - `compute_vip_vs_orchestra(iva, both_accounts, self_key)` — **(2026-09-10 개정)** `self_key`로
+    "이 앱 자신의 계좌"를 지정: new1→`"orchestra"`(기본), meritz→`"orchestration"`. **자기 계좌는
+    항상 라이브 `me["계좌수익"]` 재기준화값을 씀**(Account:Index 패널의 '내 계좌'와 같은 데이터 —
+    `both_accounts.csv` 동기화가 밀려도 자기 숫자는 절대 안 틀림). **다른 계좌만** `both_accounts.csv`
+    해당 컬럼에서 가져옴(없으면 그 선 생략). 계기: meritz 배포본에서 `both_accounts.csv`가 뒤처져
+    Orchestration(=meritz 자기 계좌)이 틀리게 나왔는데, 그 값은 이미 meritz 앱이 라이브로 갖고
+    있었음("그냥 가져오면 되는데" — 사용자 지적). new1은 2-way(both_accounts 안 넘김)라 동작 불변.
 - **UI** (거래 기록 탭 **맨 밑 SamHynix extracted 밑**, `st.expander("VIP vs Orchestra vs Orchestration")`):
   - **표**: 3행(VIP / Orchestra / Orchestration) × 2열(누적/당일). **값은 전부 검정**, 점 색만
     VIP 파랑(`DOWN_COLOR`) / Orchestra 빨강(`UP_COLOR`) / Orchestration 녹색(`NEW_COLOR`).
