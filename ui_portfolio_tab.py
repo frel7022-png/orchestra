@@ -18,7 +18,7 @@ from portfolio_core import (
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     study_foreign_buy_forward_returns, load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
-    load_claude_notes,
+    load_claude_notes, seed_engine_series,
 )
 
 _CLAUDE_ORANGE = "#D97757"   # Claude 클레이 오렌지 — "Claude's Read" 마크·라벨·채운 별
@@ -432,6 +432,82 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 비중 큰 순 정렬하되 "기타2"(153 밖 미분류 묶음, §6-24)는 비중과 무관하게 항상 맨 밑
     stock_weight_rank = sorted(stock_weights.items(), key=lambda x: (x[0] == "기타2", -x[1]))
     color_map = {name: SECTOR_PALETTE[i % len(SECTOR_PALETTE)] for i, (name, _) in enumerate(stock_weight_rank)}
+
+    # ---- Seed Engine (§6-27): 씨앗(실현손익)이 예수금(연료)을 얼마나 아껴주나. 옵션(expander). ----
+    #  빨강 Cost Basis↑ · 녹색 W Fuel(실제 예수금) 평행 · 파랑 W/o Fuel(씨앗 없었으면 남았을 현금).
+    #  녹−파 간격 = 씨앗이 채운 연료. 진노랑 MPG(=W Fuel÷W/o Fuel, 우측 % 축) = 엔진 연비(오를수록 좋음).
+    with st.expander("Seed Engine", expanded=False):
+        _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0), load_history())
+        if len(_se) < 2:
+            st.caption("거래가 쌓이면 씨앗 엔진 궤적이 그려집니다.")
+        else:
+            _ta = _se["총자산"].replace(0, pd.NA)
+
+            def _rat(col):
+                return (_se[col] / _ta * 100).fillna(0).tolist()
+
+            _mpg = [(wf / wof * 100.0) if wof > 1e-9 else 999.0
+                    for wf, wof in zip(_se["예수금"], _se["무연료예수금"])]
+            _MPG_C = "#c99a00"  # 진한 노란색
+
+            def _mpg_txt(v):
+                d = v - 100.0
+                c = UP_COLOR if d >= 0 else DOWN_COLOR
+                return f"<span style='color:{c}'>{'+' if d >= 0 else ''}{d:.0f}%</span>"
+
+            fig_se = go.Figure()
+            fig_se.add_trace(go.Scatter(
+                x=_se["날짜"], y=_se["총매입"], name="Cost Basis", mode="lines",
+                line=dict(color=UP_COLOR, width=2), customdata=_rat("총매입"),
+                hovertemplate="총매입 %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+            fig_se.add_trace(go.Scatter(
+                x=_se["날짜"], y=_se["예수금"], name="W Fuel", mode="lines",
+                line=dict(color=NEW_COLOR, width=2), customdata=_rat("예수금"),
+                hovertemplate="W Fuel %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+            fig_se.add_trace(go.Scatter(
+                x=_se["날짜"], y=_se["무연료예수금"], name="W/o Fuel", mode="lines",
+                line=dict(color=DOWN_COLOR, width=1.8), customdata=_rat("무연료예수금"),
+                hovertemplate="W/o Fuel %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+            fig_se.add_trace(go.Scatter(
+                x=_se["날짜"], y=_mpg, name="MPG", mode="lines", yaxis="y2",
+                line=dict(color=_MPG_C, width=1.6),
+                customdata=[_mpg_txt(v) for v in _mpg],
+                hovertemplate="MPG %{customdata}<extra></extra>"))
+            fig_se.update_layout(
+                height=260, margin=dict(l=48, r=46, t=8, b=26),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=T["text"], size=11), showlegend=False, hovermode="x unified",
+                hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], font=dict(size=11, color=T["text"])),
+                xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=",.0f",
+                           tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                yaxis2=dict(overlaying="y", side="right", showgrid=False, tickformat=".0f", ticksuffix="%",
+                            tickfont=dict(size=9, color=_MPG_C), fixedrange=True),
+                dragmode=False,
+            )
+            st.plotly_chart(fig_se, use_container_width=True, config={"displayModeBar": False})
+
+            # 8/19~ 구간, 매입 확대 중 씨앗이 메운 비율(W Fuel 커버) + W/o Fuel runway
+            _anch = _se[_se["날짜"] >= "2026-08-19"]
+            _anch = _anch.iloc[0] if len(_anch) else _se.iloc[0]
+            _cur = _se.iloc[-1]
+            _dcost = _cur["총매입"] - _anch["총매입"]
+            if _dcost > 0:
+                _dwf = _anch["예수금"] - _cur["예수금"]
+                _cover = (_dcost - _dwf) / _dcost * 100
+                _cc = UP_COLOR if _cover >= 0 else DOWN_COLOR
+                _dwof = _anch["무연료예수금"] - _cur["무연료예수금"]
+                _rate_wof = _dwof / _dcost
+                _runway = (_cur["무연료예수금"] / _rate_wof) if _rate_wof > 1e-9 else None
+                _wf0 = (_cur["예수금"] - (_dwf / _dcost) * _runway) if _runway is not None else None
+                _l1 = (f'구간 8/19~ · 매입 <b>+{_dcost:,.0f}원</b> &nbsp;·&nbsp; '
+                       f'<b style="color:{NEW_COLOR}">W Fuel</b> −{_dwf:,.0f} '
+                       f'(<span style="color:{_cc}">{"+" if _cover >= 0 else ""}{_cover:.0f}%</span>)')
+                _l2 = ""
+                if _runway is not None:
+                    _l2 = (f'<div class="tx-cum-summary"><span>W/o Fuel {_cur["무연료예수금"]:,.0f}원 → '
+                           f'0까지 매입 여력 <b>~{_runway:,.0f}원</b> · 그때 W Fuel ~{max(_wf0, 0):,.0f}원</span></div>')
+                st.markdown(f'<div class="tx-cum-summary"><span>{_l1}</span></div>{_l2}', unsafe_allow_html=True)
 
     # ---- 섹터 비중 도넛 + 목표 비중 관리 ----
     with st.expander("Sectors", expanded=False):

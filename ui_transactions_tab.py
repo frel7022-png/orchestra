@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
-    compute_index_vs_account, compute_pnl_actions, _index_day_moves, seed_engine_series,
+    compute_index_vs_account, compute_pnl_actions, _index_day_moves,
     load_bigcap_history, synthetic_kospi_ex_bigcap, synthetic_kospi_sh_only,
     load_fund_nav_history, compute_vip_vs_orchestra,
 )
@@ -778,83 +778,6 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         <span>누적 실현손익 <b style="color:{rc}">{rs}{total_realized:,.0f}원 ({rs}{realized_pct:.2f}%)</b></span>
     </div>
     """, unsafe_allow_html=True)
-
-    # ---- Seed Engine (§6-27): 빨강(Cost Basis)은 우상향, 파랑(W Fuel=예수금)은 평행이어야 정상.
-    #      녹색(W/o Fuel=씨앗 없었으면 남았을 현금)이 파랑보다 더 가파르게 떨어짐 — 파랑과 녹색의
-    #      간격 = 씨앗(실현손익)이 채워준 연료. 우리가 보려는 건 그 둘(≈270 vs ≈315)의 관계. ----
-    _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0), hist)
-    if len(_se) >= 2:
-        st.markdown("##### Seed Engine")
-        _ta = _se["총자산"].replace(0, pd.NA)
-
-        def _rat(col):  # 그 값이 총자산의 몇 %
-            return (_se[col] / _ta * 100).fillna(0).tolist()
-
-        # 엔진 성능 = "연료를 덜 쓰는 정도" = W Fuel / W/o Fuel (%). 씨앗이 쌓일수록 오름.
-        # 100% = 씨앗 효과 아직 없음, 116% = 무연료 대비 탱크에 16% 더 있음. 차 연비(MPG) 컨셉.
-        _mpg = [(wf / wof * 100.0) if wof > 1e-9 else 999.0
-                for wf, wof in zip(_se["예수금"], _se["무연료예수금"])]
-
-        fig_se = go.Figure()
-        fig_se.add_trace(go.Scatter(
-            x=_se["날짜"], y=_se["총매입"], name="Cost Basis", mode="lines",
-            line=dict(color=UP_COLOR, width=2), customdata=_rat("총매입"),
-            hovertemplate="총매입 %{y:,.0f}원 (%{customdata:.0f}% 총매입/총자산)<extra></extra>"))
-        fig_se.add_trace(go.Scatter(
-            x=_se["날짜"], y=_se["예수금"], name="W Fuel", mode="lines",
-            line=dict(color=DOWN_COLOR, width=2), customdata=_rat("예수금"),
-            hovertemplate="W Fuel %{y:,.0f}원 (%{customdata:.0f}% 예수금/총자산)<extra></extra>"))
-        fig_se.add_trace(go.Scatter(
-            x=_se["날짜"], y=_se["무연료예수금"], name="W/o Fuel", mode="lines",
-            line=dict(color=NEW_COLOR, width=1.6, dash="dot"),
-            customdata=list(zip(_rat("무연료예수금"), _mpg)),
-            hovertemplate=("W/o Fuel 씨앗없을시 %{y:,.0f}원 (%{customdata[0]:.0f}% 씨앗없을시/총자산)"
-                           "<br><b>MPG %{customdata[1]:.0f}%</b>  (W Fuel ÷ W/o Fuel · 엔진 연비)<extra></extra>")))
-        fig_se.update_layout(
-            height=250, margin=dict(l=48, r=8, t=8, b=26),
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=T["text"], size=11), showlegend=False,
-            hovermode="x unified",
-            hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], font=dict(size=11, color=T["text"])),
-            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=",.0f",
-                       tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-            dragmode=False,
-        )
-        st.plotly_chart(fig_se, use_container_width=True, config={"displayModeBar": False})
-
-        # ---- Burn rate: 매입액이 늘 때 각 선이 얼마나 빨리 떨어지나 (§6-27, 2026-09-10 사용자 요청) ----
-        # 구간: 8/19(신호 트리거 시대 시작) 이후. dcost만큼 매입이 늘 동안 W Fuel은 dwf, W/o Fuel은
-        # dwof 만큼 줄었다. "Fuel 커버율" = 매입 확대 중 탱크를 안 까고 씨앗으로 메운 비율 = (dcost-dwf)/dcost.
-        # W/o Fuel은 씨앗이 없어 매입과 1:1로 소진 → 커버율 ≈ 0. 그 상태로 가면 W/o Fuel이 먼저 0에
-        # 닿고, 그 시점의 W Fuel 잔액 = 씨앗 엔진이 벌어준 runway.
-        _anch = _se[_se["날짜"] >= "2026-08-19"]
-        _anch = _anch.iloc[0] if len(_anch) else _se.iloc[0]
-        _cur = _se.iloc[-1]
-        _dcost = _cur["총매입"] - _anch["총매입"]
-        if _dcost > 0:
-            _dwf = _anch["예수금"] - _cur["예수금"]          # W Fuel 감소분(+가 줄어든 것)
-            _dwof = _anch["무연료예수금"] - _cur["무연료예수금"]  # W/o Fuel 감소분
-            _cover_wf = (_dcost - _dwf) / _dcost * 100        # 씨앗이 메운 비율
-            _cover_wof = (_dcost - _dwof) / _dcost * 100      # ≈ 0
-            _rate_wof = _dwof / _dcost                        # W/o Fuel이 매입 1원당 줄어드는 속도
-            _rate_wf = _dwf / _dcost
-            _runway = (_cur["무연료예수금"] / _rate_wof) if _rate_wof > 1e-9 else None  # W/o Fuel 0까지 매입 여력
-            _wf_at_zero = (_cur["예수금"] - _rate_wf * _runway) if _runway is not None else None
-            _bits = [
-                f'구간 8/19~ · 매입 <b>+{_dcost:,.0f}원</b>',
-                f'<b style="color:{DOWN_COLOR}">W Fuel</b> −{_dwf:,.0f} (씨앗 커버 {_cover_wf:.0f}%)',
-                f'<b style="color:{NEW_COLOR}">W/o Fuel</b> −{_dwof:,.0f} (커버 {_cover_wof:.0f}%)',
-            ]
-            _r2 = ""
-            if _runway is not None:
-                _r2 = (f'<div class="tx-cum-summary"><span>W/o Fuel {_cur["무연료예수금"]:,.0f}원 → '
-                       f'<b>0까지 매입 여력 ~{_runway:,.0f}원</b>. 그때 W Fuel 예상 '
-                       f'<b style="color:{DOWN_COLOR}">~{max(_wf_at_zero, 0):,.0f}원</b> = 씨앗 엔진이 벌어준 runway</span></div>')
-            st.markdown(
-                f'<div class="tx-cum-summary"><span>{" &nbsp;·&nbsp; ".join(_bits)}</span></div>{_r2}',
-                unsafe_allow_html=True,
-            )
 
     st.markdown("##### History Calendar")
 
