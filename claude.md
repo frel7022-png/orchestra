@@ -1155,8 +1155,14 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   `test_snapshot_fund_nav_history_overwrites_same_date`.
 - **meritz에도 이식됨** (2026-09-08, §6-6). `both_accounts.csv`·`load_both_accounts`는 meritz에도 있음.
 
-### 6-22. "Claude's Read" — 세션의 일일 평가 (2026-09-08, new1 전용)
-- **뭐냐**: 포트폴리오 첫 화면 요약카드 **Today's Take 바로 밑**에, 그날 장을 세션(어시스턴트)이
+### 6-22. "Claude's Read" — 세션의 일일 평가 (2026-09-08 신설 / 2026-09-10 meritz에도 확장)
+- **2026-09-10 변경 (사용자 지시)**: Claude's Read를 **new1·meritz 둘 다** 매일 장 마감 후 작성.
+  **각 앱의 read는 자기 계좌만** 다룬다 — new1 read는 Orchestra(new1)만, meritz read는
+  Orchestration(meritz)만. **서로 비교하거나 언급하지 않는다.** 기존 new1의 9/8·9/9 2줄은 제거
+  (사용자: "9/9자 나타나지 않게") → 9/10부터 새로 시작. meritz 표시 위치는 요약카드
+  (`보유종목 평가손익`) 바로 밑(meritz엔 Today's Take가 없음).
+- **뭐냐**: 포트폴리오 첫 화면 요약카드 **Today's Take 바로 밑**(new1) / **요약카드 밑**(meritz)에,
+  그날 장을 세션(어시스턴트)이
   분석적으로 3~5문단 서술 + **별점 ★N/5**(보수적, 중간=★★, ½ 없음)로 평가한 것. Claude 스타버스트
   마크(오렌지 `#D97757`) + 라벨 + 별 + 날짜. 네이티브 `<details>`라 클릭해도 rerun 없음 —
   펼치면 **오늘(마지막) 코멘트만** (2026-09-09부터 지난 것 안 붙임).
@@ -1177,7 +1183,10 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
 - **주간 리포트는 별개 (매주 금요일 장 마감 후)**: `report/` 폴더에 `YYYY-MM-DD_제목.html`(+PDF)로
   한 주치 관찰/리뷰를 세션이 쓴다(§2 report/ 규칙 그대로 — 개정 시 덮어쓰지 말고 `_v2` 접미사).
   Claude's Read가 "매일 한 줄"이면 이건 "주 1회 깊게".
-- **new1 전용** (meritz 미적용).
+- **meritz 이식 상태 (2026-09-10)**: `load_claude_notes` + `_claude_read_html` + 렌더 호출
+  meritz `portfolio_core.py`/`app.py`에 포팅됨. meritz `claude_daily_notes.csv`도 신설.
+  **meritz용 `daily_stats.py`는 아직 미포팅** — 첫 meritz 일일 read 쓸 때 통화(USD)·`dom_asset_history`·
+  `fee_rate_krw/usd` 반영해 포팅 예정. 그전엔 수치를 즉석 계산해서 작성.
 
 ### 6-23. "Bench" — 한 번도 매수한 적 없는 관심종목 (소외종목, 2026-09-09, new1 전용)
 - **동기**: watchlist(현재 179개) 중 실제로 한 번도 안 산 종목만 따로 보면서 "내가 계속 지나친

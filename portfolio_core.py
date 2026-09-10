@@ -417,8 +417,9 @@ CLAUDE_NOTES_FILE = HERE / "claude_daily_notes.csv"  # 날짜, 별점, 코멘트
 
 
 def load_claude_notes() -> pd.DataFrame:
-    """세션이 매일 장 마감 후 써넣는 일일 평가(Claude's Read). 날짜 오름차순.
-    별점 0~5 정수(보수적, 중간=2), 코멘트는 한국어 여러 문장. new1 전용."""
+    """세션이 매일 장 마감 후 써넣는 일일 평가(Claude's Read). 날짜 오름차순. 별점 0~5 정수
+    (보수적, 중간=2), 코멘트는 한국어 여러 문장. new1·meritz **둘 다** 돌리며, 각 앱의 read는
+    **자기 계좌만** 다룬다(서로 언급 안 함). 기존 9/8·9/9 2줄은 제거함(§6-22, 2026-09-10)."""
     if CLAUDE_NOTES_FILE.exists():
         df = pd.read_csv(CLAUDE_NOTES_FILE, dtype={"날짜": str})
         return df.sort_values("날짜").reset_index(drop=True)
