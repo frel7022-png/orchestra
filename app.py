@@ -171,6 +171,13 @@ st.markdown(f"""
     [class*="st-key-change_sort_toggle"] button[kind="secondary"] p {{ color:{T['muted2']} !important; }}
     [class*="st-key-change_sort_toggle"] button[kind="primary"] p {{ color:{UP_COLOR} !important; }}
 
+    /* Seed Engine(§6-27) — Today's Take 위, Claude's Read식 작은 글씨 expander(누르면 밑으로).
+       기본 expander보다 헤더 글씨/여백을 줄여 "저 정도 글씨"로. */
+    [class*="st-key-seed_engine_wrap"] details {{ border:none !important; background:transparent !important; }}
+    [class*="st-key-seed_engine_wrap"] summary {{ padding:2px 0 !important; }}
+    [class*="st-key-seed_engine_wrap"] summary p {{ font-size:13px !important; font-weight:600 !important; color:{T['muted2']} !important; }}
+    [class*="st-key-seed_engine_wrap"] summary svg {{ width:14px !important; height:14px !important; }}
+
     /* "Holdings" 타이틀 줄 — 왼쪽은 타이틀, 오른쪽 칸에 등락률순 토글 점 + 업데이트 날짜를
        한 줄로 나란히(2026-09-04, 점이 날짜 앞에서 삐뚤어 보이던 것 수정). 전역 등폭 규칙
        (위 stColumn flex:1 1 0)을 덮어씀. */

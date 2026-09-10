@@ -1307,24 +1307,24 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   예수금은 300선을 안 무너뜨리나"** — 자잘한 하루 5~7건 ₩1,000~3,000 익절이 매입 확대를
   따라잡으며 버퍼를 유지하는 자기보충 엔진이 도는지. 매입액↑ · 예수금 평행 = 일하는 면적만
   커지는 복리(스노우볼). 예수금 선이 같이 처지면 씨앗보다 배치가 빠름(경고).
-- **위치**: **포트폴리오 탭, Sectors expander 바로 위**, `st.expander("Seed Engine")`(옵션 — 눌러야 펼침).
-  (2026-09-10 거래 기록 탭에서 이리로 옮김.)
+- **위치**: **포트폴리오 탭 맨 위, 요약카드(Today's Take) 바로 위**. `st.container(key="seed_engine_wrap")`
+  + `st.expander` — app.py CSS로 헤더 글씨를 13px 회색(Claude's Read식 작은 글씨)으로 줄임.
+  눌러야 펼침. (2026-09-10 거래 기록 탭 → Sectors 위 → 요약카드 위로 두 번 옮김.)
 - **함수**: `portfolio_core.seed_engine_series(tx, initial, fee_rate, asset_hist=None)` — `_cash_by_date`와
   같은 재생 루프(§1-1)로 날짜별 (총매입=Σ수량×평단가, 예수금, **무연료예수금**=예수금−그날까지
   누적실현, 총자산, 예수금비중%)을 만든다. 거래 있었던 날짜만. asset_hist에 없는 날 총자산은
   `예수금+원가`로 근사.
-- **UI**(`ui_portfolio_tab.py`, 2026-09-10 재설계): plotly x-unified hover, **선 4개**.
+- **UI**(`ui_portfolio_tab.py`): plotly x-unified hover, **선 4개, 차트만(밑 설명줄 전부 삭제)**.
+  §6-17 iframe(`components.html` + `responsive`) 렌더 — expander 안 `st.plotly_chart` 폭 0 회피.
   - **Cost Basis** (빨강 `UP_COLOR`, ↑여야 정상) = 총매입.
   - **W Fuel** (**녹색 `NEW_COLOR`**, 평행이어야 정상) = 실제 예수금(씨앗이 채워준 것).
   - **W/o Fuel** (**파랑 `DOWN_COLOR`, 실선**, W Fuel보다 더 가파르게 하락) = 씨앗(실현손익) 없었으면
     남았을 현금. **녹−파 간격 = 씨앗이 채운 연료**.
-  - **MPG** (**진노랑 `#c99a00`, 별도 선 + 우측 % y축**) = `W Fuel ÷ W/o Fuel × 100`. 엔진 연비.
-    hover엔 `+16%`(= MPG−100, "16% 성능 더 좋다"). `+`면 빨강. 씨앗 쌓일수록 오름 — 예수금비중이
-    배치로 떨어져도 MPG는 오를 수 있음(씨앗 효과만 분리). W/o Fuel이 0에 닿으면 ∞. 차 연비 컨셉.
-  - hover: 각 선 `{값}원 (%)` — % = 총자산 대비(라벨 텍스트는 뺌).
-  - **차트 밑 2줄**: ① `구간 8/19~ · 매입 +X원 · W Fuel −Y (+Z%)` — Z% = `(dcost−dwf)/dcost`
-    (매입 확대 중 탱크 안 까고 씨앗으로 메운 비율), `+`면 빨강. ② `W/o Fuel {현재}원 → 0까지
-    매입 여력 ~{runway}원 · 그때 W Fuel ~{금액}원`(씨앗 엔진이 벌어준 runway).
-    (매입액 커지면 익절도 늘어 Z%가 오르는 게 스노우볼 정상.)
+  - **MPG** (**진노랑 `#c99a00`, 별도 선 + 우측 % y축**) = `(W Fuel ÷ W/o Fuel − 1) × 100` —
+    **100을 뺀 값**("몇 % 성능이 더 좋나", 현재 +16%). hover `+16%`, `+`면 빨강 / 음수면 파랑
+    (손절 많으면 구조상 음수 가능). **우측 축은 0% 중앙 대칭**(`range=[−mb, mb]`,
+    `mb = max(30, |peak|×1.6)` → 현재 위로 ~14%p 헤드룸, 20~25% 잠재구간 열어둠), zeroline 표시.
+    W/o Fuel≈0이면 발산 → 300%로 소프트캡(축에서 잘림).
+  - hover: 각 선 `{값}원 (%)` — % = 총자산 대비(라벨 텍스트 뺌).
 - 회귀 테스트 `test_seed_engine_series_tracks_cash_and_cost`(총매입·예수금·무연료예수금·비중).
 - **new1 전용** (전략 개념 자체가 new1 밸류 계좌 것 — meritz는 성격이 다름).
