@@ -1217,8 +1217,9 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   정반대로 그 **3종목만 담은 시총가중 바스켓(SH)**을 벤치로 세워 "반도체가 캐리하는 장에서 내
   저부채·필수재 계좌가 어떻게 따로 노나"를 본다. 2026-09-10 기준 바스켓 비중은 삼성전자 51 /
   SK하이닉스 44 / 삼성전자우 5 (하이닉스 주식수는 삼성전자의 1/8인데 주가가 ~7배라 시총이 맞먹음).
-- **위치**: 거래 기록 탭, `SamHYnix extracted` expander 바로 밑 `FOMO Index` expander (반도체를
-  쫓는 시장 = FOMO). 예전 이름 `SamsungHynix`(2026-09-10 당일 바꿈).
+- **위치**: 거래 기록 탭, `SamHYnix extracted` expander 바로 밑 `FOMO Index` expander — 이름 뜻은
+  "FOMO **유발** 지수"(안 담은 이 바스켓이 오르는 걸 보며 내가 FOMO를 느낀다). 예전 이름
+  `SamsungHynix`(2026-09-10 당일 바꿈).
 - **SH 지수 계산**: `portfolio_core.synthetic_kospi_sh_only(index_hist, bigcap_hist)` —
   `synthetic_kospi_ex_bigcap`의 거울상. `index_hist`의 KOSPI 열을 SH 바스켓 누적 레벨로 바꾼 사본을
   돌려주고, 그걸 `compute_index_vs_account`에 그대로 넘긴다.
