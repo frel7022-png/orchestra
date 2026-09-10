@@ -790,6 +790,13 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     tx_dates = set(tx["날짜"].astype(str))
     year, month = st.session_state.cal_year, st.session_state.cal_month
 
+    # 달력이 보여주는 그 달의 실현손익 합계(그 달 매도 실현손익 합) — 달을 넘기면 같이 바뀜
+    _mo_prefix = f"{year:04d}-{month:02d}"
+    _mo_sell = tx[(tx["구분"] == "매도") & (tx["날짜"].astype(str).str.startswith(_mo_prefix))]
+    _mo_realized = pd.to_numeric(_mo_sell["실현손익"], errors="coerce").sum()
+    _mo_rc = UP_COLOR if _mo_realized >= 0 else DOWN_COLOR
+    _mo_rs = "+" if _mo_realized >= 0 else ""
+
     nav1, nav2, nav3 = st.columns([1, 3, 1])
     with nav1:
         if st.button("◀", key="cal_prev", use_container_width=True):
@@ -800,8 +807,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             st.rerun()
     with nav2:
         st.markdown(
-            f"<div style='text-align:center;font-weight:700;padding-top:6px;color:{T['text']}'>"
-            f"{year}년 {month}월</div>",
+            f"<div style='text-align:center;font-weight:700;padding-top:2px;color:{T['text']}'>"
+            f"{year}년 {month}월"
+            f"<span style='display:block;font-weight:600;font-size:12px;color:{_mo_rc}'>"
+            f"{_mo_rs}{_mo_realized:,.0f}원</span></div>",
             unsafe_allow_html=True,
         )
     with nav3:
