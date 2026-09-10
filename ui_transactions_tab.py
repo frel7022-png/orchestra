@@ -779,31 +779,32 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     </div>
     """, unsafe_allow_html=True)
 
-    # ---- Seed Engine (§6-27): 매입액은 우상향 · 예수금은 평행이면 씨앗 엔진이 도는 것.
-    #      자잘한 실현손익(씨앗)이 매입 확대를 따라잡으며 예수금 버퍼를 유지하는지 한눈에. ----
+    # ---- Seed Engine (§6-27): 빨강(Cost Basis)은 우상향, 파랑(W Fuel=예수금)은 평행이어야 정상.
+    #      녹색(W/o Fuel=씨앗 없었으면 남았을 현금)이 파랑보다 더 가파르게 떨어짐 — 파랑과 녹색의
+    #      간격 = 씨앗(실현손익)이 채워준 연료. 우리가 보려는 건 그 둘(≈270 vs ≈315)의 관계. ----
     _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0), hist)
     if len(_se) >= 2:
         st.markdown("##### Seed Engine")
-        _f, _l = _se.iloc[0], _se.iloc[-1]
-        _cost_chg = (_l["총매입"] / _f["총매입"] - 1) * 100 if _f["총매입"] else 0.0
-        _ratio_now = _l["예수금비중"]
-        _ratio_avg5 = _se["예수금비중"].tail(5).mean()
-        _no_seed_cash = _l["예수금"] - total_realized   # 실현손익이 0이었으면 남았을 예수금
+        _ta = _se["총자산"].replace(0, pd.NA)
+
+        def _rat(col):  # 그 값이 총자산의 몇 %
+            return (_se[col] / _ta * 100).fillna(0).tolist()
+
         fig_se = go.Figure()
         fig_se.add_trace(go.Scatter(
-            x=_se["날짜"], y=_se["총매입"], name="총매입", mode="lines",
-            line=dict(color=UP_COLOR, width=2),
-            hovertemplate="총매입 %{y:,.0f}원<extra></extra>"))
+            x=_se["날짜"], y=_se["총매입"], name="Cost Basis", mode="lines",
+            line=dict(color=UP_COLOR, width=2), customdata=_rat("총매입"),
+            hovertemplate="총매입 %{y:,.0f}원 (%{customdata:.0f}% 총매입/총자산)<extra></extra>"))
         fig_se.add_trace(go.Scatter(
-            x=_se["날짜"], y=_se["예수금"], name="예수금", mode="lines",
-            line=dict(color=DOWN_COLOR, width=2),
-            hovertemplate="예수금 %{y:,.0f}원<extra></extra>"))
+            x=_se["날짜"], y=_se["예수금"], name="W Fuel", mode="lines",
+            line=dict(color=DOWN_COLOR, width=2), customdata=_rat("예수금"),
+            hovertemplate="W Fuel %{y:,.0f}원 (%{customdata:.0f}% 예수금/총자산)<extra></extra>"))
         fig_se.add_trace(go.Scatter(
-            x=_se["날짜"], y=_se["총자산"], name="총자산", mode="lines",
-            line=dict(color=T["muted2"], width=1, dash="dot"),
-            hovertemplate="총자산 %{y:,.0f}원<extra></extra>"))
+            x=_se["날짜"], y=_se["무연료예수금"], name="W/o Fuel", mode="lines",
+            line=dict(color=NEW_COLOR, width=1.6, dash="dot"), customdata=_rat("무연료예수금"),
+            hovertemplate="W/o Fuel 씨앗없을시 %{y:,.0f}원 (%{customdata:.0f}% 씨앗없을시/총자산)<extra></extra>"))
         fig_se.update_layout(
-            height=240, margin=dict(l=48, r=8, t=8, b=26),
+            height=250, margin=dict(l=48, r=8, t=8, b=26),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11), showlegend=False,
             hovermode="x unified",
@@ -814,19 +815,6 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             dragmode=False,
         )
         st.plotly_chart(fig_se, use_container_width=True, config={"displayModeBar": False})
-        _rc2 = UP_COLOR if _ratio_now >= 28 else DOWN_COLOR  # 예수금비중 28% 밑이면 경고색
-        st.markdown(
-            f'<div class="tx-cum-summary"><span>'
-            f'<b style="color:{UP_COLOR}">총매입</b> {_f["총매입"]:,.0f} → {_l["총매입"]:,.0f}원 '
-            f'({_cost_chg:+.0f}%) &nbsp;·&nbsp; '
-            f'<b style="color:{DOWN_COLOR}">예수금</b> {_f["예수금"]:,.0f} → {_l["예수금"]:,.0f}원 '
-            f'(<b style="color:{_rc2}">비중 {_ratio_now:.0f}%</b>, 최근5 평균 {_ratio_avg5:.0f}%)'
-            f'</span></div>'
-            f'<div class="tx-cum-summary"><span>실현손익(씨앗)이 0이었으면 예수금 '
-            f'<b>{_no_seed_cash:,.0f}원</b> → 실제 <b style="color:{DOWN_COLOR}">{_l["예수금"]:,.0f}원</b> '
-            f'(+{total_realized:,.0f} 보충)</span></div>',
-            unsafe_allow_html=True,
-        )
 
     st.markdown("##### History Calendar")
 

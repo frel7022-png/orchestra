@@ -1979,32 +1979,36 @@ def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float
     '매입액은 우상향 · 예수금은 300선 평행'이면 씨앗 엔진이 도는 것 — 자잘한 실현손익이 매입
     확대를 따라잡으며 예수금 버퍼를 유지한다는 뜻. 예수금 선이 같이 처지면 씨앗보다 배치가 빠름(경고).
     `_cash_by_date`와 같은 재생 루프(§1-1)라 예수금이 rebuild_portfolio_*와 안 어긋난다.
-    반환 DataFrame: 날짜, 예수금, 총매입, 총자산, 예수금비중(%) — 거래가 있었던 날짜만."""
-    cols = ["날짜", "예수금", "총매입", "총자산", "예수금비중"]
+    반환 DataFrame(거래가 있었던 날짜만): 날짜, 총매입(=Σ수량×평단가), 예수금(=W Fuel), 무연료예수금
+    (=예수금 − 그날까지 누적 실현손익 = 씨앗 없었으면 남았을 현금, W/o Fuel), 총자산, 예수금비중(%)."""
+    cols = ["날짜", "총매입", "예수금", "무연료예수금", "총자산", "예수금비중"]
     if tx is None or tx.empty:
         return pd.DataFrame(columns=cols)
     holdings = pd.DataFrame(columns=HOLD_COLUMNS)
     state = {"cash": float(initial_capital), "initial": float(initial_capital), "fee_rate": fee_rate}
     code_cache, sector_cache = load_code_cache(), load_sector_cache()
     rows = {}
+    cum_realized = 0.0
     for _, r in _sort_tx_for_replay(tx).iterrows():
-        holdings, state, _ = apply_transaction(
+        holdings, state, realized = apply_transaction(
             holdings, state, r["종목명"], r["구분"],
             float(r["수량"]), float(r["단가"]), code_cache, sector_cache, fee_rate)
+        cum_realized += float(realized or 0.0)
         cost = float((pd.to_numeric(holdings["수량"], errors="coerce").fillna(0)
                       * pd.to_numeric(holdings["평단가"], errors="coerce").fillna(0)).sum())
-        rows[str(r["날짜"])] = (state["cash"], cost)
+        rows[str(r["날짜"])] = (state["cash"], cost, cum_realized)
     ah = {}
     if asset_hist is not None and not asset_hist.empty and "총자산" in asset_hist:
         ah = dict(zip(asset_hist["날짜"].astype(str),
                       pd.to_numeric(asset_hist["총자산"], errors="coerce")))
     out = []
     for d in sorted(rows):
-        cash, cost = rows[d]
+        cash, cost, cr = rows[d]
         ta = ah.get(d)
         if ta is None or pd.isna(ta):
             ta = cash + cost   # asset_hist에 없는 날은 근사(예수금+원가, 평가손익 제외)
-        out.append({"날짜": d, "예수금": cash, "총매입": cost, "총자산": float(ta),
+        out.append({"날짜": d, "총매입": cost, "예수금": cash, "무연료예수금": cash - cr,
+                    "총자산": float(ta),
                     "예수금비중": (cash / (cash + cost) * 100) if (cash + cost) > 0 else 0.0})
     return pd.DataFrame(out, columns=cols)
 

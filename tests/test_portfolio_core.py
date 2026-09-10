@@ -1175,17 +1175,19 @@ def test_seed_engine_series_tracks_cash_and_cost(monkeypatch):
     ])
     s = core.seed_engine_series(tx, 100_000.0, 0.0)
     assert list(s["날짜"]) == ["2026-01-05", "2026-01-06", "2026-01-07"]
-    # 1/5: 매수 10*1000 → 예수금 90,000 · 총매입 10,000
+    # 1/5: 매수 10*1000 → 예수금 90,000 · 총매입 10,000 · 실현 0이라 W/o Fuel도 90,000
     assert s.iloc[0]["예수금"] == pytest.approx(90_000.0)
     assert s.iloc[0]["총매입"] == pytest.approx(10_000.0)
+    assert s.iloc[0]["무연료예수금"] == pytest.approx(90_000.0)
     # 1/6: +B 5*2000 → 예수금 80,000 · 총매입 20,000
     assert s.iloc[1]["예수금"] == pytest.approx(80_000.0)
     assert s.iloc[1]["총매입"] == pytest.approx(20_000.0)
-    # 1/7: A 4주 매도 @1500(평단 1000) → 예수금 80,000 + 6,000 = 86,000
+    # 1/7: A 4주 매도 @1500(평단 1000) → 실현 +2,000 · 예수금 80,000 + 6,000 = 86,000
     #      남은 A 6주@1000 = 6,000 + B 10,000 = 총매입 16,000
     assert s.iloc[2]["예수금"] == pytest.approx(86_000.0)
     assert s.iloc[2]["총매입"] == pytest.approx(16_000.0)
-    # 예수금비중 = 86,000 / (86,000 + 16,000)
+    # W/o Fuel = 예수금 − 누적실현 = 86,000 − 2,000 = 84,000 (씨앗이 2,000 채워줌)
+    assert s.iloc[2]["무연료예수금"] == pytest.approx(84_000.0)
     assert s.iloc[2]["예수금비중"] == pytest.approx(86_000.0 / 102_000.0 * 100)
 
 
