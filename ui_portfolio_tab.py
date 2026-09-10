@@ -590,19 +590,28 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         else:
             if updown_checked_at:
                 st.caption(f"마지막 조회: {updown_checked_at}")
-            threshold = 3.0
+            # DOWN은 ±2%, UP은 ±3% (2026-09-10 사용자 요청 — 하락 쪽을 더 촘촘히)
+            down_threshold, up_threshold = 2.0, 3.0
             if updown_mode == "DOWN":
-                filtered = sorted([r for r in updown_results if r["pct"] <= -threshold], key=lambda r: r["pct"])
+                filtered = sorted([r for r in updown_results if r["pct"] <= -down_threshold], key=lambda r: r["pct"])
                 updown_color = DOWN_COLOR
             else:
-                filtered = sorted([r for r in updown_results if r["pct"] >= threshold], key=lambda r: -r["pct"])
+                filtered = sorted([r for r in updown_results if r["pct"] >= up_threshold], key=lambda r: -r["pct"])
                 updown_color = UP_COLOR
 
             if not filtered:
                 st.caption("조건에 해당하는 종목이 없습니다.")
             else:
+                # 관심종목(watchlist)에도 있는 종목은 종목명을 파랑으로 (2026-09-10 사용자 요청)
+                _wl = load_watchlist()
+                _wl_names = set(_wl["종목명"]) if not _wl.empty else set()
+
+                def _updown_name(nm):
+                    style = f' style="color:{DOWN_COLOR}"' if nm in _wl_names else ""
+                    return f'<span class="name"{style}>{nm}</span>'
+
                 rows_html = "".join(
-                    f'<div class="updown-row"><span class="name">{r["종목명"]}</span>'
+                    f'<div class="updown-row">{_updown_name(r["종목명"])}'
                     f'<span class="pct" style="color:{updown_color}">{"+" if r["pct"] >= 0 else ""}{r["pct"]:.1f}%</span>'
                     f'<span class="detail">{r["매도가"]:,.0f} → {r["현재가"]:,.0f}</span></div>'
                     for r in filtered
