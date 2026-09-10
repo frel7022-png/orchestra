@@ -1085,6 +1085,59 @@ def test_synthetic_kospi_ex_bigcap_missing_middle_day_does_not_blow_up():
     assert lv[2] == pytest.approx(6090.0, rel=1e-6)
 
 
+# --- SamsungHynix (§6-26): synthetic_kospi_sh_only --- #
+def test_synthetic_kospi_sh_only_anchor_and_fallback():
+    idx = pd.DataFrame({"날짜": ["2026-08-14", "2026-08-18"],
+                        "KOSPI": [6900.0, 6800.0], "KOSDAQ": [800.0, 790.0]})
+    # bigcap 없음 → 원본 그대로
+    out = core.synthetic_kospi_sh_only(idx, core.load_bigcap_history().iloc[0:0])
+    assert list(out["KOSPI"]) == [6900.0, 6800.0]
+    # 있으면 첫날 레벨 = 원본 KOSPI 첫날 값(누적 앵커 동일)
+    bg = _bigcap_df([("2026-08-14", 250000, 188000, 1600000),
+                     ("2026-08-18", 250000, 188000, 1600000)])
+    out2 = core.synthetic_kospi_sh_only(idx, bg)
+    assert out2["KOSPI"].iloc[0] == 6900.0
+    # 3종목 그대로면 SH 지수도 그대로(수익률 0)
+    assert out2["KOSPI"].iloc[1] == pytest.approx(6900.0, rel=1e-9)
+
+
+def test_synthetic_kospi_sh_only_identical_returns_ignore_weights():
+    # 3종목이 전부 정확히 +5% → 가중치가 뭐든 SH 지수 = (1+0.05) 복리, KOSPI 움직임과 무관
+    idx = pd.DataFrame({"날짜": ["2026-08-14", "2026-08-18", "2026-08-19"],
+                        "KOSPI": [6000.0, 5800.0, 6400.0],  # KOSPI는 딴 방향으로 움직여도
+                        "KOSDAQ": [800.0, 800.0, 800.0]})
+    bg = _bigcap_df([("2026-08-14", 200000, 180000, 1600000),
+                     ("2026-08-18", 210000, 189000, 1680000),   # ×1.05
+                     ("2026-08-19", 220500, 198450, 1764000)])  # ×1.05 다시
+    out = core.synthetic_kospi_sh_only(idx, bg)
+    assert out["KOSPI"].iloc[1] == pytest.approx(6000.0 * 1.05, rel=1e-6)
+    assert out["KOSPI"].iloc[2] == pytest.approx(6000.0 * 1.05 * 1.05, rel=1e-6)
+
+
+def test_synthetic_kospi_sh_only_prev_day_cap_weights():
+    # 삼성전자만 +10%, 나머지 flat → r_SH ≈ (전일 삼성전자 시총비중) × 0.10
+    s_sh, s_pr, s_hy = core._BIGCAP_SHARES["삼성전자"], core._BIGCAP_SHARES["삼성전자우"], core._BIGCAP_SHARES["SK하이닉스"]
+    p_sh, p_pr, p_hy = 250000.0, 190000.0, 1600000.0
+    w_sh = (s_sh * p_sh) / (s_sh * p_sh + s_pr * p_pr + s_hy * p_hy)
+    idx = pd.DataFrame({"날짜": ["2026-08-14", "2026-08-18"],
+                        "KOSPI": [6000.0, 6000.0], "KOSDAQ": [800.0, 800.0]})
+    bg = _bigcap_df([("2026-08-14", p_sh, p_pr, p_hy),
+                     ("2026-08-18", p_sh * 1.10, p_pr, p_hy)])
+    out = core.synthetic_kospi_sh_only(idx, bg)
+    assert out["KOSPI"].iloc[1] == pytest.approx(6000.0 * (1 + w_sh * 0.10), rel=1e-6)
+
+
+def test_synthetic_kospi_sh_only_missing_middle_day_does_not_blow_up():
+    idx = pd.DataFrame({"날짜": ["2026-08-14", "2026-08-19", "2026-08-20"],
+                        "KOSPI": [6000.0, 6060.0, 6090.0], "KOSDAQ": [800.0, 800.0, 800.0]})
+    bg = _bigcap_df([("2026-08-14", 200000, 180000, 1600000),
+                     ("2026-08-20", 260000, 234000, 2080000)])  # 8/19 없음, 전부 ×1.30
+    out = core.synthetic_kospi_sh_only(idx, bg)
+    lv = list(out["KOSPI"])
+    assert lv[1] == pytest.approx(6060.0, rel=1e-6)   # 8/19 bigcap 없음 → r_SH = r_k
+    assert lv[2] == pytest.approx(6090.0, rel=1e-6)   # 직전(8/19) 없음 → r_SH = r_k, 폭주 안 함
+
+
 # ------------------------------------------------------------------ #
 # compute_pnl_actions (§6-20) — 실현손익을 FA/MO/MA 매매 스타일로 해부
 # ------------------------------------------------------------------ #

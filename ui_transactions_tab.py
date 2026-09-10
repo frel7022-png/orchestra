@@ -11,8 +11,8 @@ from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, compute_pnl_actions, _index_day_moves,
-    load_bigcap_history, synthetic_kospi_ex_bigcap, load_fund_nav_history,
-    compute_vip_vs_orchestra,
+    load_bigcap_history, synthetic_kospi_ex_bigcap, synthetic_kospi_sh_only,
+    load_fund_nav_history, compute_vip_vs_orchestra,
 )
 
 KOSPI_COLOR = "#f59e0b"   # 지수 참조선(코스피) — 앰버
@@ -606,6 +606,83 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
             _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
+
+    # ---- SamsungHynix (§6-26): SamHynix extracted의 정반대 — 코스피 다리를 '삼성전자·
+    #      삼성전자우·SK하이닉스만 담은 시총가중 바스켓(SH)'으로 바꾼 뒤, SH 지수와 내 계좌
+    #      두 선만 8/14=0 기준으로 비교. 표/선 SH=파랑·내 계좌=빨강. ----
+    with st.expander("SamsungHynix", expanded=False):
+        _bg2 = load_bigcap_history()
+        if _bg2.empty or idx_hist.empty:
+            st.caption("bigcap_history.csv 비어있음 — `python backfill_bigcap_history.py` 먼저.")
+        else:
+            _sh_only = synthetic_kospi_sh_only(idx_hist, _bg2)
+            _iva_sh = compute_index_vs_account(tx, hist, _sh_only, state["initial"],
+                                               state.get("fee_rate", 0.0), kospi_weight=wk)
+            _me_sh, _idxc_sh, _lat_sh = _iva_sh["me"], _iva_sh["index"], _iva_sh["latest"]
+            if _me_sh.empty or _idxc_sh.empty or "코스피" not in _idxc_sh:
+                st.info("시세를 새로고침하면 지수·자산 스냅샷이 쌓여서 그래프가 그려집니다.")
+            else:
+                def _p2(v):
+                    return "—" if v is None or pd.isna(v) else f"{v * 100:+.2f}%"
+
+                def _r5(s):
+                    if s is None or len(s) < 6:
+                        return None
+                    a, b = s.iloc[-1], s.iloc[-6]
+                    if pd.isna(a) or pd.isna(b):
+                        return None
+                    return (1 + a) / (1 + b) - 1
+
+                _sh_cum, _sh_day = _lat_sh.get("코스피", (None, None))
+                _ac_cum, _ac_day = _lat_sh.get("계좌", (None, None))
+                _sh_r5 = _r5(_idxc_sh["코스피"])
+                _ac_r5 = _r5(_me_sh["계좌수익"] if "계좌수익" in _me_sh else None)
+
+                def _trow2(label, color, cum, day, r5):
+                    return (f"<tr><td style='color:{color}'>● {label}</td>"
+                            f"<td style='text-align:right;color:{color}'>{_p2(cum)}</td>"
+                            f"<td style='text-align:right;color:{color}'>{_p2(day)}</td>"
+                            f"<td style='text-align:right;color:{color}'>{_p2(r5)}</td></tr>")
+
+                _tbl = (
+                    "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:2px 0 6px'>"
+                    f"<tr style='color:{T['muted2']};font-size:10px'>"
+                    "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>누적</th>"
+                    "<th style='text-align:right'>당일</th><th style='text-align:right'>5일</th></tr>"
+                    + _trow2("SH", DOWN_COLOR, _sh_cum, _sh_day, _sh_r5)
+                    + _trow2("내 계좌", UP_COLOR, _ac_cum, _ac_day, _ac_r5)
+                    + "</table>"
+                )
+
+                fig_sh = go.Figure()
+                fig_sh.add_trace(go.Scatter(
+                    x=_idxc_sh["날짜"], y=_idxc_sh["코스피"], name="SH", mode="lines",
+                    line=dict(color=DOWN_COLOR, width=1.8),
+                    hovertemplate="<b>SH</b> %{y:+.2%}<extra></extra>"))
+                fig_sh.add_trace(go.Scatter(
+                    x=_me_sh["날짜"], y=_me_sh["계좌수익"], name="내 계좌", mode="lines",
+                    line=dict(color=UP_COLOR, width=1.6),
+                    hovertemplate="<b>내 계좌</b> %{y:+.2%}<extra></extra>"))
+                fig_sh.add_hline(y=0, line_dash="dash", line_color=T["muted2"], line_width=1)
+                fig_sh.update_layout(
+                    height=250, margin=dict(l=44, r=8, t=8, b=26),
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=T["text"], size=11), showlegend=False,
+                    hovermode="x unified",
+                    hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"],
+                                    font=dict(size=11, color=T["text"])),
+                    xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                    yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=".1%",
+                               tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                    dragmode=False,
+                )
+                st.markdown(_tbl, unsafe_allow_html=True)
+                components.html(
+                    "<style>body{margin:0;background:transparent}</style>"
+                    + fig_sh.to_html(include_plotlyjs="cdn", full_html=False, default_width="100%",
+                                     config={"displayModeBar": False, "responsive": True}),
+                    height=262,
+                )
 
     # ---- VIP vs Orchestra (§6-21): VIP 펀드 vs new1 계좌(Orchestra), 둘 다 8/14=0.
     #      Orchestration(meritz)은 여기선 안 보여줌 — meritz 앱에서만 3-way (사용자 요청 2026-09-08).

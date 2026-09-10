@@ -213,6 +213,8 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   누적+5일+당일 표 + 하락/상승/even 캡처 표(캐러셀 2장) (§6-17)
 - SamHYnix extracted expander: 위 그래프의 코스피 다리를 "삼성·삼성우·하이닉스 제외 코스피"로
   바꾼 버전 (§6-19)
+- SamsungHynix expander: 반대로 "삼성·삼성우·하이닉스만 담은 시총가중 바스켓(SH)" 대비 내 계좌,
+  두 선/표만·SH 파랑·내 계좌 빨강·누적/당일/5일 (§6-26)
 - VIP vs Orchestra expander: VIP 펀드 vs new1 계좌(Orchestra), 8/14 기준 (§6-21). meritz 앱에서만 Orchestration(meritz 계좌)까지 3-way.
 - 누적 매수/매도(건수+금액+일평균건수) + 누적 실현손익(금액+매수대비%) 요약 (§6-13)
 - 거래 내역 캘린더
@@ -1009,7 +1011,7 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
 - **함수**(`portfolio_core.py`): `load/save/snapshot_bigcap_history`, `fetch_bigcap_quotes`,
   `synthetic_kospi_ex_bigcap`. 회귀 테스트 4개(`test_synthetic_kospi_ex_bigcap_*`: 앵커·폴백,
   대형주 flat이면 나머지 증폭, 대형주가 지수와 똑같이 움직이면 ex 지수 불변,
-  중간 날짜 누락 시 폭주 안 함).
+  중간 날짜 누락 시 폭주 안 함). **정반대 방향(3종목만 담은 SH 바스켓 대비 계좌)은 §6-26.**
 - **"코스피 추이" 라인차트** (2026-09-04 추가): "지수 대비 계좌" 패널 바로 밑. 일반 코스피
   (빨강) vs 삼성·하이닉스 제외 코스피(파랑). **y축은 실제 지수 포인트**(6,500 등), hover엔
   그 시점의 **전일 대비 등락률(%)**. `SamHYnix extracted` expander는 그 밑.
@@ -1209,3 +1211,30 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
 - **코드는 meritz에도 동기화**(apply_transaction 분기 + _all_cycles 필터 + 캘린더) — 단 meritz엔
   아직 입금 행 없음(메리츠 계좌 예수금 차이 확인되면 그때 추가). 회귀 테스트
   `test_deposit_row_bumps_cash_only`.
+
+### 6-26. "SamsungHynix" — SH 바스켓(삼성·삼성우·하이닉스만) 대비 계좌 (2026-09-10, new1 전용)
+- **동기**: §6-19 SamHynix extracted가 "코스피에서 대형 반도체 3종목을 **덜어낸**" 지수라면, 이건
+  정반대로 그 **3종목만 담은 시총가중 바스켓(SH)**을 벤치로 세워 "반도체가 캐리하는 장에서 내
+  저부채·필수재 계좌가 어떻게 따로 노나"를 본다. 2026-09-10 기준 바스켓 비중은 삼성전자 51 /
+  SK하이닉스 44 / 삼성전자우 5 (하이닉스 주식수는 삼성전자의 1/8인데 주가가 ~7배라 시총이 맞먹음).
+- **위치**: 거래 기록 탭, `SamHYnix extracted` expander 바로 밑 `SamsungHynix` expander.
+- **SH 지수 계산**: `portfolio_core.synthetic_kospi_sh_only(index_hist, bigcap_hist)` —
+  `synthetic_kospi_ex_bigcap`의 거울상. `index_hist`의 KOSPI 열을 SH 바스켓 누적 레벨로 바꾼 사본을
+  돌려주고, 그걸 `compute_index_vs_account`에 그대로 넘긴다.
+  - 일별 `r_SH(t) = Σ wᵢ·rᵢ`, `wᵢ = sharesᵢ·closeᵢ(t-1) / Σⱼ sharesⱼ·closeⱼ(t-1)` (**전일 시총 비중**,
+    바스켓 안에서 정규화 Σw=1). `_BIGCAP_SHARES` 재사용.
+  - `rᵢ(t) = closeᵢ(t)/closeᵢ(t-1) − 1`, 첫날 레벨 = 원본 KOSPI 첫날 값(8/14=0 앵커 동일).
+  - 전일/당일 3종목 중 하나라도 종가 없으면 그 구간 `r_SH = r_kospi` (§6-19 중간날 누락 폭주 방지와
+    동일). bigcap_hist 비면 원본 그대로.
+- **렌더링 (SamHynix extracted의 풀 `_render_iva_panel`이 아니라 축약 커스텀 패널)**: 표 1개 + 선그래프
+  1개. **선·표 둘 다 SH·내 계좌 두 줄만** (코스피/코스닥/혼합/내 주식 없음, 캡처 슬라이드 없음).
+  표 컬럼 **누적 / 당일 / 5일**. 색: **SH = 파랑(`DOWN_COLOR`), 내 계좌 = 빨강(`UP_COLOR`)** — 선
+  색·표 dot·표 값 전부. 내 계좌는 `_iva_sh["me"]["계좌수익"]`(8/14 리베이스), SH는
+  `_iva_sh["index"]["코스피"]`. 그래프는 expander 안 plotly 폭 0 문제 때문에 VIP 패널처럼
+  `components.html`(iframe)+`responsive:true`로 렌더.
+- **데이터 파이프라인 신규 없음** — `bigcap_history.csv`(§6-19) 그대로 재사용, 렌더 시점 변환.
+- **"KOSPI 2-Track Trend" 라인차트엔 SH 선 안 넣음** (사용자 지시 2026-09-10).
+- **함수**(`portfolio_core.py`): `synthetic_kospi_sh_only`. 회귀 테스트 4개
+  (`test_synthetic_kospi_sh_only_*`: 앵커·폴백·3종목 flat이면 SH도 불변 / 3종목 동일수익률이면
+  가중 무관 (1+r)ⁿ / 전일 시총 가중 검증 / 중간날 누락 폭주 안 함).
+- **new1 전용** (meritz 미적용 — 요청 없었음).

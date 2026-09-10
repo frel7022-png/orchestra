@@ -526,6 +526,51 @@ def synthetic_kospi_ex_bigcap(index_hist: pd.DataFrame, bigcap_hist: pd.DataFram
     return h
 
 
+def synthetic_kospi_sh_only(index_hist: pd.DataFrame, bigcap_hist: pd.DataFrame) -> pd.DataFrame:
+    """synthetic_kospi_ex_bigcap의 정반대 — index_hist의 KOSPI 열을 '삼성전자+삼성전자우+
+    SK하이닉스만 담은 시총가중 바스켓(SH)'의 누적 레벨로 바꾼 사본을 돌려준다(KOSDAQ·날짜 그대로).
+    이 사본을 compute_index_vs_account에 그대로 넘기면 코스피 다리가 SH 바스켓으로 계산된다.
+      일별:  r_SH(t) = Σ wᵢ·rᵢ,  wᵢ = sharesᵢ·closeᵢ(t-1) / Σⱼ sharesⱼ·closeⱼ(t-1)  (전일 시총 비중)
+             rᵢ(t) = closeᵢ(t)/closeᵢ(t-1) − 1  (§6-19처럼 '직전 지수 날짜' 기준)
+    첫날 레벨 = 원본 KOSPI 첫날 값(누적수익 앵커 동일). 전일/당일 3종목 중 하나라도 종가가 없으면
+    그 구간은 r_SH = r_kospi로 둔다(§6-19 중간날 누락 폭주 방지와 동일). bigcap_hist가 비었거나
+    KOSPI 열이 없으면 원본 그대로."""
+    if index_hist is None or index_hist.empty or "KOSPI" not in index_hist:
+        return index_hist
+    h = index_hist.copy().sort_values("날짜").reset_index(drop=True)
+    if bigcap_hist is None or bigcap_hist.empty:
+        return h
+
+    def _n(x):
+        try:
+            v = float(x)
+            return v if v > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    names = list(BIGCAP_CODES)
+    bg_by_date = {r["날짜"]: {n: _n(r.get(n)) for n in names}
+                  for _, r in bigcap_hist.sort_values("날짜").iterrows()}
+    kospi = pd.to_numeric(h["KOSPI"], errors="coerce").tolist()
+    dates = h["날짜"].tolist()
+
+    sh_level = [kospi[0] if kospi else None] + [None] * (len(h) - 1)
+    for i in range(1, len(h)):
+        r_k = (kospi[i] / kospi[i - 1] - 1.0) if (kospi[i - 1] and kospi[i]) else 0.0
+        cur = bg_by_date.get(dates[i])
+        prev = bg_by_date.get(dates[i - 1])   # 바로 직전 '지수 날짜'의 대형주 종가
+        if (cur and prev
+                and all(cur.get(n) for n in names) and all(prev.get(n) for n in names)):
+            caps_prev = {n: _BIGCAP_SHARES[n] * prev[n] for n in names}   # 전일 시총
+            tot_prev = sum(caps_prev.values())
+            r_sh = sum((caps_prev[n] / tot_prev) * (cur[n] / prev[n] - 1.0) for n in names)
+        else:
+            r_sh = r_k
+        sh_level[i] = sh_level[i - 1] * (1.0 + r_sh)
+    h["KOSPI"] = sh_level
+    return h
+
+
 # ------------------------------------------------------------------ #
 # 네이버 금융: 종목명 → 종목코드 자동 검색 + 시세 조회
 # ------------------------------------------------------------------ #
