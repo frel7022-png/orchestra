@@ -607,11 +607,11 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
             _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
 
-    # ---- Siren Index (§6-26): SamHynix extracted의 정반대 — 코스피 다리를 '삼성전자·
+    # ---- Sour Grapes (§6-26): SamHynix extracted의 정반대 — 코스피 다리를 '삼성전자·
     #      삼성전자우·SK하이닉스만 담은 시총가중 바스켓(SH)'으로 바꾼 뒤, SH 지수와 내 계좌
-    #      두 선만 8/14=0 기준으로 비교. 표/선 SH=파랑·내 계좌=빨강. 이름 뜻 = FOMO 유발
-    #      지수(안 담은 이 바스켓이 부르는 소리 — 돛대에 묶여 지나친다). ----
-    with st.expander("Siren Index", expanded=False):
+    #      두 선만 8/14=0 기준으로 비교. 표/선 SH=파랑·내 계좌=빨강. 이름 뜻 = 여우와 신포도
+    #      (안 담은 이 바스켓이 오르는 걸 보며 FOMO 유발 — 못 딴 포도가 시다). ----
+    with st.expander("Sour Grapes", expanded=False):
         _bg2 = load_bigcap_history()
         if _bg2.empty or idx_hist.empty:
             st.caption("bigcap_history.csv 비어있음 — `python backfill_bigcap_history.py` 먼저.")
