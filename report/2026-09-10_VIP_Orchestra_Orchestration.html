@@ -1,0 +1,227 @@
+<title>10조의 관성</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:56px 24px 96px}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:14px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.5rem; line-height:1.18; letter-spacing:-.01em; margin:0 0 18px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:22px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-size:1.02rem; font-weight:700; letter-spacing:.01em; margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent); font-weight:500}
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent); border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow)}
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:14px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:9px 12px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12.5px; letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  tr.tot td{border-top:1.5px solid var(--rule); font-weight:600}
+  td .sub{display:block; font-size:11.5px; color:var(--ink-faint); font-family:"IBM Plex Sans KR"}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+  .chk{color:var(--accent); font-weight:600}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin:22px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; box-shadow:var(--shadow)}
+  .stat .k{font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; margin-top:3px}
+  .stat .c{font-size:12px; color:var(--ink-soft); margin-top:2px}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table,.stat{box-shadow:none}
+    h2{break-after:avoid} table,.verdict,.stat-grid{break-inside:avoid}
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">VIP × Orchestra × Orchestration · 첫 4주</div>
+  <h1>10조의 관성</h1>
+  <p class="dek">VIP한국형가치투자는 개인에서 출발해 22년간 <strong>10조 원</strong>을 굴려온 회사다 —
+  이 계좌들이 좇는 철학(저부채·필수재·업계상위 밸류)의 <strong>제도권 원형</strong>. 8/14부터 그 원형을
+  기준선으로 걸었고, 첫 창을 읽어보면 <strong>작은 계좌가 큰 배를 앞선다</strong>. 실력이 아니라
+  구조다 — 그리고 그 구조가 유리한 국면이 마침 이 4주였다.</p>
+  <div class="meta">
+    <span>작성 2026-09-10</span>
+    <span>표본 8/14 ~ 9/10 · 거래일 19일</span>
+    <span>8/14 = 0 리베이스</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <p class="lead">판정: 기준선 장착 완료. 첫 읽기는 구조 우위 확인.</p>
+  <p>4주 누적 — VIP <span class="num loss">−0.64%</span> · Orchestra <span class="num loss">−0.25%</span> ·
+  Orchestration <span class="num gain">+0.57%</span>. 두 계좌 다 원형을 앞섰다. 이유는 종목 선구안이
+  아니라 <strong>현금 쿠션(33% / 50%)·회전 기민성·보수 0·나스닥 성장 다리</strong> — 10조 원 펀드가
+  구조적으로 못 가지는 것들이다. 밸류가 옆으로 기는 국면에선 이 편이 이긴다. 밸류가 추세로 오르면
+  완전투자한 VIP가 다시 앞선다.</p>
+</div>
+
+<h2><span class="n">01</span> 4주는 밸류에 역풍이었다</h2>
+<p>국내 장은 8/14 이후 방향 없이 눌렸다. <strong>코스닥 <span class="num loss">−3.61%</span></strong>,
+코스피는 <span class="num gain">+0.27%</span>로 겨우 본전 — 그마저 삼성전자·삼성전자우·SK하이닉스가
+떠받친 것이다(그 세 종목 시총가중 바스켓 = <span class="num gain">+3.58%</span>). 반도체를 한 주도
+담지 않는 밸류 북은 이 창 내내 지수에 뒤처질 수밖에 없는 지형이었다.</p>
+<p>그래서 이 4주는 세 계좌 모두에게 <strong>수비 시험</strong>이었지 공격 시험이 아니었다. VIP가
+<span class="num loss">−0.64%</span>로 마감한 건 10조 원짜리 순수 밸류 펀드가 그 역풍을 거의
+정면으로 맞았다는 뜻이다 — 못한 게 아니라, <em>피할 수단이 없었다</em>.</p>
+
+<h2><span class="n">02</span> 세 줄, 한 철학</h2>
+<div class="stat-grid">
+  <div class="stat">
+    <div class="k">VIP · 원형</div>
+    <div class="v loss">−0.64%</div>
+    <div class="c">22년 · 10조 원 · 완전투자 · 보수 연 1.96%</div>
+  </div>
+  <div class="stat">
+    <div class="k">Orchestra · new1</div>
+    <div class="v loss">−0.25%</div>
+    <div class="c">국내 밸류 코어 · 능동 수확 + 물타기 · 현금 ~33%</div>
+  </div>
+  <div class="stat">
+    <div class="k">Orchestration · meritz</div>
+    <div class="v gain">+0.57%</div>
+    <div class="c">국내 밸류 + 나스닥 · 인내 보유 · 현금 ~50%</div>
+  </div>
+</div>
+<p>셋은 같은 팩터 위에 서 있고, 성숙도·몸집·규율만 다르다. new1이 <strong>원형 코어</strong>(153종목
+선정 기준을 직접 굴리는 능동 계층), meritz가 <strong>2차 계층</strong>(같은 국내 밸류에 나스닥 성장
+다리와 현금 50%를 얹은 방어·헷지), VIP가 <strong>외부 기준점</strong>(그 철학을 22년·10조 규모로
+구현한 제도권 버전). "내 계좌 중 누가 이겼나"가 아니라 <strong>우리 밸류 규율 vs 그 규율의 어른
+버전</strong>을 재는 자리다.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>4주 (8/14→9/10)</th><th>누적</th><th>최저</th><th>일간 변동성</th></tr></thead>
+  <tbody>
+    <tr><td>VIP 펀드</td><td class="num loss">−0.64%</td><td class="num loss">−3.55%</td><td class="num">1.32%</td></tr>
+    <tr><td>Orchestra · new1</td><td class="num loss">−0.25%</td><td class="num loss">−1.73%</td><td class="num">0.60%</td></tr>
+    <tr><td>Orchestration · meritz</td><td class="num gain">+0.57%</td><td class="num loss">−0.39%</td><td class="num">0.37%</td></tr>
+    <tr><td>코스피</td><td class="num gain">+0.27%</td><td class="num">·</td><td class="num">–</td></tr>
+    <tr><td>코스닥</td><td class="num loss">−3.61%</td><td class="num loss">−8.6%</td><td class="num">2.06%</td></tr>
+    <tr><td>삼성·삼성우·하이닉스 바스켓</td><td class="num gain">+3.58%</td><td class="num">·</td><td class="num">–</td></tr>
+  </tbody>
+  <caption>VIP는 8/14 기준가 2,026 → 9/10 2,013. Orchestra/Orchestration은 총자산의 최초자본 대비 수익률을 8/14=0으로 리베이스. 변동성 = 일간 수익률 표준편차. 코스피 최저는 8/19 데이터 이상치(−7%)가 섞여 생략.</caption>
+</table>
+</div>
+
+<h2><span class="n">03</span> 왜 10조가 뒤졌나 — 관성의 해부</h2>
+<p>VIP가 밀린 건 네 가지 구조 때문이고, 넷 다 <strong>규모의 함수</strong>다.</p>
+<ul>
+  <li><strong>완전투자.</strong> 현금을 거의 안 들고 간다. 우리 두 계좌의 현금 33% / 50%가
+  하락일마다 자동으로 진폭을 깎아준다 — VIP엔 그 완충이 없다. 일간 변동성 <span class="num">1.32%</span>는
+  Orchestra의 <span class="num">2.2배</span>, Orchestration의 <span class="num">3.6배</span>.</li>
+  <li><strong>몸집.</strong> 10조 원은 한 종목을 며칠에 걸쳐 사고팔아야 한다. 국면이 바뀌어도
+  자세를 못 바꾼다. 소액 계좌는 하루면 끝난다.</li>
+  <li><strong>보수 연 1.96%.</strong> 4주에 약 <span class="num">−0.15%p</span>가 기준가에서 그냥
+  빠진다. 우리 계좌엔 없는 상시 마찰이다.</li>
+  <li><strong>나스닥 다리 부재.</strong> Orchestration의 플러스를 만든 상당 부분은 국내 밸류가 아니라
+  해외 성장 사이드다. VIP는 정의상 한국형 밸류만 담는다.</li>
+</ul>
+<p>즉 이 <span class="num">0.4~1.2%p</span> 격차는 "우리가 종목을 더 잘 골랐다"가 아니라
+"우리가 더 작고 더 유연하고 마찰이 없다"의 결과다. 반대로 말하면, <strong>그 유연성을 실제로
+수익으로 바꾸는 건 우리 몫</strong>이고 VIP는 그걸 22년간 증명해왔다.</p>
+
+<h2><span class="n">04</span> 상관 ≈ 0 — 거울이 아니라 기준점</h2>
+<p>VIP의 일간 등락과 두 계좌의 일간 등락 상관: Orchestra <span class="num">+0.09</span>,
+Orchestration <span class="num">−0.28</span>. 코스피와도 <span class="num">−0.06</span>. 사실상 무상관이다.
+VIP는 T+1~2로 지연 반영되는 데다 종목 구성이 우리와 겹치지 않아, <strong>날짜별로는 완전히 독립적인
+자를 하나 더 세운 셈</strong>이다 — 우리 계좌를 따라 움직이는 벤치가 아니라, 바깥에서 같은 철학을
+굴리는 실물이다. 기준선으로서 딱 원하던 성질.</p>
+
+<h2><span class="n">05</span> 이 결과가 뒤집히는 조건</h2>
+<p>첫 창은 우리에게 유리한 지형이었다. 다음 두 국면에서 다시 읽어야 진짜 그림이 나온다.</p>
+<ul>
+  <li><strong>밸류 추세 상승장.</strong> 저부채·필수재가 몇 주 연속 오르면, 완전투자한 VIP가
+  현금 든 우리 계좌를 다시 앞선다. 그때 격차가 얼마나 빨리 좁혀지는지가 우리 현금 비중의
+  기회비용을 알려준다.</li>
+  <li><strong>급락.</strong> 코스닥 −3.6% 정도의 완만한 하락이 아니라 며칠에 −8~10% 오는 국면.
+  거기서 현금 쿠션(new1)과 나스닥 헷지(meritz)가 실제로 방어선을 지키는지 — 아니면 밸류
+  팩터가 통째로 눌릴 때 셋이 같이 빠지는지.</li>
+  <li><strong>시간.</strong> VIP의 −0.64%는 여러 사이클을 관통한 22년 트랙 위의 4주이고,
+  우리 수치는 트랙 전체가 4주다. 비교의 무게가 아직 대칭이 아니다.</li>
+</ul>
+
+<h2><span class="n">06</span> 결론</h2>
+<div class="stat-grid">
+  <div class="stat">
+    <div class="k">이 리포트가 한 일</div>
+    <div class="v" style="font-size:1.02rem; line-height:1.5">22년 원형을<br>상시 기준선으로 장착</div>
+  </div>
+  <div class="stat">
+    <div class="k">첫 4주 판정</div>
+    <div class="v chk" style="font-size:1.02rem; line-height:1.5">구조 우위 확인<br><span class="c">+0.4 ~ +1.2%p vs VIP</span></div>
+  </div>
+  <div class="stat">
+    <div class="k">다음 점검</div>
+    <div class="v" style="font-size:1.02rem; line-height:1.5">밸류 상승장 ·<br>급락장에서 재측정</div>
+  </div>
+</div>
+<p>구조를 바꿀 일은 없다. VIP를 이겼다고 자세를 바꾸는 것도 아니다 — 이 4주는 우리 현금·기민성이
+가장 잘 먹히는 국면이었을 뿐이고, 원형은 원형대로 22년의 신뢰를 갖고 있다. 지금 확인된 건
+하나: <strong>기준선이 제대로 걸렸고, 첫 읽기에서 소액 구조의 이점이 예상한 방향으로 나왔다.</strong>
+나머지는 국면을 바꿔가며 계속 잰다.</p>
+
+<footer>
+  VIP × Orchestra × Orchestration 첫 점검 · 2026-09-10 · new1/report/<br>
+  VIP 기준가는 메리츠 앱에서 수집(T+1~2 지연, 보수 차감 후). Orchestra=new1(orchestra.git),
+  Orchestration=meritz(Ochestration.git) 계좌 총자산 기준. 8/14=0 리베이스. 나스닥 성장 사이드
+  계좌는 이 점검 범위 밖.
+</footer>
+</div>
