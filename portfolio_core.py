@@ -301,6 +301,34 @@ def save_sector_history(df: pd.DataFrame) -> None:
     df.to_csv(SECTOR_HISTORY_FILE, index=False)
 
 
+def check_history_alignment(trade_date: str | None = None) -> dict:
+    """asset/sector/index/bigcap_history 4개가 같은 날짜까지 커버하는지 점검(§6-2 "lock-step").
+    이 4개는 전부 매매일지 반영일(trade_date)까지 나란히 있어야 하는데, 앱 새로고침은 배포
+    서버 로컬에만 쓰고 git엔 안 올려서 어긋나기 쉽다 — ingest 끝에서 이걸 불러 ⚠️를 띄운다.
+    반환: {maxes:{파일명:마지막날짜|None}, latest, aligned(4개 마지막날짜 동일 & 빈 파일 없음),
+           behind:[뒤처진 파일명], target_ok(모든 파일에 trade_date 존재; trade_date 없으면 None)}."""
+    loaders = {"asset_history": load_history, "sector_history": load_sector_history,
+               "index_history": load_index_history, "bigcap_history": load_bigcap_history}
+    maxes, has_target = {}, {}
+    for name, fn in loaders.items():
+        try:
+            df = fn()
+        except Exception:
+            df = None
+        if df is None or getattr(df, "empty", True) or "날짜" not in getattr(df, "columns", []):
+            maxes[name], has_target[name] = None, False
+            continue
+        dates = set(df["날짜"].astype(str))
+        maxes[name] = max(dates)
+        has_target[name] = (trade_date in dates) if trade_date else True
+    present = [v for v in maxes.values() if v]
+    latest = max(present) if present else None
+    behind = [n for n, v in maxes.items() if v is None or (latest and v < latest)]
+    return {"maxes": maxes, "latest": latest, "behind": behind,
+            "aligned": bool(present) and len(set(present)) == 1 and not any(v is None for v in maxes.values()),
+            "target_ok": (all(has_target.values()) if trade_date else None)}
+
+
 def snapshot_sector_history(weights: dict, on_date: str | None = None) -> None:
     """섹터그룹별 오늘자(또는 지정 날짜) 비중(%) 스냅샷 저장. 같은 날짜 데이터는 덮어씀."""
     if not weights:

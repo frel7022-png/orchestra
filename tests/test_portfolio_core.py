@@ -1138,6 +1138,32 @@ def test_synthetic_kospi_sh_only_missing_middle_day_does_not_blow_up():
     assert lv[2] == pytest.approx(6090.0, rel=1e-6)   # 직전(8/19) 없음 → r_SH = r_k, 폭주 안 함
 
 
+# --- check_history_alignment (§6-2): ingest 끝 정합성 자동 체크 --- #
+def test_check_history_alignment_flags_misaligned(monkeypatch, tmp_path):
+    a = tmp_path / "asset_history.csv"; s = tmp_path / "sector_history.csv"
+    i = tmp_path / "index_history.csv"; b = tmp_path / "bigcap_history.csv"
+    pd.DataFrame({"날짜": ["2026-09-08", "2026-09-09", "2026-09-10"], "총자산": [1, 2, 3]}).to_csv(a, index=False)
+    pd.DataFrame({"날짜": ["2026-09-08", "2026-09-10"], "섹터그룹": ["식품", "식품"], "비중": [1, 1]}).to_csv(s, index=False)
+    pd.DataFrame({"날짜": ["2026-09-08", "2026-09-09"], "KOSPI": [1, 2], "KOSDAQ": [1, 2]}).to_csv(i, index=False)  # 뒤처짐
+    pd.DataFrame({"날짜": ["2026-09-08", "2026-09-09", "2026-09-10"], "삼성전자": [1, 2, 3]}).to_csv(b, index=False)
+    monkeypatch.setattr(core, "HISTORY_FILE", a)
+    monkeypatch.setattr(core, "SECTOR_HISTORY_FILE", s)
+    monkeypatch.setattr(core, "INDEX_HISTORY_FILE", i)
+    monkeypatch.setattr(core, "BIGCAP_HISTORY_FILE", b)
+
+    r = core.check_history_alignment("2026-09-10")
+    assert r["aligned"] is False
+    assert r["behind"] == ["index_history"]           # 9/9에서 멈춤
+    assert r["latest"] == "2026-09-10"
+    assert r["target_ok"] is False                    # index_history에 9/10 없음
+
+    # index_history를 9/10까지 채우면 정합성 OK
+    pd.DataFrame({"날짜": ["2026-09-08", "2026-09-09", "2026-09-10"],
+                  "KOSPI": [1, 2, 3], "KOSDAQ": [1, 2, 3]}).to_csv(i, index=False)
+    r2 = core.check_history_alignment("2026-09-10")
+    assert r2["aligned"] is True and r2["behind"] == [] and r2["target_ok"] is True
+
+
 # ------------------------------------------------------------------ #
 # compute_pnl_actions (§6-20) — 실현손익을 FA/MO/MA 매매 스타일로 해부
 # ------------------------------------------------------------------ #

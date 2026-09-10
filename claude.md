@@ -303,9 +303,12 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   커버해야 하는데, **앱 새로고침은 배포 서버 로컬에만 쓰고 git엔 안 올려서**(§6-1) 매매일지만
   반영한 날엔 어긋나기 쉽다. `ingest_daily.py`가 이 4개를 매번 같이 찍게 해뒀지만(2026-09-08
   기준), 그래도 소비하는 계산 함수는 "히스토리가 어긋나 있을 수 있다"는 전제로 방어적으로 짤 것
-  (한쪽이 뒤처지면 폭주하지 말고 공통 커버 구간까지만 쓰거나 그 구간을 스킵). **정합성 자동
-  체크(ingest 끝에 4개 파일 날짜범위 비교 후 어긋나면 ⚠️ 출력)는 사용자가 "하나씩 고쳐나가자"고
-  일단 보류(2026-09-08)** — 나중에 또 이 부류 버그가 나오면 그때 넣을 것.
+  (한쪽이 뒤처지면 폭주하지 말고 공통 커버 구간까지만 쓰거나 그 구간을 스킵).
+- **정합성 자동 체크 (2026-09-10 도입)**: `portfolio_core.check_history_alignment(trade_date)` —
+  asset/sector/index/bigcap_history(meritz는 +dom_asset, 5개)의 마지막 날짜를 비교해서 어긋나거나
+  일부에 trade_date가 없으면 알려준다. `ingest_daily.py`가 "반영 후 상태" 출력 직전에 불러서
+  `[정합성 OK]` 또는 `[⚠️ 정합성] ... <-- 뒤처짐`을 찍음(자동 수정은 안 함 — 세션이 보고 판단).
+  회귀 테스트 `test_check_history_alignment_flags_misaligned`.
 - **4번째 재발 + 근본 원인 수정 (2026-09-10)**: `ingest_daily.py`가 `index_history`/`bigcap_history`를
   **실시간 시세**(`fetch_index_quotes`/`fetch_bigcap_quotes`)로 `on_date=trade_date`에 찍고 있었다.
   그래서 **과거 날짜의 매매일지를 장중에 반영하면 그 과거 날짜 행이 '오늘 장중값'으로 덮여** 오염됐다

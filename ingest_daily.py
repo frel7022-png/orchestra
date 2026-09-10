@@ -141,6 +141,18 @@ def main():
     except Exception as e:
         print(f"[경고] watchlist 자동 편입 실패(매매일지 반영은 정상 완료됨): {e}")
 
+    # ---- 히스토리 파일 정합성 자동 체크 (§6-2, 2026-09-10) ----
+    _al = core.check_history_alignment(trade_date)
+    if _al["aligned"] and _al["target_ok"]:
+        print(f"[정합성 OK] asset/sector/index/bigcap_history 전부 {_al['latest']}까지 · {trade_date} 포함")
+    else:
+        print("[⚠️ 정합성] 히스토리 파일 커버가 어긋남 — git commit 전에 확인:")
+        for _n, _mx in _al["maxes"].items():
+            print(f"    {_n:16s} 마지막 {_mx or '(비어있음)'}"
+                  + ("  <-- 뒤처짐" if _n in _al["behind"] else ""))
+        if _al["target_ok"] is False:
+            print(f"    ※ 반영일 {trade_date}가 일부 파일에 없음")
+
     print(f"[완료] {trade_date} 매매일지 반영: 신규 거래 {n_new}건"
           + (f" (기존 {n_replaced}건 교체)" if n_replaced else ""))
     print("---- 반영 후 상태 (실제 메리츠 앱 화면과 대조하세요) ----")
