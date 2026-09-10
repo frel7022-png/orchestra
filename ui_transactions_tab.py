@@ -816,6 +816,39 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         )
         st.plotly_chart(fig_se, use_container_width=True, config={"displayModeBar": False})
 
+        # ---- Burn rate: 매입액이 늘 때 각 선이 얼마나 빨리 떨어지나 (§6-27, 2026-09-10 사용자 요청) ----
+        # 구간: 8/19(신호 트리거 시대 시작) 이후. dcost만큼 매입이 늘 동안 W Fuel은 dwf, W/o Fuel은
+        # dwof 만큼 줄었다. "Fuel 커버율" = 매입 확대 중 탱크를 안 까고 씨앗으로 메운 비율 = (dcost-dwf)/dcost.
+        # W/o Fuel은 씨앗이 없어 매입과 1:1로 소진 → 커버율 ≈ 0. 그 상태로 가면 W/o Fuel이 먼저 0에
+        # 닿고, 그 시점의 W Fuel 잔액 = 씨앗 엔진이 벌어준 runway.
+        _anch = _se[_se["날짜"] >= "2026-08-19"]
+        _anch = _anch.iloc[0] if len(_anch) else _se.iloc[0]
+        _cur = _se.iloc[-1]
+        _dcost = _cur["총매입"] - _anch["총매입"]
+        if _dcost > 0:
+            _dwf = _anch["예수금"] - _cur["예수금"]          # W Fuel 감소분(+가 줄어든 것)
+            _dwof = _anch["무연료예수금"] - _cur["무연료예수금"]  # W/o Fuel 감소분
+            _cover_wf = (_dcost - _dwf) / _dcost * 100        # 씨앗이 메운 비율
+            _cover_wof = (_dcost - _dwof) / _dcost * 100      # ≈ 0
+            _rate_wof = _dwof / _dcost                        # W/o Fuel이 매입 1원당 줄어드는 속도
+            _rate_wf = _dwf / _dcost
+            _runway = (_cur["무연료예수금"] / _rate_wof) if _rate_wof > 1e-9 else None  # W/o Fuel 0까지 매입 여력
+            _wf_at_zero = (_cur["예수금"] - _rate_wf * _runway) if _runway is not None else None
+            _bits = [
+                f'구간 8/19~ · 매입 <b>+{_dcost:,.0f}원</b>',
+                f'<b style="color:{DOWN_COLOR}">W Fuel</b> −{_dwf:,.0f} (씨앗 커버 {_cover_wf:.0f}%)',
+                f'<b style="color:{NEW_COLOR}">W/o Fuel</b> −{_dwof:,.0f} (커버 {_cover_wof:.0f}%)',
+            ]
+            _r2 = ""
+            if _runway is not None:
+                _r2 = (f'<div class="tx-cum-summary"><span>W/o Fuel {_cur["무연료예수금"]:,.0f}원 → '
+                       f'<b>0까지 매입 여력 ~{_runway:,.0f}원</b>. 그때 W Fuel 예상 '
+                       f'<b style="color:{DOWN_COLOR}">~{max(_wf_at_zero, 0):,.0f}원</b> = 씨앗 엔진이 벌어준 runway</span></div>')
+            st.markdown(
+                f'<div class="tx-cum-summary"><span>{" &nbsp;·&nbsp; ".join(_bits)}</span></div>{_r2}',
+                unsafe_allow_html=True,
+            )
+
     st.markdown("##### History Calendar")
 
     if "cal_year" not in st.session_state:
