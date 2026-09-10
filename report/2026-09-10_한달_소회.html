@@ -1,0 +1,186 @@
+<title>흉터로 쓴 설명서</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400;0,6..72,400..600&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.78; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:720px; margin:0 auto; padding:60px 24px 100px}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:48px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:16px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.7rem; line-height:1.16; letter-spacing:-.01em; margin:0 0 20px; text-wrap:balance}
+  .dek{font-size:1.1rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:24px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-family:"Newsreader",Georgia,serif; font-style:normal; font-weight:600; font-size:1.35rem; letter-spacing:-.01em; margin:56px 0 6px; padding-top:26px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:12px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.78rem; color:var(--accent); font-weight:500; font-style:normal}
+  p{margin:14px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+  .lede{font-size:1.05rem; color:var(--ink)}
+
+  .pull{font-family:"Newsreader",Georgia,serif; font-style:italic; font-size:1.5rem; line-height:1.4; color:var(--ink); margin:32px 0; padding-left:20px; border-left:3px solid var(--accent); text-wrap:balance}
+
+  .stat-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:26px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 15px; box-shadow:var(--shadow)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.55rem}
+  .stat .k{font-size:11.5px; color:var(--ink-faint); margin-top:3px; line-height:1.35}
+
+  table{width:100%; border-collapse:collapse; margin:22px 0; font-size:13.5px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:8px 11px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12px}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:18px 20px; margin:22px 0; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:8px}
+  .callout ul{margin:8px 0 0; padding-left:0; list-style:none}
+  .callout li{margin:9px 0; padding-left:20px; position:relative}
+  .callout li::before{content:"·"; position:absolute; left:6px; color:var(--ink-faint)}
+
+  footer{margin-top:68px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:2rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+    .pull{font-size:1.25rem}
+  }
+  @media print{
+    body{background:#fff} .wrap{max-width:none; padding:0 12mm}
+    .callout,table,.stat{box-shadow:none}
+    h2{break-after:avoid} table,.stat-grid,.callout{break-inside:avoid}
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">한 달 소회 · 2026-08-14 → 09-10</div>
+  <h1>흉터로 쓴 설명서</h1>
+  <p class="dek">스물일곱 날. 두 레포에 <strong>315개 커밋</strong>, 운영 문서 <strong>1,523줄</strong>,
+  회귀 테스트 72개, 리포트 6편. 굴리는 돈은 합쳐 1,800만 원 남짓 — 그 위에 얹은 계측 장치가
+  본체보다 크다. 일부러 그랬다. 이 한 달의 결과물은 수익률이 아니라, <strong>매일 정직하게
+  들여다보는 습관과 그걸 강제하는 기계</strong>다.</p>
+  <div class="meta">
+    <span>작성 2026-09-10</span>
+    <span>Orchestra(new1) · Orchestration(meritz)</span>
+  </div>
+</header>
+
+<p class="lede">한 달 전, 출발점은 깨끗한 새 프로젝트가 아니었다. Streamlit 채팅으로 반복 수정하다
+꼬여버린 이전 버전이 있었고, 그걸 <strong>처음부터 다시 세우는 일</strong>로 시작했다. 그래서
+가장 먼저 만든 건 기능이 아니라 <strong>규칙</strong>이었다 — "거래 기록이 유일한 진실", "증권사
+CSV는 그날 전체 누적이지 델타가 아니다", "메타데이터는 별도 영구 캐시로 분리한다". 전부
+<strong>이미 한 번씩 당해본 버그</strong>다. CLAUDE.md의 §1은 회고가 아니라 화석이다.</p>
+
+<h2><span class="n">01</span> 한 달의 부피</h2>
+<div class="stat-grid">
+  <div class="stat"><div class="v">315</div><div class="k">커밋 (new1 242 · meritz 73)</div></div>
+  <div class="stat"><div class="v">26</div><div class="k">운영 섹션 (§6-1 ~ §6-26)</div></div>
+  <div class="stat"><div class="v">72</div><div class="k">회귀 테스트</div></div>
+  <div class="stat"><div class="v">~6,000</div><div class="k">파이썬 줄</div></div>
+  <div class="stat"><div class="v">17</div><div class="k">데이터 CSV + Supabase 4테이블</div></div>
+  <div class="stat"><div class="v">6</div><div class="k">분석 리포트</div></div>
+</div>
+<p>이번 달에 실제로 지어진 것들 — 거래 재생 체크포인트, 153종목 시세·수급 파이프라인(GitHub
+Actions cron + Supabase), 관심종목 스크리너(Fishing/Bench/Volume/Foreigner), 물타기 적정성
+그래프, 배당 배지, 지수 대비 계좌(혼합지수·하락/상승 캡처), 삼성·하이닉스 제외 지수(Sour
+Grapes), P&L Actions, 예탁금 이자 처리, 섹터 27분류 재편, 그리고 <strong>VIP 펀드를 외부
+기준선으로 물린 것</strong>.</p>
+<p class="pull">계좌보다 자(尺)를 먼저 만들었다. 재는 습관이 없으면 규율도 없으니까.</p>
+
+<h2><span class="n">02</span> 계속 깨진 자리</h2>
+<p>버그는 대부분 한 곳에서 나왔다 — <strong>분산된 상태</strong>. 두 개의 레포, 재배포마다
+초기화되는 배포 서버 파일시스템, 레포 간 수동 동기화. 같은 부류의 버그가 이 한 달에 네 번
+재발했다("히스토리 파일 lock-step" — asset/index/bigcap 히스토리가 서로 다른 날짜까지 커버).
+오늘 하루만 해도 index_history가 두 레포에서 갈렸고, both_accounts.csv가 장중 시각에 얼어붙었고,
+새 함수가 배포 캐시에 안 잡혀 ImportError가 났다.</p>
+<div class="callout">
+  <div class="h">이 달의 교훈, 압축</div>
+  <ul>
+    <li><strong>증권사 CSV는 누적이다.</strong> 같은 날짜를 다시 올리면 통째로 교체 — append하면 반드시 중복(네이버 1주가 3주로).</li>
+    <li><strong>파생 데이터는 손대지 않는다.</strong> holdings는 transactions를 재생한 결과. 직접 고치면 다음 재계산에 덮인다.</li>
+    <li><strong>배포는 fs를 지운다.</strong> 앱이 새로고침한 값은 git에 안 올라가면 다음 배포 때 사라진다 — 매매기록 하루치를 코드 배포 한 번으로 잃은 적 있다.</li>
+    <li><strong>장중 시세는 종가가 아니다.</strong> 과거 날짜를 장중에 반영하면 그 날짜가 오늘 값으로 오염된다. → ingest가 확정 종가를 우선하도록 오늘 고침.</li>
+    <li><strong>실패를 조용히 삼키지 않는다.</strong> <code>except: pass</code>로 커밋 실패를 묻으면 원인 찾는 데 며칠 걸린다.</li>
+  </ul>
+</div>
+<p>정리하자면, 이 앱의 취약점은 <em>계산</em>이 아니라 <em>배관</em>이었다. 오늘 들어간 세 개의
+근본 수정(확정 종가 우선, Supabase 런타임 채널, VIP 패널의 자기 계좌는 라이브)이 그 배관을
+한 겹 단단하게 했다. 다음 달엔 이 부류가 덜 나오길.</p>
+
+<h2><span class="n">03</span> 규율은 지켜졌는가</h2>
+<p>지난 4주는 <strong>밸류에 역풍</strong>이었다. 코스닥 −3.6%, 코스피는 삼성·하이닉스가 겨우
+떠받쳐 본전. 반도체를 한 주도 안 담는 저부채·필수재 북에는 내내 불리한 지형. 그 안에서:</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>8/14 → 9/10 (8/14=0)</th><th>누적</th><th>성격</th></tr></thead>
+  <tbody>
+    <tr><td>VIP한국형가치투자 (22년·10조)</td><td class="num loss">−0.64%</td><td>완전투자·보수 1.96%</td></tr>
+    <tr><td>Orchestra · new1</td><td class="num loss">−0.5%대</td><td>능동 수확·물타기·현금 31%</td></tr>
+    <tr><td>Orchestration · meritz</td><td class="num">보합</td><td>인내 보유·현금 47%</td></tr>
+    <tr><td>코스닥</td><td class="num loss">−3.6%</td><td>참고</td></tr>
+  </tbody>
+</table>
+</div>
+<p>같은 철학의 <strong>제도권 원형(VIP)을 소액 두 계좌가 다 앞섰다.</strong> 종목 선구안이 아니라
+구조다 — 현금 쿠션, 회전 기민성, 보수 0. 그리고 오늘의 종목별 감사에서 확인한 것: <strong>코어의
+무게중심은 원칙 그대로</strong>(식품·전통제약·의류·유통이 지배, 성장주 추격 없음). 다만 "실험하는
+가장자리"(회색지대 + 원래 스크린 밖)가 합쳐 ~30%로 커져, 이제 <strong>울타리를 칠 때</strong>가
+됐다.</p>
+<p class="pull">버텨야 할 국면에 스타일대로 버텼다. 그게 이 한 달의 진짜 성적이다.</p>
+
+<h2><span class="n">04</span> 아직 오지 않은 것</h2>
+<p>솔직할 것 세 가지. <strong>하나</strong>, 4주는 짧다. <strong>둘</strong>, 이 국면은 소액 방어
+구조에 <em>유리한</em> 판이었다 — 밸류가 추세로 오르면 완전투자한 VIP와 물타기로 원가를 낮춘
+Orchestra가 현금 든 Orchestration을 앞선다. <strong>셋</strong>, 진짜 시험은 <strong>급락장</strong>
+이다. 며칠에 −8~10% 오는 국면에서 현금 쿠션과 규율이 실제로 방어선을 지키는지 — 아직 안 겪었다.</p>
+<p>연구 쪽으로는 <strong>포리너 프로젝트</strong>(외인 매수 → 이후 주가 이벤트 스터디)가 설계
+초안까지 나왔고, 실행은 2027을 대비한다. 지금은 데이터를 쌓는 중.</p>
+
+<h2><span class="n">05</span> 소회</h2>
+<p>이 규모에서 수익률은 반올림 오차다. 1,800만 원의 ±0.5%는 밥값이다. 그러니 이 한 달의 의미를
+숫자에서 찾으면 아무것도 안 남는다.</p>
+<p>남은 건 다른 거다. <strong>매일 장 마감 후 같은 루틴</strong> — 매매일지 반영, 스냅샷, 커밋,
+그날의 시장을 한 문단으로 서술하고 별점을 매기는 것. <strong>주 1회 깊게</strong> 들여다보고
+리포트를 쓰는 것. 규율이 흐려지면 감사로 잡아내는 것. 원형(VIP)과 나란히 놓고 "구조가 작동하나"를
+객관적으로 확인하는 것. 이건 <strong>1,800만 원짜리 훈련</strong>이고, 훈련의 목적은 계좌가
+10배, 100배가 됐을 때 <strong>같은 손</strong>으로 굴리는 것이다.</p>
+<p>이전 버전은 "고치다 꼬여서" 버렸다. 이번엔 흉터를 문서로 남겼다. 다음 세션이, 혹은 반년 뒤의
+내가, 같은 데를 다시 데지 않도록. 한 달 치고는 — <strong>덜 데었고, 더 적었다.</strong></p>
+
+<footer>
+  한 달 소회 · 2026-08-14 ~ 09-10 · new1/report/<br>
+  커밋·문서·테스트 수치는 2026-09-10 15:00 KST 기준. 수익률은 장중 스냅샷(§6-21 VIP vs
+  Orchestra/Orchestration). 나스닥 성장 계좌(≈1.35억)는 이 소회 범위 밖.
+</footer>
+</div>
