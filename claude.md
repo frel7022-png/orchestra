@@ -213,7 +213,7 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   누적+5일+당일 표 + 하락/상승/even 캡처 표(캐러셀 2장) (§6-17)
 - SamHYnix extracted expander: 위 그래프의 코스피 다리를 "삼성·삼성우·하이닉스 제외 코스피"로
   바꾼 버전 (§6-19)
-- FOMO Index expander: 반대로 "삼성·삼성우·하이닉스만 담은 시총가중 바스켓(SH)" 대비 내 계좌,
+- Siren Index expander: 반대로 "삼성·삼성우·하이닉스만 담은 시총가중 바스켓(SH)" 대비 내 계좌,
   두 선/표만·SH 파랑·내 계좌 빨강·누적/5일/당일 (§6-26)
 - VIP vs Orchestra expander: VIP 펀드 vs new1 계좌(Orchestra), 8/14 기준 (§6-21). meritz 앱에서만 Orchestration(meritz 계좌)까지 3-way.
 - 누적 매수/매도(건수+금액+일평균건수) + 누적 실현손익(금액+매수대비%) 요약 (§6-13)
@@ -1212,14 +1212,14 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   아직 입금 행 없음(메리츠 계좌 예수금 차이 확인되면 그때 추가). 회귀 테스트
   `test_deposit_row_bumps_cash_only`.
 
-### 6-26. "FOMO Index" — SH 바스켓(삼성·삼성우·하이닉스만) 대비 계좌 (2026-09-10, new1 전용)
+### 6-26. "Siren Index" — SH 바스켓(삼성·삼성우·하이닉스만) 대비 계좌 (2026-09-10, new1 전용)
 - **동기**: §6-19 SamHynix extracted가 "코스피에서 대형 반도체 3종목을 **덜어낸**" 지수라면, 이건
   정반대로 그 **3종목만 담은 시총가중 바스켓(SH)**을 벤치로 세워 "반도체가 캐리하는 장에서 내
   저부채·필수재 계좌가 어떻게 따로 노나"를 본다. 2026-09-10 기준 바스켓 비중은 삼성전자 51 /
   SK하이닉스 44 / 삼성전자우 5 (하이닉스 주식수는 삼성전자의 1/8인데 주가가 ~7배라 시총이 맞먹음).
-- **위치**: 거래 기록 탭, `SamHYnix extracted` expander 바로 밑 `FOMO Index` expander — 이름 뜻은
-  "FOMO **유발** 지수"(안 담은 이 바스켓이 오르는 걸 보며 내가 FOMO를 느낀다). 예전 이름
-  `SamsungHynix`(2026-09-10 당일 바꿈).
+- **위치**: 거래 기록 탭, `SamHYnix extracted` expander 바로 밑 `Siren Index` expander — 이름 뜻은
+  "FOMO **유발** 지수"(안 담은 이 바스켓이 오르는 걸 보며 FOMO를 느낀다 — 세이렌의 노래, 돛대에
+  묶여 지나침). 이름 변천: `SamsungHynix` → `FOMO Index` → `Siren Index` (전부 2026-09-10 당일).
 - **SH 지수 계산**: `portfolio_core.synthetic_kospi_sh_only(index_hist, bigcap_hist)` —
   `synthetic_kospi_ex_bigcap`의 거울상. `index_hist`의 KOSPI 열을 SH 바스켓 누적 레벨로 바꾼 사본을
   돌려주고, 그걸 `compute_index_vs_account`에 그대로 넘긴다.
