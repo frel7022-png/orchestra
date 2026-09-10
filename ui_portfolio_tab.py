@@ -417,14 +417,14 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         </div>
         """, unsafe_allow_html=True)
 
-        # ---- Seed Engine (§6-27): 빨강 Cost Basis↑ · 녹색 W Fuel(예수금) 평행 · 파랑 W/o Fuel
-        #      (씨앗 없었으면 남았을 현금). 녹−파 간격 = 씨앗이 쌓아준 연료. 진노랑 Fuel(우측 % 축)
-        #      = (W Fuel÷W/o Fuel − 1)×100 = "연료가 몇 % 더 있나"(0% 중앙, 음수도 가능). ----
+        # ---- Pit Stop (§6-27, 구 Seed Engine): 빨강 Cost Basis↑ · 녹색 Refill(예수금, 씨앗이 채운
+        #      것) 평행 · 파랑 No Refill(씨앗 없었으면 남았을 현금). 녹−파 간격 = 씨앗이 쌓아준 연료.
+        #      진노랑 Surplus(우측 % 축, ±30 고정, +빨강/−파랑) = (Refill÷No Refill − 1)×100. ----
         with st.container(key="seed_engine_wrap"):
-            with st.expander("🛢️ Seed Engine", expanded=False):
+            with st.expander("⛽ Pit Stop", expanded=False):
                 _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0), load_history())
                 if len(_se) < 2:
-                    st.caption("거래가 쌓이면 씨앗 엔진 궤적이 그려집니다.")
+                    st.caption("거래가 쌓이면 궤적이 그려집니다.")
                 else:
                     _ta = _se["총자산"].replace(0, pd.NA)
 
@@ -432,14 +432,18 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         return (_se[col] / _ta * 100).fillna(0).tolist()
 
                     _FUEL_C = "#c99a00"  # 진한 노란색
-                    # 연료 여분 = W Fuel÷W/o Fuel − 1 (%). 손절 많으면 음수 가능. W/o Fuel≈0이면
-                    # 발산 → 300% 소프트캡(축에서 잘림). 우측 축은 0% 중앙 대칭 + 위로 헤드룸.
-                    _fuel = [min((wf / wof - 1.0) * 100.0, 300.0) if wof > 1e-9 else 300.0
-                             for wf, wof in zip(_se["예수금"], _se["무연료예수금"])]
-                    _peak = max((abs(v) for v in _fuel if abs(v) < 150), default=16.0)
-                    _mb = max(30.0, _peak * 1.6)
+                    # Surplus = Refill÷No Refill − 1 (%). 손절 많으면 음수 가능. No Refill≈0이면 발산
+                    # → 300% 소프트캡(축에서 잘림). 우측 축은 0% 중앙, ±30 고정(peak가 25 넘으면 ±40).
+                    _sp = [min((wf / wof - 1.0) * 100.0, 300.0) if wof > 1e-9 else 300.0
+                           for wf, wof in zip(_se["예수금"], _se["무연료예수금"])]
+                    _peak = max((abs(v) for v in _sp if abs(v) < 150), default=16.0)
+                    _mb = 30.0 if _peak <= 25.0 else (int(_peak * 1.5 / 10) + 1) * 10.0
+                    _tv = list(range(-int(_mb), int(_mb) + 1, 10))
+                    _tt = [(f"<span style='color:{UP_COLOR}'>+{v}%</span>" if v > 0
+                            else f"<span style='color:{DOWN_COLOR}'>{v}%</span>" if v < 0
+                            else "<span style='color:%s'>0%%</span>" % T["muted2"]) for v in _tv]
 
-                    def _fuel_txt(d):
+                    def _sp_txt(d):
                         c = UP_COLOR if d >= 0 else DOWN_COLOR
                         return f"<span style='color:{c}'>{'+' if d >= 0 else ''}{d:.0f}%</span>"
 
@@ -447,31 +451,32 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     fig_se.add_trace(go.Scatter(
                         x=_se["날짜"], y=_se["총매입"], name="Cost Basis", mode="lines",
                         line=dict(color=UP_COLOR, width=2), customdata=_rat("총매입"),
-                        hovertemplate="총매입 %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+                        hovertemplate="Cost Basis %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
                     fig_se.add_trace(go.Scatter(
-                        x=_se["날짜"], y=_se["예수금"], name="W Fuel", mode="lines",
+                        x=_se["날짜"], y=_se["예수금"], name="Refill", mode="lines",
                         line=dict(color=NEW_COLOR, width=2), customdata=_rat("예수금"),
-                        hovertemplate="W Fuel %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+                        hovertemplate="Refill %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
                     fig_se.add_trace(go.Scatter(
-                        x=_se["날짜"], y=_se["무연료예수금"], name="W/o Fuel", mode="lines",
+                        x=_se["날짜"], y=_se["무연료예수금"], name="No Refill", mode="lines",
                         line=dict(color=DOWN_COLOR, width=1.8), customdata=_rat("무연료예수금"),
-                        hovertemplate="W/o Fuel %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+                        hovertemplate="No Refill %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
                     fig_se.add_trace(go.Scatter(
-                        x=_se["날짜"], y=_fuel, name="Fuel", mode="lines", yaxis="y2",
+                        x=_se["날짜"], y=_sp, name="Surplus", mode="lines", yaxis="y2",
                         line=dict(color=_FUEL_C, width=1.6),
-                        customdata=[_fuel_txt(v) for v in _fuel],
-                        hovertemplate="Fuel %{customdata} 더 있음<extra></extra>"))
+                        customdata=[_sp_txt(v) for v in _sp],
+                        hovertemplate="Surplus %{customdata} 더 있음<extra></extra>"))
                     fig_se.update_layout(
-                        height=260, margin=dict(l=48, r=46, t=8, b=26),
+                        height=260, margin=dict(l=30, r=36, t=8, b=26),
                         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                         font=dict(color=T["text"], size=11), showlegend=False, hovermode="x unified",
                         hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], font=dict(size=11, color=T["text"])),
                         xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-                        yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=",.0f",
+                        yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat="~s",
                                    tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-                        yaxis2=dict(overlaying="y", side="right", showgrid=False, tickformat=".0f", ticksuffix="%",
-                                    range=[-_mb, _mb], zeroline=True, zerolinecolor=T["muted2"], zerolinewidth=1,
-                                    tickfont=dict(size=9, color=_FUEL_C), fixedrange=True),
+                        yaxis2=dict(overlaying="y", side="right", showgrid=False, range=[-_mb, _mb],
+                                    tickmode="array", tickvals=_tv, ticktext=_tt,
+                                    zeroline=True, zerolinecolor=T["muted2"], zerolinewidth=1,
+                                    tickfont=dict(size=9), fixedrange=True),
                         dragmode=False,
                     )
                     # expander 안 st.plotly_chart 폭 0(§6-17) → iframe + responsive
