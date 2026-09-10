@@ -1164,6 +1164,31 @@ def test_check_history_alignment_flags_misaligned(monkeypatch, tmp_path):
     assert r2["aligned"] is True and r2["behind"] == [] and r2["target_ok"] is True
 
 
+# --- seed_engine_series (§6-27): 스노우볼 스코어카드 --- #
+def test_seed_engine_series_tracks_cash_and_cost(monkeypatch):
+    monkeypatch.setattr(core, "load_code_cache", lambda: {})
+    monkeypatch.setattr(core, "load_sector_cache", lambda: {})
+    tx = pd.DataFrame([
+        {"id": "1", "날짜": "2026-01-05", "종목명": "A", "구분": "매수", "수량": 10, "단가": 1000, "실현손익": "", "메모": "", "정산반영": True},
+        {"id": "2", "날짜": "2026-01-06", "종목명": "B", "구분": "매수", "수량": 5, "단가": 2000, "실현손익": "", "메모": "", "정산반영": True},
+        {"id": "3", "날짜": "2026-01-07", "종목명": "A", "구분": "매도", "수량": 4, "단가": 1500, "실현손익": "", "메모": "", "정산반영": True},
+    ])
+    s = core.seed_engine_series(tx, 100_000.0, 0.0)
+    assert list(s["날짜"]) == ["2026-01-05", "2026-01-06", "2026-01-07"]
+    # 1/5: 매수 10*1000 → 예수금 90,000 · 총매입 10,000
+    assert s.iloc[0]["예수금"] == pytest.approx(90_000.0)
+    assert s.iloc[0]["총매입"] == pytest.approx(10_000.0)
+    # 1/6: +B 5*2000 → 예수금 80,000 · 총매입 20,000
+    assert s.iloc[1]["예수금"] == pytest.approx(80_000.0)
+    assert s.iloc[1]["총매입"] == pytest.approx(20_000.0)
+    # 1/7: A 4주 매도 @1500(평단 1000) → 예수금 80,000 + 6,000 = 86,000
+    #      남은 A 6주@1000 = 6,000 + B 10,000 = 총매입 16,000
+    assert s.iloc[2]["예수금"] == pytest.approx(86_000.0)
+    assert s.iloc[2]["총매입"] == pytest.approx(16_000.0)
+    # 예수금비중 = 86,000 / (86,000 + 16,000)
+    assert s.iloc[2]["예수금비중"] == pytest.approx(86_000.0 / 102_000.0 * 100)
+
+
 # ------------------------------------------------------------------ #
 # compute_pnl_actions (§6-20) — 실현손익을 FA/MO/MA 매매 스타일로 해부
 # ------------------------------------------------------------------ #

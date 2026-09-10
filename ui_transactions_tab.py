@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
-    compute_index_vs_account, compute_pnl_actions, _index_day_moves,
+    compute_index_vs_account, compute_pnl_actions, _index_day_moves, seed_engine_series,
     load_bigcap_history, synthetic_kospi_ex_bigcap, synthetic_kospi_sh_only,
     load_fund_nav_history, compute_vip_vs_orchestra,
 )
@@ -778,6 +778,55 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         <span>누적 실현손익 <b style="color:{rc}">{rs}{total_realized:,.0f}원 ({rs}{realized_pct:.2f}%)</b></span>
     </div>
     """, unsafe_allow_html=True)
+
+    # ---- Seed Engine (§6-27): 매입액은 우상향 · 예수금은 평행이면 씨앗 엔진이 도는 것.
+    #      자잘한 실현손익(씨앗)이 매입 확대를 따라잡으며 예수금 버퍼를 유지하는지 한눈에. ----
+    _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0), hist)
+    if len(_se) >= 2:
+        st.markdown("##### Seed Engine")
+        _f, _l = _se.iloc[0], _se.iloc[-1]
+        _cost_chg = (_l["총매입"] / _f["총매입"] - 1) * 100 if _f["총매입"] else 0.0
+        _ratio_now = _l["예수금비중"]
+        _ratio_avg5 = _se["예수금비중"].tail(5).mean()
+        _no_seed_cash = _l["예수금"] - total_realized   # 실현손익이 0이었으면 남았을 예수금
+        fig_se = go.Figure()
+        fig_se.add_trace(go.Scatter(
+            x=_se["날짜"], y=_se["총매입"], name="총매입", mode="lines",
+            line=dict(color=UP_COLOR, width=2),
+            hovertemplate="총매입 %{y:,.0f}원<extra></extra>"))
+        fig_se.add_trace(go.Scatter(
+            x=_se["날짜"], y=_se["예수금"], name="예수금", mode="lines",
+            line=dict(color=DOWN_COLOR, width=2),
+            hovertemplate="예수금 %{y:,.0f}원<extra></extra>"))
+        fig_se.add_trace(go.Scatter(
+            x=_se["날짜"], y=_se["총자산"], name="총자산", mode="lines",
+            line=dict(color=T["muted2"], width=1, dash="dot"),
+            hovertemplate="총자산 %{y:,.0f}원<extra></extra>"))
+        fig_se.update_layout(
+            height=240, margin=dict(l=48, r=8, t=8, b=26),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=T["text"], size=11), showlegend=False,
+            hovermode="x unified",
+            hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], font=dict(size=11, color=T["text"])),
+            xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+            yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=",.0f",
+                       tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+            dragmode=False,
+        )
+        st.plotly_chart(fig_se, use_container_width=True, config={"displayModeBar": False})
+        _rc2 = UP_COLOR if _ratio_now >= 28 else DOWN_COLOR  # 예수금비중 28% 밑이면 경고색
+        st.markdown(
+            f'<div class="tx-cum-summary"><span>'
+            f'<b style="color:{UP_COLOR}">총매입</b> {_f["총매입"]:,.0f} → {_l["총매입"]:,.0f}원 '
+            f'({_cost_chg:+.0f}%) &nbsp;·&nbsp; '
+            f'<b style="color:{DOWN_COLOR}">예수금</b> {_f["예수금"]:,.0f} → {_l["예수금"]:,.0f}원 '
+            f'(<b style="color:{_rc2}">비중 {_ratio_now:.0f}%</b>, 최근5 평균 {_ratio_avg5:.0f}%)'
+            f'</span></div>'
+            f'<div class="tx-cum-summary"><span>실현손익(씨앗)이 0이었으면 예수금 '
+            f'<b>{_no_seed_cash:,.0f}원</b> → 실제 <b style="color:{DOWN_COLOR}">{_l["예수금"]:,.0f}원</b> '
+            f'(+{total_realized:,.0f} 보충)</span></div>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown("##### History Calendar")
 
