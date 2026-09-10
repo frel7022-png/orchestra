@@ -398,84 +398,92 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     </div>
     """
 
-    # ---- Seed Engine (§6-27): Today's Take 위, Claude's Read식 작은 expander(누르면 밑으로).
-    #  빨강 Cost Basis↑ · 녹색 W Fuel(실제 예수금) 평행 · 파랑 W/o Fuel(씨앗 없었으면 남았을 현금).
-    #  녹−파 간격 = 씨앗이 채운 연료. 진노랑 MPG(우측 % 축) = W Fuel÷W/o Fuel − 100 (엔진 연비, ↑좋음). ----
-    with st.container(key="seed_engine_wrap"):
-        with st.expander("Seed Engine", expanded=False):
-            _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0), load_history())
-            if len(_se) < 2:
-                st.caption("거래가 쌓이면 씨앗 엔진 궤적이 그려집니다.")
-            else:
-                _ta = _se["총자산"].replace(0, pd.NA)
-
-                def _rat(col):
-                    return (_se[col] / _ta * 100).fillna(0).tolist()
-
-                _MPG_C = "#c99a00"  # 진한 노란색
-                # MPG = W Fuel÷W/o Fuel − 100 = "몇 % 성능이 더 좋나". 손절이 많으면 음수도 가능(구조상).
-                # W/o Fuel≈0이면 발산 → 300%로만 소프트 캡(축에서 잘림). 축은 0% 중앙 대칭 + 헤드룸.
-                _mpg = [min((wf / wof - 1.0) * 100.0, 300.0) if wof > 1e-9 else 300.0
-                        for wf, wof in zip(_se["예수금"], _se["무연료예수금"])]
-                _peak = max((abs(v) for v in _mpg if abs(v) < 150), default=16.0)
-                _mb = max(30.0, _peak * 1.6)   # ±범위: 현재값 위로 20~25% 잠재구간 열어둠
-
-                def _mpg_txt(d):
-                    c = UP_COLOR if d >= 0 else DOWN_COLOR
-                    return f"<span style='color:{c}'>{'+' if d >= 0 else ''}{d:.0f}%</span>"
-
-                fig_se = go.Figure()
-                fig_se.add_trace(go.Scatter(
-                    x=_se["날짜"], y=_se["총매입"], name="Cost Basis", mode="lines",
-                    line=dict(color=UP_COLOR, width=2), customdata=_rat("총매입"),
-                    hovertemplate="총매입 %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
-                fig_se.add_trace(go.Scatter(
-                    x=_se["날짜"], y=_se["예수금"], name="W Fuel", mode="lines",
-                    line=dict(color=NEW_COLOR, width=2), customdata=_rat("예수금"),
-                    hovertemplate="W Fuel %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
-                fig_se.add_trace(go.Scatter(
-                    x=_se["날짜"], y=_se["무연료예수금"], name="W/o Fuel", mode="lines",
-                    line=dict(color=DOWN_COLOR, width=1.8), customdata=_rat("무연료예수금"),
-                    hovertemplate="W/o Fuel %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
-                fig_se.add_trace(go.Scatter(
-                    x=_se["날짜"], y=_mpg, name="MPG", mode="lines", yaxis="y2",
-                    line=dict(color=_MPG_C, width=1.6),
-                    customdata=[_mpg_txt(v) for v in _mpg],
-                    hovertemplate="MPG %{customdata}<extra></extra>"))
-                fig_se.update_layout(
-                    height=260, margin=dict(l=48, r=46, t=8, b=26),
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=T["text"], size=11), showlegend=False, hovermode="x unified",
-                    hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], font=dict(size=11, color=T["text"])),
-                    xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-                    yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=",.0f",
-                               tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
-                    yaxis2=dict(overlaying="y", side="right", showgrid=False, tickformat=".0f", ticksuffix="%",
-                                range=[-_mb, _mb], zeroline=True, zerolinecolor=T["muted2"], zerolinewidth=1,
-                                tickfont=dict(size=9, color=_MPG_C), fixedrange=True),
-                    dragmode=False,
-                )
-                # expander 안에선 st.plotly_chart가 폭 0으로 안 그려짐(§6-17) → iframe + responsive
-                components.html(
-                    "<style>body{margin:0;background:transparent}</style>"
-                    + fig_se.to_html(include_plotlyjs="cdn", full_html=False, default_width="100%",
-                                     config={"displayModeBar": False, "responsive": True}),
-                    height=272,
-                )
-
-    st.markdown(f"""
-    <div class="summary-box">
-        <div class="summary-label">보유종목 평가손익</div>
-        <span class="summary-main" style="color:{color}">{sign}{stock_profit:,.0f}원</span>
-        <span class="summary-sub" style="color:{color}">{sign}{stock_profit_pct:.2f}%</span>
-        <div class="summary-grid">
-            <div>예수금<b>{state['cash']:,.0f}원</b></div>
-            <div>총 매입<b>{total_cost:,.0f}원</b></div>
-            <div>총 평가<b>{stock_valuation:,.0f}원</b></div>
-            <div>총자산<b>{total_assets:,.0f}원</b></div>
-            <div>일일손익<b style="color:{daily_color}">{daily_sign}{daily_pnl:,.0f}원</b></div>
-            <div>보유종목<b>{len(df)}개</b></div>
+    # ---- 요약 카드: 평가손익+그리드 (A) → Seed Engine 토글(§6-27, Claude's Read식 작은 글씨) →
+    #      Today's Take + Claude's Read (B). 세 조각을 한 container로 묶고 CSS로 틈을 없애 카드 하나처럼. ----
+    with st.container(key="summary_card_wrap"):
+        st.markdown(f"""
+        <div class="summary-box sc-top">
+            <div class="summary-label">보유종목 평가손익</div>
+            <span class="summary-main" style="color:{color}">{sign}{stock_profit:,.0f}원</span>
+            <span class="summary-sub" style="color:{color}">{sign}{stock_profit_pct:.2f}%</span>
+            <div class="summary-grid">
+                <div>예수금<b>{state['cash']:,.0f}원</b></div>
+                <div>총 매입<b>{total_cost:,.0f}원</b></div>
+                <div>총 평가<b>{stock_valuation:,.0f}원</b></div>
+                <div>총자산<b>{total_assets:,.0f}원</b></div>
+                <div>일일손익<b style="color:{daily_color}">{daily_sign}{daily_pnl:,.0f}원</b></div>
+                <div>보유종목<b>{len(df)}개</b></div>
+            </div>
         </div>
+        """, unsafe_allow_html=True)
+
+        # ---- Seed Engine (§6-27): 빨강 Cost Basis↑ · 녹색 W Fuel(예수금) 평행 · 파랑 W/o Fuel
+        #      (씨앗 없었으면 남았을 현금). 녹−파 간격 = 씨앗이 쌓아준 연료. 진노랑 Fuel(우측 % 축)
+        #      = (W Fuel÷W/o Fuel − 1)×100 = "연료가 몇 % 더 있나"(0% 중앙, 음수도 가능). ----
+        with st.container(key="seed_engine_wrap"):
+            with st.expander("🛢️ Seed Engine", expanded=False):
+                _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0), load_history())
+                if len(_se) < 2:
+                    st.caption("거래가 쌓이면 씨앗 엔진 궤적이 그려집니다.")
+                else:
+                    _ta = _se["총자산"].replace(0, pd.NA)
+
+                    def _rat(col):
+                        return (_se[col] / _ta * 100).fillna(0).tolist()
+
+                    _FUEL_C = "#c99a00"  # 진한 노란색
+                    # 연료 여분 = W Fuel÷W/o Fuel − 1 (%). 손절 많으면 음수 가능. W/o Fuel≈0이면
+                    # 발산 → 300% 소프트캡(축에서 잘림). 우측 축은 0% 중앙 대칭 + 위로 헤드룸.
+                    _fuel = [min((wf / wof - 1.0) * 100.0, 300.0) if wof > 1e-9 else 300.0
+                             for wf, wof in zip(_se["예수금"], _se["무연료예수금"])]
+                    _peak = max((abs(v) for v in _fuel if abs(v) < 150), default=16.0)
+                    _mb = max(30.0, _peak * 1.6)
+
+                    def _fuel_txt(d):
+                        c = UP_COLOR if d >= 0 else DOWN_COLOR
+                        return f"<span style='color:{c}'>{'+' if d >= 0 else ''}{d:.0f}%</span>"
+
+                    fig_se = go.Figure()
+                    fig_se.add_trace(go.Scatter(
+                        x=_se["날짜"], y=_se["총매입"], name="Cost Basis", mode="lines",
+                        line=dict(color=UP_COLOR, width=2), customdata=_rat("총매입"),
+                        hovertemplate="총매입 %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+                    fig_se.add_trace(go.Scatter(
+                        x=_se["날짜"], y=_se["예수금"], name="W Fuel", mode="lines",
+                        line=dict(color=NEW_COLOR, width=2), customdata=_rat("예수금"),
+                        hovertemplate="W Fuel %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+                    fig_se.add_trace(go.Scatter(
+                        x=_se["날짜"], y=_se["무연료예수금"], name="W/o Fuel", mode="lines",
+                        line=dict(color=DOWN_COLOR, width=1.8), customdata=_rat("무연료예수금"),
+                        hovertemplate="W/o Fuel %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+                    fig_se.add_trace(go.Scatter(
+                        x=_se["날짜"], y=_fuel, name="Fuel", mode="lines", yaxis="y2",
+                        line=dict(color=_FUEL_C, width=1.6),
+                        customdata=[_fuel_txt(v) for v in _fuel],
+                        hovertemplate="Fuel %{customdata} 더 있음<extra></extra>"))
+                    fig_se.update_layout(
+                        height=260, margin=dict(l=48, r=46, t=8, b=26),
+                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color=T["text"], size=11), showlegend=False, hovermode="x unified",
+                        hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], font=dict(size=11, color=T["text"])),
+                        xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                        yaxis=dict(showgrid=True, gridcolor=T["border"], zeroline=False, tickformat=",.0f",
+                                   tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
+                        yaxis2=dict(overlaying="y", side="right", showgrid=False, tickformat=".0f", ticksuffix="%",
+                                    range=[-_mb, _mb], zeroline=True, zerolinecolor=T["muted2"], zerolinewidth=1,
+                                    tickfont=dict(size=9, color=_FUEL_C), fixedrange=True),
+                        dragmode=False,
+                    )
+                    # expander 안 st.plotly_chart 폭 0(§6-17) → iframe + responsive
+                    components.html(
+                        "<style>body{margin:0;background:transparent}</style>"
+                        + fig_se.to_html(include_plotlyjs="cdn", full_html=False, default_width="100%",
+                                         config={"displayModeBar": False, "responsive": True}),
+                        height=272,
+                    )
+
+        st.markdown(f"""
+        <div class="summary-box sc-bot">
         <div class="capital-line" style="line-height:1.75">
             <div style="font-size:13px;color:{T['text']};font-weight:600;margin-bottom:2px">Today's Take</div>
             <div>내 주식 어제 대비&nbsp;

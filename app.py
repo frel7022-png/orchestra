@@ -171,12 +171,18 @@ st.markdown(f"""
     [class*="st-key-change_sort_toggle"] button[kind="secondary"] p {{ color:{T['muted2']} !important; }}
     [class*="st-key-change_sort_toggle"] button[kind="primary"] p {{ color:{UP_COLOR} !important; }}
 
-    /* Seed Engine(§6-27) — Today's Take 위, Claude's Read식 작은 글씨 expander(누르면 밑으로).
-       기본 expander보다 헤더 글씨/여백을 줄여 "저 정도 글씨"로. */
+    /* 요약 카드를 3조각(평가손익+그리드 / Seed Engine 토글 / Today's Take+Claude's Read)으로
+       나눠 렌더하고 CSS로 틈을 없애 카드 하나처럼 보이게 (§6-27). */
+    [class*="st-key-summary_card_wrap"] div[data-testid="stVerticalBlock"] {{ gap:0 !important; }}
+    .summary-box.sc-top {{ margin-bottom:0; border-bottom-left-radius:0; border-bottom-right-radius:0; padding-bottom:12px; }}
+    .summary-box.sc-bot {{ margin-top:0; border-top:none; border-top-left-radius:0; border-top-right-radius:0; padding-top:2px; }}
+    /* Seed Engine 토글 — Claude's Read식 작은 글씨, 카드 안에 이어붙게(테두리 X, 배경 = 카드색) */
+    [class*="st-key-seed_engine_wrap"] {{ background:{T['card']}; border-left:1px solid {T['border']}; border-right:1px solid {T['border']}; padding:0 20px; }}
     [class*="st-key-seed_engine_wrap"] details {{ border:none !important; background:transparent !important; }}
-    [class*="st-key-seed_engine_wrap"] summary {{ padding:2px 0 !important; }}
+    [class*="st-key-seed_engine_wrap"] summary {{ padding:6px 0 2px !important; }}
     [class*="st-key-seed_engine_wrap"] summary p {{ font-size:13px !important; font-weight:600 !important; color:{T['muted2']} !important; }}
     [class*="st-key-seed_engine_wrap"] summary svg {{ width:14px !important; height:14px !important; }}
+    [class*="st-key-seed_engine_wrap"] details[open] summary {{ margin-bottom:4px; }}
 
     /* "Holdings" 타이틀 줄 — 왼쪽은 타이틀, 오른쪽 칸에 등락률순 토글 점 + 업데이트 날짜를
        한 줄로 나란히(2026-09-04, 점이 날짜 앞에서 삐뚤어 보이던 것 수정). 전역 등폭 규칙
