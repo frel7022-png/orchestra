@@ -5,6 +5,11 @@
     python sync_both_accounts.py
 그다음 new1 / meritz 두 레포에서 각각 both_accounts.csv를 git commit/push.
 
+**장 마감(15:30 KST) 후에 돌릴 것 (2026-09-10)**: both_accounts.csv는 이제 "마감된 날들의
+확정 히스토리 + VIP 패널 선그래프 소스" 역할. 장중에 돌리면 그 시각 값으로 얼어서 부정확.
+라이브 "오늘 점"은 Supabase account_snapshot(§6-21 런타임 채널)이 공급하므로, 이 파일은
+확정 종가 기준으로만 갱신하면 된다.
+
 메리츠 쪽 계좌수익은 meritz 폴더에서 그 repo의 portfolio_core로 계산해야 하므로 subprocess로
 불러온다(모듈 이름이 겹쳐서 같은 프로세스에서 둘 다 import 못 함).
 """

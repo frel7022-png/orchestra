@@ -360,10 +360,57 @@ BOTH_ACCOUNTS_FILE = HERE / "both_accounts.csv"  # 날짜, orchestra, orchestrat
 
 def load_both_accounts() -> pd.DataFrame:
     """new1(orchestra) + meritz(orchestration) 계좌수익 시계열(anchor일=0 리베이스, 소수).
-    `sync_both_accounts.py`가 두 레포에 똑같이 써준다(§6-21). 없으면 빈 DataFrame."""
+    `sync_both_accounts.py`가 두 레포에 똑같이 써준다(§6-21). 없으면 빈 DataFrame.
+    이제 역할은 '마감된 날들의 확정 히스토리 + 선그래프 소스' — 라이브 '오늘 점'은
+    Supabase account_snapshot(§6-21 런타임 채널)이 공급한다."""
     if BOTH_ACCOUNTS_FILE.exists():
         return pd.read_csv(BOTH_ACCOUNTS_FILE)
     return pd.DataFrame(columns=["날짜", "orchestra", "orchestration"])
+
+
+def write_account_snapshot(app: str, cum: float, day, total_asset: float,
+                           trade_date: str, sb_url: str, sb_key: str) -> bool:
+    """이 앱의 '지금 라이브' 계좌 상태를 Supabase account_snapshot에 upsert(§6-21 런타임 채널).
+    app='orchestra'(new1) | 'orchestration'(meritz). cum = 8/14 리베이스 누적 계좌수익,
+    day = 그날 당일 움직임(me['계좌당일']). 시세 새로고침 핸들러(자동/수동)에서 호출.
+    실패해도(시크릿 없음/네트워크) 조용히 False 반환 — 앱을 깨뜨리지 않는다(§6-9 방어 패턴)."""
+    if not sb_url or not sb_key:
+        return False
+    rec = {"app": app, "trade_date": trade_date,
+           "cum": None if cum is None else float(cum),
+           "day": None if day is None else float(day),
+           "total_asset": None if total_asset is None else float(total_asset),
+           "updated_at": datetime.now(ZoneInfo("Asia/Seoul")).isoformat()}
+    try:
+        resp = requests.post(
+            f"{sb_url}/rest/v1/account_snapshot?on_conflict=app,trade_date",
+            headers={"apikey": sb_key, "Authorization": f"Bearer {sb_key}",
+                     "Content-Type": "application/json",
+                     "Prefer": "resolution=merge-duplicates"},
+            json=[rec], timeout=8)
+        return resp.ok
+    except Exception:
+        return False
+
+
+def fetch_peer_account_snapshot(peer_app: str, sb_url: str, sb_key: str) -> dict | None:
+    """상대 앱의 최신 계좌 스냅샷(§6-21 런타임 채널). peer_app='orchestra'|'orchestration'.
+    반환: {'trade_date','cum','day','total_asset','updated_at'} 또는 None(조회 실패/행 없음).
+    meritz VIP 패널이 Orchestra(new1) 최신값을 이걸로 가져와 both_accounts.csv 지연을 우회."""
+    if not sb_url or not sb_key:
+        return None
+    try:
+        resp = requests.get(
+            f"{sb_url}/rest/v1/account_snapshot"
+            f"?app=eq.{peer_app}&select=trade_date,cum,day,total_asset,updated_at"
+            f"&order=trade_date.desc&limit=1",
+            headers={"apikey": sb_key, "Authorization": f"Bearer {sb_key}"},
+            timeout=8)
+        if resp.ok and resp.json():
+            return resp.json()[0]
+    except Exception:
+        pass
+    return None
 
 
 CLAUDE_NOTES_FILE = HERE / "claude_daily_notes.csv"  # 날짜, 별점, 코멘트 — "Claude's Read" 일일 평가(§6-22)
@@ -2185,7 +2232,7 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
 
 
 def compute_vip_vs_orchestra(iva: dict, both_accounts: pd.DataFrame | None = None,
-                             self_key: str = "orchestra") -> dict:
+                             self_key: str = "orchestra", peer_latest: dict | None = None) -> dict:
     """§6-21 'VIP vs Orchestra vs Orchestration' 패널 데이터. iva = compute_index_vs_account
     결과(fund_nav_hist를 넘겨 index에 '펀드' 컬럼이 있어야 함 — 없으면 {} 반환).
 
@@ -2194,8 +2241,11 @@ def compute_vip_vs_orchestra(iva: dict, both_accounts: pd.DataFrame | None = Non
       - 이 앱 '자신의' 계좌(self_key: new1→'orchestra', meritz→'orchestration')
         = 이 앱이 이미 라이브로 계산한 me['계좌수익']을 첫값 대비 재기준화. Account:Index 패널의
           '내 계좌'와 같은 데이터라 both_accounts.csv 동기화 지연에 영향받지 않는다("앱에 이미 있는 값").
-      - '다른' 계좌 = both_accounts.csv(sync_both_accounts.py가 두 레포에 써주는 크로스-레포
-        파일)의 해당 컬럼. 파일/컬럼 없으면 그 선은 생략(None).
+      - '다른' 계좌 = both_accounts.csv의 해당 컬럼(마감된 날들의 확정 히스토리 + 선그래프 소스).
+        **`peer_latest`(Supabase account_snapshot의 상대 앱 최신값, §6-21 런타임 채널)가 있으면
+        표의 누적/당일은 그 값을 쓰고, 선그래프는 마지막 점을 그 값으로 이어붙임/덮음** — 상대 앱이
+        방금 새로고침한 라이브 값이 both_accounts.csv 커밋 지연 없이 바로 반영된다.
+        파일·peer 둘 다 없으면 그 선은 생략(None).
 
     반환: {vip_line/orch_line/orchn_line: [(날짜,누적)], vip/orch/orchn: (누적, 당일)}. 펀드 없으면 {}.
     """
@@ -2222,23 +2272,40 @@ def compute_vip_vs_orchestra(iva: dict, both_accounts: pd.DataFrame | None = Non
     self_line = _ser_to_line(me["날짜"], (1.0 + acct) / (1.0 + r0) - 1.0)
 
     ba = both_accounts if (both_accounts is not None and not both_accounts.empty) else None
+    _pl = peer_latest if (peer_latest and peer_latest.get("cum") is not None) else None
 
-    def _other_line(col):
+    def _other(col):
+        """(선그래프 line, 표 누적, 표 당일) — 선은 both_accounts.csv, 표는 peer_latest 우선."""
+        line = None
         if ba is not None and col in ba.columns:
-            return _ser_to_line(ba["날짜"].astype(str), pd.to_numeric(ba[col], errors="coerce"))
-        return None
+            line = _ser_to_line(ba["날짜"].astype(str), pd.to_numeric(ba[col], errors="coerce"))
+        if _pl is not None:
+            pdt = str(_pl.get("trade_date") or "")
+            pcum = float(_pl["cum"])
+            if pdt and line and pdt >= line[-1][0]:
+                base = line[:-1] if pdt == line[-1][0] else line  # 같은 날짜면 교체, 이후면 append
+                line = base + [(pdt, pcum)]
+            elif pdt and not line:
+                line = [(pdt, pcum)]
+            # pdt < line 마지막 날짜(peer가 과거)면 line 그대로 두고 무시
+            cum = pcum
+            day = float(_pl["day"]) if _pl.get("day") is not None else _last_day(line)
+        else:
+            cum = line[-1][1] if line else None
+            day = _last_day(line)
+        return line, cum, day
 
     if self_key == "orchestration":
-        orch_line, orchn_line = _other_line("orchestra"), self_line
+        orch_line, orch_cum, orch_day = _other("orchestra")
+        orchn_line, orchn_cum, orchn_day = self_line, (self_line[-1][1] if self_line else None), _last_day(self_line)
     else:
-        orch_line, orchn_line = self_line, _other_line("orchestration")
-    orch_cum = orch_line[-1][1] if orch_line else None
-    orchn_cum = orchn_line[-1][1] if orchn_line else None
+        orch_line, orch_cum, orch_day = self_line, (self_line[-1][1] if self_line else None), _last_day(self_line)
+        orchn_line, orchn_cum, orchn_day = _other("orchestration")
 
     return {"vip_line": vip_line, "orch_line": orch_line, "orchn_line": orchn_line,
             "vip": (vip_cum, vip_day),
-            "orch": (orch_cum, _last_day(orch_line)),
-            "orchn": (orchn_cum, _last_day(orchn_line))}
+            "orch": (orch_cum, orch_day),
+            "orchn": (orchn_cum, orchn_day)}
 
 
 # ------------------------------------------------------------------ #

@@ -1258,6 +1258,35 @@ def test_compute_vip_vs_orchestra_rebases_orchestra_to_anchor(monkeypatch, tmp_p
         core.compute_index_vs_account(empty_tx, asset_hist, idx, 1_000_000.0)) == {}
 
 
+def test_compute_vip_vs_orchestra_peer_latest_overrides_other_account(monkeypatch, tmp_path):
+    """§6-21 런타임 채널: self_key='orchestration'일 때 Orchestra(상대) 표 값·선 마지막 점은
+    peer_latest(Supabase account_snapshot)에서 온다. both_accounts.csv보다 최신 날짜면 이어붙고,
+    없거나 과거면 both_accounts.csv 폴백."""
+    dates = ["2026-01-05", "2026-01-06", "2026-01-07"]
+    tot = [1_000_000.0, 1_005_000.0, 1_002_000.0]
+    asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, tot)])
+    idx = _idx_hist([[d, 100.0, 200.0] for d in dates])
+    empty_tx = pd.DataFrame(columns=["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"])
+    fund = pd.DataFrame({"날짜": dates, "기준가": [2000.0, 2010.0, 1990.0]})
+    iva = core.compute_index_vs_account(empty_tx, asset_hist, idx, 1_000_000.0, fund_nav_hist=fund)
+    ba = pd.DataFrame({"날짜": dates, "orchestra": [0.0, -0.004, -0.0025],
+                       "orchestration": [0.0, 0.003, 0.005]})
+
+    # peer가 both_accounts보다 하루 최신 → Orchestra 표·선 마지막 점이 peer 값
+    peer = {"trade_date": "2026-01-08", "cum": -0.0061, "day": -0.0036}
+    vo = core.compute_vip_vs_orchestra(iva, ba, self_key="orchestration", peer_latest=peer)
+    assert vo["orch"] == (pytest.approx(-0.0061), pytest.approx(-0.0036))
+    assert vo["orch_line"][-1] == ("2026-01-08", pytest.approx(-0.0061))
+    assert vo["orch_line"][-2] == ("2026-01-07", pytest.approx(-0.0025))   # csv 히스토리 보존
+    # Orchestration(자기)은 라이브 me 그대로
+    assert vo["orchn"][0] == pytest.approx((1 + 0.002) / (1 + 0.0) - 1.0, rel=1e-6)
+
+    # peer 없으면 both_accounts.csv 폴백
+    vo2 = core.compute_vip_vs_orchestra(iva, ba, self_key="orchestration", peer_latest=None)
+    assert vo2["orch"][0] == pytest.approx(-0.0025)
+    assert vo2["orch_line"][-1] == ("2026-01-07", pytest.approx(-0.0025))
+
+
 def test_snapshot_fund_nav_history_overwrites_same_date(monkeypatch, tmp_path):
     f = tmp_path / "fund_nav_history.csv"
     monkeypatch.setattr(core, "FUND_NAV_HISTORY_FILE", f)

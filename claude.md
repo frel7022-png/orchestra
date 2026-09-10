@@ -1118,13 +1118,30 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
     meritz 폴더의 portfolio_core를 불러 계산(모듈명 겹쳐 같은 프로세스 불가) → 합쳐서 두 레포에 쓴다.
     **어느 앱이든 `ingest_daily.py`를 돌린 뒤 세션이 `python sync_both_accounts.py` 실행 → 두 레포에서
     각각 `both_accounts.csv` git commit/push.** (fund_nav_history.csv와 같은 수동 동기화 루틴.)
-  - `compute_vip_vs_orchestra(iva, both_accounts, self_key)` — **(2026-09-10 개정)** `self_key`로
-    "이 앱 자신의 계좌"를 지정: new1→`"orchestra"`(기본), meritz→`"orchestration"`. **자기 계좌는
-    항상 라이브 `me["계좌수익"]` 재기준화값을 씀**(Account:Index 패널의 '내 계좌'와 같은 데이터 —
-    `both_accounts.csv` 동기화가 밀려도 자기 숫자는 절대 안 틀림). **다른 계좌만** `both_accounts.csv`
-    해당 컬럼에서 가져옴(없으면 그 선 생략). 계기: meritz 배포본에서 `both_accounts.csv`가 뒤처져
-    Orchestration(=meritz 자기 계좌)이 틀리게 나왔는데, 그 값은 이미 meritz 앱이 라이브로 갖고
-    있었음("그냥 가져오면 되는데" — 사용자 지적). new1은 2-way(both_accounts 안 넘김)라 동작 불변.
+  - `compute_vip_vs_orchestra(iva, both_accounts, self_key, peer_latest)` — **(2026-09-10 개정)**
+    `self_key`로 "이 앱 자신의 계좌"를 지정: new1→`"orchestra"`(기본), meritz→`"orchestration"`.
+    **자기 계좌는 항상 라이브 `me["계좌수익"]` 재기준화값을 씀**(Account:Index 패널 '내 계좌'와 같은
+    데이터 — `both_accounts.csv` 동기화가 밀려도 자기 숫자는 안 틀림). **다른(상대) 계좌**는
+    `both_accounts.csv`가 선그래프 히스토리 소스, **`peer_latest`(있으면)가 표의 누적/당일 + 선
+    마지막 점**을 공급.
+  - **Supabase 런타임 채널 `account_snapshot` (2026-09-10 신설)** — 크로스-레포 지연 해소.
+    `both_accounts.csv`는 세션이 `sync_both_accounts.py` 돌려 커밋할 때만 갱신돼서, 장중에 한 번
+    sync하면 그 시각 값으로 얼어 상대 앱이 계속 움직여도 못 따라감(2026-09-10 실측: new1 앱
+    −0.63% vs meritz VIP 패널의 Orchestra −0.25% = 낮 12:54 sync 시점 값). 해결: 양쪽 앱이
+    **시세 새로고침(자동/수동)마다** 자기 계좌 라이브 상태를 Supabase `account_snapshot`에 upsert
+    (`write_account_snapshot`), 상대 앱은 새로고침 때 그걸 읽어(`fetch_peer_account_snapshot`) VIP
+    패널에 씀. **전부 graceful degradation** — 시크릿 없음/네트워크 실패/테이블 없음 → 조용히
+    `both_accounts.csv` 폴백, 앱 동작 불변.
+    - 스키마: `account_snapshot(id, app('orchestra'|'orchestration'), trade_date, cum(8/14
+      리베이스 누적), day(당일), total_asset, updated_at)`, `unique(app, trade_date)`. RLS +
+      test_all 정책(§6-9 테이블들과 같은 테스트 단계).
+    - `both_accounts.csv` / `sync_both_accounts.py` 역할 재정의: **마감된 날들의 확정 히스토리 +
+      선그래프 소스**. `sync_*`는 이제 **장 마감 후** 돌려 커밋(확정 종가 기준). 라이브 "오늘 점"은
+      Supabase가 공급.
+    - **필요한 셋업(사용자)**: ① Supabase SQL 에디터에 `account_snapshot` CREATE TABLE 1회 실행.
+      ② meritz Streamlit Cloud secrets에 `[supabase]` (new1과 같은 URL/anon_key, 프로젝트
+      `ghpxaznihogafhvdqijw`) + meritz 로컬 `.streamlit/secrets.toml`. 둘 다 없어도 앱은 폴백으로
+      정상 동작, 채널만 dormant.
 - **UI** (거래 기록 탭 **맨 밑 SamHynix extracted 밑**, `st.expander("VIP vs Orchestra vs Orchestration")`):
   - **표**: 3행(VIP / Orchestra / Orchestration) × 2열(누적/당일). **값은 전부 검정**, 점 색만
     VIP 파랑(`DOWN_COLOR`) / Orchestra 빨강(`UP_COLOR`) / Orchestration 녹색(`NEW_COLOR`).
@@ -1132,8 +1149,9 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   - **그래프**: 3선 동색, 범례 없음(`showlegend=False`), 8/14=0 누적. iframe 렌더.
 - **읽는 법 / 주의**: 펀드 기준가는 보수 차감 후(연 1.96%) + 국내주식형 T+1~T+2 가격이라 VIP 선이
   살짝 매끄럽고 하루쯤 밀려 보인다.
-- **회귀 테스트 3개**: `test_compute_index_vs_account_fund_line`,
+- **회귀 테스트 4개**: `test_compute_index_vs_account_fund_line`,
   `test_compute_vip_vs_orchestra_rebases_orchestra_to_anchor`,
+  `test_compute_vip_vs_orchestra_peer_latest_overrides_other_account`(런타임 채널),
   `test_snapshot_fund_nav_history_overwrites_same_date`.
 - **meritz에도 이식됨** (2026-09-08, §6-6). `both_accounts.csv`·`load_both_accounts`는 meritz에도 있음.
 

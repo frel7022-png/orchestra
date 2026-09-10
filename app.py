@@ -11,6 +11,7 @@
 이 파일은 페이지 설정, 로그인, 데이터 로드, 새로고침 버튼, 탭 조립만 담당한다.
 """
 
+import pandas as pd
 import streamlit as st
 
 from constants import THEMES, UP_COLOR, NEW_COLOR
@@ -21,6 +22,7 @@ from portfolio_core import (
     refresh_all_prices, fetch_index_quotes, refresh_dividend_yields, refresh_market_cache,
     compute_metrics, compute_sector_weights,
     compute_index_vs_account, load_index_history, load_history, append_capture_anomalies,
+    write_account_snapshot, resolve_trading_date,
 )
 from ui_portfolio_tab import render_portfolio_tab
 from ui_transactions_tab import render_transactions_tab
@@ -439,6 +441,17 @@ if refresh_clicked_top or auto_refresh_triggered:
             _iva_a = compute_index_vs_account(tx, load_history(), load_index_history(), state["initial"],
                                               state.get("fee_rate", 0.0))
             append_capture_anomalies(_iva_a.get("even_anomalies", []))
+            # §6-21 런타임 채널: 이 앱(orchestra)의 라이브 계좌 상태를 Supabase에 upsert →
+            # meritz VIP 패널이 both_accounts.csv 커밋 지연 없이 최신 Orchestra 값을 읽는다.
+            _me_a = _iva_a.get("me")
+            if _me_a is not None and not _me_a.empty:
+                _acc = pd.to_numeric(_me_a["계좌수익"], errors="coerce")
+                _r0 = float(_acc.iloc[0]) if pd.notna(_acc.iloc[0]) else 0.0
+                _cum = (1.0 + float(_acc.iloc[-1])) / (1.0 + _r0) - 1.0
+                _day = float(_me_a["계좌당일"].iloc[-1]) if "계좌당일" in _me_a else None
+                _sb = st.secrets.get("supabase", {})
+                write_account_snapshot("orchestra", _cum, _day, total_assets_top,
+                                       resolve_trading_date(), _sb.get("url", ""), _sb.get("anon_key", ""))
         except Exception:
             pass
     if refresh_report["updated"]:
