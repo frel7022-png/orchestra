@@ -1030,6 +1030,18 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                            _fdf.sort_values("날짜").groupby("종목코드")["외국인보유율"].last().to_dict())
             st.session_state["holding_foreign_map"] = foreign_map
 
+        # 최초 진입일 배지(이익 종목만) — 보유일수는 index_history의 실제 거래일로 셈
+        # (KR 휴장일 자동 반영). index_history가 못 덮는 앞 구간만 영업일(월~금)로 근사 보충.
+        _idx_days = sorted(str(d) for d in load_index_history()["날짜"].tolist())
+        _today_str = today_kst_str()
+        _fee_rate = state.get("fee_rate", 0.0)
+
+        def _biz_held(entry: str) -> int:
+            n = sum(1 for d in _idx_days if entry <= d <= _today_str)
+            if _idx_days and entry < _idx_days[0]:
+                n += max(len(pd.bdate_range(entry, _idx_days[0])) - 1, 0)
+            return max(n, 1)
+
         for r in rows:
             pc = UP_COLOR if r["손익"] >= 0 else DOWN_COLOR
             psign = "+" if r["손익"] >= 0 else ""
@@ -1058,6 +1070,18 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                            and float(r["현재가"]) >= float(_buys.iloc[0]["단가"]))
             _card_cls = "stock-card watered-ok" if _watered_ok else "stock-card"
 
+            # 이익 종목: 손익 셀에 (1) 최초 진입일 + 보유 거래일수 배지, (2) 세금 차감 후 실현액 병기
+            _entry_html = ""
+            _pnl_txt = f"{psign}{r['손익']:,.0f}"
+            if r["손익"] >= 0:
+                if not _buys.empty:
+                    _ed = str(_buys.iloc[0]["날짜"]).split(" ")[0]
+                    _p = _ed.split("-")
+                    if len(_p) == 3:
+                        _entry_html = f'<div class="entry">{int(_p[1])}/{int(_p[2])}({_biz_held(_ed)}일)</div>'
+                _net = r["손익"] - float(r["평가금액"]) * _fee_rate
+                _pnl_txt += f"({'+' if _net >= 0 else ''}{_net:,.0f})"
+
             with st.container(key=f"holding_wrap_{code}"):
                 st.markdown(f"""
                 <div class="{_card_cls}">
@@ -1071,7 +1095,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         <div class="cell"><div class="top">{r['현재가']:,.0f}</div><div class="bottom">{r['평단가']:,.0f}</div></div>
                         <div class="cell"><div class="top">{r['평가금액']:,.0f}</div><div class="bottom">{r['매입금액']:,.0f}</div></div>
                         <div class="cell">
-                            <div class="top" style="color:{pc}">{psign}{r['손익']:,.0f}</div>
+                            {_entry_html}
+                            <div class="top" style="color:{pc}">{_pnl_txt}</div>
                             <div class="bottom"><span style="color:{pc}">{psign}{r['손익률']:.1f}%</span> <span style="color:{cc}">{csign}{r['등락률']:.1f}%</span></div>
                         </div>
                     </div>
