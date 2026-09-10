@@ -790,6 +790,11 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         def _rat(col):  # 그 값이 총자산의 몇 %
             return (_se[col] / _ta * 100).fillna(0).tolist()
 
+        # 엔진 성능 = "연료를 덜 쓰는 정도" = W Fuel / W/o Fuel (%). 씨앗이 쌓일수록 오름.
+        # 100% = 씨앗 효과 아직 없음, 116% = 무연료 대비 탱크에 16% 더 있음. 차 연비(MPG) 컨셉.
+        _mpg = [(wf / wof * 100.0) if wof > 1e-9 else 999.0
+                for wf, wof in zip(_se["예수금"], _se["무연료예수금"])]
+
         fig_se = go.Figure()
         fig_se.add_trace(go.Scatter(
             x=_se["날짜"], y=_se["총매입"], name="Cost Basis", mode="lines",
@@ -801,8 +806,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             hovertemplate="W Fuel %{y:,.0f}원 (%{customdata:.0f}% 예수금/총자산)<extra></extra>"))
         fig_se.add_trace(go.Scatter(
             x=_se["날짜"], y=_se["무연료예수금"], name="W/o Fuel", mode="lines",
-            line=dict(color=NEW_COLOR, width=1.6, dash="dot"), customdata=_rat("무연료예수금"),
-            hovertemplate="W/o Fuel 씨앗없을시 %{y:,.0f}원 (%{customdata:.0f}% 씨앗없을시/총자산)<extra></extra>"))
+            line=dict(color=NEW_COLOR, width=1.6, dash="dot"),
+            customdata=list(zip(_rat("무연료예수금"), _mpg)),
+            hovertemplate=("W/o Fuel 씨앗없을시 %{y:,.0f}원 (%{customdata[0]:.0f}% 씨앗없을시/총자산)"
+                           "<br><b>MPG %{customdata[1]:.0f}%</b>  (W Fuel ÷ W/o Fuel · 엔진 연비)<extra></extra>")))
         fig_se.update_layout(
             height=250, margin=dict(l=48, r=8, t=8, b=26),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
