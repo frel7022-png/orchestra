@@ -305,6 +305,19 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   (한쪽이 뒤처지면 폭주하지 말고 공통 커버 구간까지만 쓰거나 그 구간을 스킵). **정합성 자동
   체크(ingest 끝에 4개 파일 날짜범위 비교 후 어긋나면 ⚠️ 출력)는 사용자가 "하나씩 고쳐나가자"고
   일단 보류(2026-09-08)** — 나중에 또 이 부류 버그가 나오면 그때 넣을 것.
+- **4번째 재발 + 근본 원인 수정 (2026-09-10)**: `ingest_daily.py`가 `index_history`/`bigcap_history`를
+  **실시간 시세**(`fetch_index_quotes`/`fetch_bigcap_quotes`)로 `on_date=trade_date`에 찍고 있었다.
+  그래서 **과거 날짜의 매매일지를 장중에 반영하면 그 과거 날짜 행이 '오늘 장중값'으로 덮여** 오염됐다
+  — 실제로 meritz에서 9/9 journal(909.csv)을 9/10 장중에 반영하다 meritz `index_history[9/9]`가
+  9/10 장중 KOSPI로 덮여 new1(7051.64)과 어긋났고(meritz 7002.11), 그 결과 meritz의 혼합지수·
+  `SamHynix extracted`·`VIP vs Orchestra/Orchestration` 패널이 통째로 오염됨. `bigcap_history`도
+  같은 이유로 9/4·9/9·9/10이 두 레포 사이에서 갈렸음. **수정**: 두 레포 `ingest_daily.py`가
+  `_close_on(code, fallback)` 헬퍼로 **네이버 일별시세(`fetch_daily_price_history`)에서 trade_date
+  '그 날짜의 확정 종가'를 먼저 조회**하고, 없을 때(막 개장한 당일 등)만 실시간으로 폴백하게 함 —
+  이러면 new1/meritz가 언제 반영하든 같은 값으로 수렴한다. 오염된 데이터는 8/14~9/10 전체를
+  `fetch_daily_price_history`로 재생성해 두 레포에 **동일 파일**로 덮어씀(`index_history.csv`,
+  `bigcap_history.csv`, `fund_nav_history.csv` 9/10 행도 meritz에 누락돼 있어 같이 맞춤).
+  당일(9/10) 값은 장중이라 잠정 — 다음날 9/11 ingest가 9/10을 확정 종가로 자동 정정한다.
 
 ### 6-3. 바탕화면 `backup` 폴더
 - `C:\Users\frel\Desktop\backup` — git 저장소 아님, `new1`의 단순 스냅샷 복사본.
