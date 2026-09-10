@@ -607,10 +607,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                                                 state.get("fee_rate", 0.0), kospi_weight=wk)
             _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
 
-    # ---- SamsungHynix (§6-26): SamHynix extracted의 정반대 — 코스피 다리를 '삼성전자·
+    # ---- FOMO Index (§6-26): SamHynix extracted의 정반대 — 코스피 다리를 '삼성전자·
     #      삼성전자우·SK하이닉스만 담은 시총가중 바스켓(SH)'으로 바꾼 뒤, SH 지수와 내 계좌
     #      두 선만 8/14=0 기준으로 비교. 표/선 SH=파랑·내 계좌=빨강. ----
-    with st.expander("SamsungHynix", expanded=False):
+    with st.expander("FOMO Index", expanded=False):
         _bg2 = load_bigcap_history()
         if _bg2.empty or idx_hist.empty:
             st.caption("bigcap_history.csv 비어있음 — `python backfill_bigcap_history.py` 먼저.")
@@ -641,14 +641,14 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 def _trow2(label, color, cum, day, r5):
                     return (f"<tr><td style='color:{color}'>● {label}</td>"
                             f"<td style='text-align:right;color:{color}'>{_p2(cum)}</td>"
-                            f"<td style='text-align:right;color:{color}'>{_p2(day)}</td>"
-                            f"<td style='text-align:right;color:{color}'>{_p2(r5)}</td></tr>")
+                            f"<td style='text-align:right;color:{color}'>{_p2(r5)}</td>"
+                            f"<td style='text-align:right;color:{color}'>{_p2(day)}</td></tr>")
 
                 _tbl = (
                     "<table style='width:100%;font-size:12px;border-collapse:collapse;margin:2px 0 6px'>"
                     f"<tr style='color:{T['muted2']};font-size:10px'>"
                     "<th style='text-align:left'>&nbsp;</th><th style='text-align:right'>누적</th>"
-                    "<th style='text-align:right'>당일</th><th style='text-align:right'>5일</th></tr>"
+                    "<th style='text-align:right'>5일</th><th style='text-align:right'>당일</th></tr>"
                     + _trow2("SH", DOWN_COLOR, _sh_cum, _sh_day, _sh_r5)
                     + _trow2("내 계좌", UP_COLOR, _ac_cum, _ac_day, _ac_r5)
                     + "</table>"
