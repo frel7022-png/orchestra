@@ -1,0 +1,317 @@
+<title>코어는 규율대로, 꼬리가 흐려진다</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:780px; margin:0 auto; padding:56px 24px 96px}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:14px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.5rem; line-height:1.18; letter-spacing:-.01em; margin:0 0 18px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:22px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-size:1.02rem; font-weight:700; letter-spacing:.01em; margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent); font-weight:500}
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent); border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow)}
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+  .flag{background:var(--warn-wash); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:22px 0; font-size:13.5px}
+  .flag .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--warn); margin-bottom:8px}
+  .flag ol{margin:6px 0 0; padding-left:20px}
+  .flag li{margin:8px 0}
+
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:13.5px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:8px 11px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12px; letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  tr.tot td{border-top:1.5px solid var(--rule); font-weight:600}
+  td .sub{display:block; font-size:11px; color:var(--ink-faint)}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+  .chk{color:var(--accent); font-weight:600}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+  .callout ul li::before{content:"·"}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; box-shadow:var(--shadow)}
+  .stat .k{font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; margin-top:3px}
+  .stat .c{font-size:12px; color:var(--ink-soft); margin-top:2px}
+
+  .tier{border-left:3px solid var(--rule); padding:2px 0 2px 16px; margin:16px 0}
+  .tier.pass{border-color:var(--accent)}
+  .tier.grey{border-color:var(--warn)}
+  .tier.out{border-color:var(--loss)}
+  .tier .tl{font-weight:600; font-size:13px; margin-bottom:2px}
+  .tier .bd{font-size:13px; color:var(--ink-soft)}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table,.stat,.flag{box-shadow:none}
+    h2{break-after:avoid} table,.verdict,.stat-grid,.flag{break-inside:avoid}
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">종목별 철학 감사 · Orchestra 76 / Orchestration 40</div>
+  <h1>코어는 규율대로, 꼬리가 흐려진다</h1>
+  <p class="dek">두 계좌를 종목 단위로 훑었다. 질문은 하나 — <strong>최초 원칙(저부채·업계상위·필수재
+  밸류, 153종목 스크린)대로 굴러가고 있는가.</strong> 답: 무게중심은 <strong>또렷하게 그대로</strong>다.
+  식품·전통제약·의류·유통이 북을 지배하고, 반도체·AI·성장주로의 이탈은 없다. 다만 <strong>가장자리
+  약 1/5가 원래 스크린 바깥</strong>으로 나가 있고, 그 이탈은 하필 <strong>가장 변동성 큰 이름들</strong>
+  (임상 바이오·엔터)에 몰려 있다. 그리고 같은 코어를 절반 현금·무물타기로 굴리는 Orchestration이,
+  조용히 셋 중 가장 앞서 있다.</p>
+  <div class="meta">
+    <span>작성 2026-09-10 (장중 스냅샷)</span>
+    <span>Orchestra=new1 · Orchestration=meritz</span>
+    <span>손익률 = 현재가/평단가 − 1</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <p class="lead">판정: 코어 철학 유지. 이탈 신호 3개, 전부 가장자리.</p>
+  <p>Orchestra 76종목 중 <strong>스크린 통과(방어적 밸류)가 ~68%</strong>, <strong>회색지대(필수재도
+  저베타도 아닌 컨빅션 베팅)가 ~12%</strong>, <strong>원래 153 밖(기타2)이 19.8%</strong>. 4주간의
+  마이너스는 <strong>시장 전체의 밸류 역풍</strong>이지 규율 실패가 아니다 — 스타일이 시험받는 국면에
+  스타일대로 맞은 것. 손볼 곳은 세 군데: <strong>JYP Ent. 비중</strong>, <strong>임상 바이오·소형
+  의료기기 클러스터</strong>, <strong>기타2 유입 스크린</strong>.</p>
+</div>
+
+<h2><span class="n">01</span> 두 계좌, 한 유니버스</h2>
+<div class="stat-grid">
+  <div class="stat">
+    <div class="k">Orchestra · new1</div>
+    <div class="v">76종목</div>
+    <div class="c">주식 694만 · 예수금 315만 · 총 1,009만 · 현금 <b>31.3%</b></div>
+  </div>
+  <div class="stat">
+    <div class="k">Orchestration · meritz</div>
+    <div class="v">40종목</div>
+    <div class="c">주식 429만 · 예수금 375만 · 총 805만 · 현금 <b>46.6%</b></div>
+  </div>
+</div>
+<p><strong>Orchestration의 40종목은 전부 Orchestra 안에 있다.</strong> meritz는 새로운 유니버스가
+아니라 <strong>Orchestra 코어의 부분집합</strong> — 같은 국내 밸류 바스켓을 더 좁게, 더 느리게,
+현금을 두껍게 깔고 굴린다. (한때 있던 레드와이어 등 나스닥 성장 다리는 <strong>별도 계좌
+(≈1.35억)</strong>로 분리됐고, 지금 Orchestration은 100% 국내(KRW)다.)</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>섹터군</th><th>Orchestra 비중</th><th>Orchestration 비중</th><th>성격</th></tr></thead>
+  <tbody>
+    <tr><td>식품·음료·건기식</td><td class="num">17.6%</td><td class="num">28.3%</td><td>필수재 코어</td></tr>
+    <tr><td>제약(전통)·바이오</td><td class="num">15.6%</td><td class="num">14.3%</td><td>일부 회색</td></tr>
+    <tr><td>의류·패션·가구</td><td class="num">~13%</td><td class="num">~15%</td><td>브랜드·OEM 강자</td></tr>
+    <tr><td>유통·통신</td><td class="num">~8%</td><td class="num">~10%</td><td>방어적 현금흐름</td></tr>
+    <tr><td>산업재·전기전자·화학(저부채 리더)</td><td class="num">~13%</td><td class="num">~10%</td><td>스크린 통과</td></tr>
+    <tr><td>의료기기·레저·엔터·로봇</td><td class="num">~11%</td><td class="num">~7%</td><td>회색지대</td></tr>
+    <tr><td>기타2 (원래 153 밖)</td><td class="num loss">19.8%</td><td class="num">—</td><td>스크린 미적용</td></tr>
+  </tbody>
+  <caption>비중은 주식 평가금액 대비 근사(섹터 라벨 체계가 두 앱이 달라 군으로 묶음). Orchestration은
+  §6-24 신섹터 체계 미적용이라 기타2 컬럼 없음 — 대응 종목은 각 섹터군에 흩어져 있음.</caption>
+</table>
+</div>
+
+<h2><span class="n">02</span> 스크린 3분류 — 통과 · 회색 · 바깥</h2>
+<p>최초 필터는 <em>저부채 · 업계 상위 · 필수재</em> 세 조건. 76종목을 이 잣대로 나누면:</p>
+
+<div class="tier pass">
+  <div class="tl">① 통과 — 방어적 밸류 코어 (~52종목, 비중 ~68%)</div>
+  <div class="bd"><strong>식품·음료</strong> CJ제일제당(7.8%) · 오리온 · 매일유업 · 해태제과 · 삼립 ·
+  사조대림 · 대상 · 동서 · 하림 · 풀무원 · 우양 · 노바렉스.
+  <strong>전통 제약</strong> 유한양행 · 종근당 · 동아쏘시오홀딩스 · JW생명과학 · HK이노엔 · 광동제약.
+  <strong>의류·유통</strong> 영원무역 · 대한화섬 · 신세계인터내셔날 · 더네이쳐홀딩스 · 한샘 ·
+  GS리테일 · 이마트 · 한국가구.
+  <strong>저부채 산업재</strong> 한국단자 · KCC글라스 · 한일시멘트 · 벽산 · 삼양패키징 · 비츠로셀 ·
+  에스엘. <strong>통신·지주·금융</strong> SK텔레콤 · 카카오뱅크 · 우리금융지주 · 대신증권 ·
+  메리츠금융지주. <strong>화학</strong> OCI홀딩스.
+  <br>→ 전부 <strong>현금창출력이 있고, 각 판에서 상위권이며, 경기와 무관하게 팔리는 것</strong>을
+  판다. 원칙 그대로.</div>
+</div>
+
+<div class="tier grey">
+  <div class="tl">② 회색지대 — 필수재도 저베타도 아닌 베팅 (~9종목, 비중 ~12%)</div>
+  <div class="bd"><strong>임상·프리레비뉴 바이오</strong> 코오롱티슈진(−9.9%) · 앱클론(−23.1%) ·
+  에스티팜 · 엘앤씨바이오 · 인투셀(신규) · 토모큐브(신규).
+  <strong>소형 의료기기</strong> 오스테오닉(−10.3%) · 아스테라시스 · 인바디 · 바텍.
+  <strong>엔터</strong> JYP Ent.(3.4%, −10.6%). <strong>레저</strong> 골프존 · 파라다이스 ·
+  현대백화점. <strong>로봇</strong> 라온로보틱스(신규).
+  <br>→ 저부채는 대체로 맞지만 <strong>"필수재"도 "업계 안정 상위"도 아니다.</strong> 실적·파이프라인
+  이벤트에 주가가 크게 흔들리는 <strong>컨빅션 포지션</strong>. 규모가 작아 통제는 되지만, 4주
+  드로다운의 최악 이름들(앱클론·코오롱티슈진·오스테오닉)이 전부 여기서 나왔다.</div>
+</div>
+
+<div class="tier out">
+  <div class="tl">③ 스크린 바깥 — 기타2, 원래 153에 없던 종목 (17종목, Orchestra 19.8%)</div>
+  <div class="bd">미스토홀딩스 · JYP Ent. · 신세계인터내셔날 · 한샘 · 동서 · 마녀공장 · 계룡건설 ·
+  크라운해태홀딩스 · 풀무원 · 하림 · 씨앤씨인터내셔널 · 광동제약 · 신도리코 · 대상 · 카페24 ·
+  동국제강 · 메리츠금융지주.
+  <br>→ 셋으로 갈린다. <strong>(a) 명백한 필수재</strong>(풀무원·대상·동서·하림·광동제약·크라운해태
+  — 다음 재분류 때 코어로 흡수 가능). <strong>(b) 회색과 겹침</strong>(JYP·카페24·마녀공장 —
+  성장·플랫폼 성격). <strong>(c) 시클리컬</strong>(동국제강·계룡건설 — 경기민감). §6-24의 자동 분류
+  (153에 없으면 기타2)는 작동하지만, <strong>유입 자체를 거르는 스크린이 느슨하다</strong> —
+  "새로 담기 전에 저부채·상위·필수재를 재확인" 절차가 없어 5분의 1이 여기 쌓였다.</div>
+</div>
+
+<h2><span class="n">03</span> 이탈 신호 3개</h2>
+<div class="flag">
+  <div class="h">손볼 곳 — 우선순위 순</div>
+  <ol>
+    <li><strong>JYP Ent. — Orchestra의 #4 포지션(3.4%), −10.6%.</strong> 엔터테인먼트는 저부채이긴
+    하나 어닝·아티스트 사이클에 크게 흔들리고 "필수재"의 반대편에 있다. 코어 상위 5위 안에 이
+    성격의 종목이 들어와 있는 건 스크린과 어긋난다. Orchestration은 같은 종목을 <strong>2.0%,
+    +0.1%</strong>로 가볍게 들고 안 물탔다 — 비중·물타기 강도를 meritz 쪽에 맞추는 게 원칙에 부합.</li>
+    <li><strong>임상 바이오 · 소형 의료기기 클러스터 — 합쳐 Orchestra 주식의 ~11%.</strong>
+    앱클론 −23.1% · 코오롱티슈진 −9.9% · 오스테오닉 −10.3% · 노바렉스 −12.0%. 이 구간이
+    <strong>스크린이 가장 헐겁고, new1의 물타기가 가장 공격적</strong>인 곳이다(앱클론 격차:
+    new1 −23% vs meritz −4% = <strong>19%p</strong>). 임상 단계 종목에 물을 타는 건 "원가를 낮춰
+    반등 폭을 키운다"는 물타기 논리가 <strong>가장 위험하게</strong> 작동하는 케이스 — 파이프라인이
+    깨지면 원가와 무관하다. 클러스터 상한(예: 주식의 8%)을 명시할 시점.</li>
+    <li><strong>기타2 19.8% — 유니버스 밖이 5분의 1.</strong> 개별로는 대부분 무해(절반이 식품)하지만,
+    "153 스크린을 통과한 것만 담는다"는 원칙이 <strong>신규 유입에는 적용되지 않고</strong> 있다는
+    구조적 신호다. 매매일지로 새 종목이 들어올 때 <strong>저부채·업계상위·필수재 체크 → 통과 못
+    하면 회색으로 명시</strong>하는 절차를 넣으면 이 비중이 관리된다.</li>
+  </ol>
+</div>
+
+<h2><span class="n">04</span> 왜 Orchestration이 조금 앞서는가</h2>
+<p>같은 코어인데 성적이 갈린다. <strong>두 계좌가 공유하는 40종목의 평균 손익률 —
+Orchestra <span class="num loss">−5.65%</span> vs Orchestration <span class="num loss">−0.71%</span>.
+40개 중 <span class="chk">38개</span>에서 meritz가 낫다.</strong> 이유는 종목 선구안이 아니라
+네 가지 구조다.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>공유 종목 (격차 큰 순)</th><th>Orchestra</th><th>Orchestration</th><th>격차(%p)</th></tr></thead>
+  <tbody>
+    <tr><td>앱클론</td><td class="num loss">−23.1%</td><td class="num loss">−4.0%</td><td class="num chk">+19.1</td></tr>
+    <tr><td>JYP Ent.</td><td class="num loss">−10.6%</td><td class="num gain">+0.1%</td><td class="num chk">+10.7</td></tr>
+    <tr><td>오스테오닉</td><td class="num loss">−10.3%</td><td class="num gain">+0.1%</td><td class="num chk">+10.4</td></tr>
+    <tr><td>이마트</td><td class="num loss">−7.2%</td><td class="num gain">+2.2%</td><td class="num chk">+9.3</td></tr>
+    <tr><td>한샘</td><td class="num loss">−7.9%</td><td class="num gain">+1.4%</td><td class="num chk">+9.3</td></tr>
+    <tr><td>SK텔레콤</td><td class="num loss">−8.4%</td><td class="num gain">+0.4%</td><td class="num chk">+8.8</td></tr>
+    <tr><td>노바렉스</td><td class="num loss">−12.0%</td><td class="num loss">−4.2%</td><td class="num chk">+7.7</td></tr>
+    <tr><td>영원무역</td><td class="num loss">−8.8%</td><td class="num loss">−2.7%</td><td class="num chk">+6.1</td></tr>
+    <tr><td>CJ제일제당</td><td class="num loss">−5.2%</td><td class="num gain">+0.3%</td><td class="num chk">+5.5</td></tr>
+    <tr><td>서흥</td><td class="num loss">−12.0%</td><td class="num loss">−7.5%</td><td class="num chk">+4.5</td></tr>
+    <tr class="tot"><td>공유 40 평균</td><td class="num loss">−5.65%</td><td class="num loss">−0.71%</td><td class="num chk">+4.94</td></tr>
+  </tbody>
+  <caption>손익률 = 현재가/평단가 − 1. 같은 이름·같은 시장·같은 약세 구간인데 평단가가 다르다.</caption>
+</table>
+</div>
+<div class="callout">
+  <div class="h">Orchestration의 작은 우위 = 네 가지</div>
+  <ul>
+    <li><strong>현금 46.6%</strong> (Orchestra 31%, VIP ≈ 0%). 하락일마다 진폭을 자동으로 절반쯤
+    깎는다. 완전투자한 VIP가 −0.64%로 밸류 역풍을 정면으로 맞은 것과 대비.</li>
+    <li><strong>물타기를 안 한다.</strong> 진입 원가를 그대로 둔다. Orchestra는 하락 구간에 적극적으로
+    평단가를 끌어내려서 손익률(=현재가/평단가−1)이 더 나빠 <em>보인다</em> — 이건 손실이 아니라
+    원가를 낮춰 반등 폭을 키우는 전략의 정상 부산물. 두 계좌는 다른 것을 최적화한다.</li>
+    <li><strong>좁은 코어.</strong> Orchestra만 든 36종목 — 임상 바이오(에스티팜·엘앤씨바이오·
+    인투셀·토모큐브), 대형 플랫폼(NAVER·카카오), 건설(한일시멘트·벽산·KCC글라스), 조선(세진중공업),
+    로봇(라온로보틱스) — 을 meritz는 <strong>안 담았다.</strong> 고베타 꼬리를 잘라낸 셈.</li>
+    <li><strong>저회전.</strong> 거의 안 판다. 손실을 실현하지 않고, 회복을 기다린다.</li>
+  </ul>
+</div>
+<p><strong>단, 이 우위는 국면 의존적이다.</strong> 저부채·필수재가 몇 주 연속 오르는 <em>밸류 추세
+상승장</em>이 오면 순서가 뒤집힌다 — 완전투자한 VIP, 그리고 물타기로 원가를 낮춰둔 Orchestra가
+현금 든 Orchestration을 앞선다. 지금 성적표는 "약세·횡보장에서 소액 방어 구조가 잘 먹혔다"는
+것이지 영구 우열이 아니다.</p>
+
+<h2><span class="n">05</span> 두 손, 한 정원</h2>
+<p>Orchestra와 Orchestration은 <strong>경쟁 관계가 아니라 역할 분담</strong>이다. 같은 씨앗(저부채·
+필수재 밸류 바스켓)을 —</p>
+<div class="stat-grid">
+  <div class="stat">
+    <div class="k">Orchestra · 능동 수확</div>
+    <div class="v" style="font-size:1.02rem; line-height:1.5">넓게 담고, 물을 타고,<br>버틴 종목에서 이익을 현금화</div>
+    <div class="c">회전 빠름 · 손익률(paper) 나쁘게 보이는 게 정상 · 회색·꼬리를 실험하는 자리</div>
+  </div>
+  <div class="stat">
+    <div class="k">Orchestration · 인내 보유</div>
+    <div class="v" style="font-size:1.02rem; line-height:1.5">코어만, 절반은 현금,<br>거의 안 팔고 원가를 지킴</div>
+    <div class="c">손익률 우위 유지 · 상승장을 포기하는 대가로 방어와 실탄을 산다</div>
+  </div>
+</div>
+<p>이 설계는 <strong>의도대로 작동 중</strong>이다. 문제는 Orchestra 쪽에서 "실험하는 가장자리"가
+슬금슬금 커져 <strong>코어의 규율을 흐리기 시작</strong>했다는 것 — 회색+기타2가 합쳐 ~30%.
+가장자리 자체는 나쁘지 않다. 다만 <strong>가장자리라고 이름 붙이고, 상한을 두고, 그 안에서만
+실험</strong>해야 코어가 코어로 남는다.</p>
+
+<h2><span class="n">06</span> 결론 · 다음 점검 항목</h2>
+<div class="verdict">
+  <p class="lead">규율의 무게중심: 유지. 가장자리 관리: 필요.</p>
+  <p>최초 철학 — 저부채·업계상위·필수재 밸류 — 는 두 계좌의 코어에서 <strong>또렷하게 지켜지고
+  있다.</strong> 4주 마이너스는 그 스타일이 통째로 눌린 국면의 결과이지 이탈이 아니다. Orchestration이
+  셋 중 앞서는 것도 설계대로다.</p>
+</div>
+<p>다음 점검에서 볼 것:</p>
+<ul>
+  <li><strong>JYP Ent.</strong> — Orchestra 비중을 meritz 수준(~2%)으로 낮출지, 회색 포지션으로
+  명시하고 상한을 둘지 결정.</li>
+  <li><strong>임상 바이오·소형 의료기기 클러스터</strong> — 주식 대비 상한(예: 8%)을 명문화.
+  임상 단계 종목은 물타기 제외 리스트에 올릴지 검토.</li>
+  <li><strong>기타2 유입 스크린</strong> — 신규 종목이 매매일지로 들어올 때 저부채·상위·필수재
+  3조건 체크를 루틴에 추가. 통과 못 하면 "회색"으로 라벨.</li>
+  <li><strong>Orchestration 섹터 라벨</strong> — 미분류 6.5%(카페24·씨앤씨·파라다이스·바텍·풀무원·
+  대신증권·씨티케이·앱클론). <code>fix_sector.py</code>로 정리(감사 정확도용, 철학과 무관).</li>
+  <li><strong>회색+기타2 합산 상한</strong> — 지금 ~30%. 코어 규율 유지선으로 25% 같은 목표를
+  둘지 논의.</li>
+</ul>
+
+<footer>
+  종목별 철학 감사 · 2026-09-10 · new1/report/<br>
+  수치는 장중(14:58 KST) 실시간 시세 스냅샷. 손익률 = 현재가/평단가 − 1. 섹터군은 두 앱의 라벨
+  체계가 달라(§6-24 신체계는 new1만) 대분류로 묶어 비교. "회색/통과" 분류는 세션의 판단이며
+  종목별 재무·업계지위 정밀 스크린은 별도. 나스닥 성장 계좌(≈1.35억)는 이 감사 범위 밖.
+</footer>
+</div>
