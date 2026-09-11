@@ -917,14 +917,15 @@ def _flow_df(rows):
 
 
 def test_rank_flow_flags_direction_and_order():
-    # A: 오늘 보유율이 평균보다 크게 위(UP), B: 크게 아래(DOWN), C: 살짝 위
+    # price_hist 없이 호출 → 기준일pp는 investor_flow 자체의 최초 관측값(1/05)을 기준으로 폴백.
+    # A: 오늘 보유율이 기준일보다 크게 위(UP, +5pp), B: 크게 아래(DOWN, -6pp), C: 살짝 위(+0.6pp)
     hist = _flow_df([
         ("A", "2026-01-05", 100, 10.0), ("A", "2026-01-06", 100, 15.0),
         ("B", "2026-01-05", 100, 20.0), ("B", "2026-01-06", 100, 14.0),
         ("C", "2026-01-05", 100, 10.0), ("C", "2026-01-06", 100, 10.6),
     ])
     flags = core.compute_foreign_flags(hist)
-    key = core.FLOW_BASIS_KEY["foreign"]["누적"]  # vs평균pp
+    key = core.FLOW_BASIS_KEY["foreign"]["누적"]  # 기준일pp
 
     up = core.rank_flow_flags(flags, key, "UP")
     assert [f["종목명"] for f in up] == ["종목A", "종목C"]  # A가 더 크게 위 → 1위
@@ -933,18 +934,47 @@ def test_rank_flow_flags_direction_and_order():
 
 
 def test_get_flow_prev_day_ranks_uses_day_before_today():
-    # 3일치. today=1/07 → prev_date=1/06까지만으로 순위 계산.
+    # 3일치. today=1/07 → prev_date=1/06까지만으로 순위 계산. price_hist 없음 → 기준일=1/05 폴백.
     hist = _flow_df([
         ("A", "2026-01-05", 100, 10.0), ("A", "2026-01-06", 100, 13.0), ("A", "2026-01-07", 100, 30.0),
         ("B", "2026-01-05", 100, 10.0), ("B", "2026-01-06", 100, 16.0), ("B", "2026-01-07", 100, 10.5),
     ])
     pr = core.get_flow_prev_day_ranks(hist, "foreign", "누적", "UP", "2026-01-07")
-    # 1/06 기준: B가 평균 대비 더 크게 위(+4pp vs A +2pp) → B 1위, A 2위
+    # 1/06 기준: B가 1/05 대비 더 크게 위(+6pp vs A +3pp) → B 1위, A 2위
     assert pr == {"종목B": 1, "종목A": 2}
     # 오늘(1/07)까지 다 쓰면 A가 폭등해서 1위 → prev와 달라야 함(=▲▼ 표시 근거)
     now = core.rank_flow_flags(core.compute_foreign_flags(hist),
                                 core.FLOW_BASIS_KEY["foreign"]["누적"], "UP")
     assert now[0]["종목명"] == "종목A"
+
+
+def test_compute_foreign_flags_uses_price_history_origin_when_given():
+    # price_hist를 넘기면 investor_flow 자체의 최초 관측값이 아니라 price_hist 최초 관측일
+    # 값을 기준으로 삼는다 — Fishing/Link와 같은 "기준일" 개념 공유(2026-09-11).
+    flow = _flow_df([
+        ("X", "2026-07-24", 100, 30.0),  # 가격 추적 시작 전의 값 — 기준으로 쓰이면 안 됨
+        ("X", "2026-08-19", 100, 10.0),
+        ("X", "2026-08-26", 100, 12.0),
+    ])
+    price = _price_df([("X", "2026-08-19", 1000), ("X", "2026-08-26", 900)])
+    flags_with_price = {f["종목코드"]: f for f in core.compute_foreign_flags(flow, price)}
+    assert flags_with_price["X"]["기준일보유율"] == pytest.approx(10.0)
+    assert flags_with_price["X"]["기준일pp"] == pytest.approx(2.0)
+    # price_hist 없으면 investor_flow 자체 최초값(7/24=30.0)으로 폴백 — 다른 숫자가 나와야 함
+    flags_without_price = {f["종목코드"]: f for f in core.compute_foreign_flags(flow)}
+    assert flags_without_price["X"]["기준일보유율"] == pytest.approx(30.0)
+
+
+def test_compute_link_candidates_reuses_compute_foreign_flags_exactly():
+    # Link의 dF는 Foreigner의 기준일pp와 항상 같은 값이어야 한다(같은 함수를 재사용하므로) —
+    # "데이터의 뿌리는 같아야 한다"는 사용자 설계(2026-09-11).
+    price = _price_df([("X", "2026-08-19", 1000), ("X", "2026-08-26", 900)])
+    flow = _flow_df([("X", "2026-08-19", 100, 10.0), ("X", "2026-08-26", 100, 13.5)])
+    link_out = core.compute_link_candidates(price, flow, min_price_days=2)
+    fx = {f["종목코드"]: f for f in core.compute_foreign_flags(flow, price)}
+    assert link_out.iloc[0]["dF"] == pytest.approx(fx["X"]["기준일pp"])
+    assert link_out.iloc[0]["기준외인비중"] == pytest.approx(fx["X"]["기준일보유율"])
+    assert link_out.iloc[0]["현재외인비중"] == pytest.approx(fx["X"]["오늘보유율"])
 
 
 # --- 포리너 프로젝트(포프) 초안: study_foreign_buy_forward_returns --- #
@@ -1040,7 +1070,7 @@ def test_compute_link_candidates_scores_opposite_direction_higher():
         ("A", "2026-08-19", 100, 10.0), ("A", "2026-08-22", 100, 11.0), ("A", "2026-08-25", 100, 13.0),
         ("B", "2026-08-19", 100, 10.0), ("B", "2026-08-22", 100, 9.0), ("B", "2026-08-25", 100, 7.0),
     ])
-    out = core.compute_link_candidates(price, flow, min_price_days=2, min_flow_days=2)
+    out = core.compute_link_candidates(price, flow, min_price_days=2)
     a = out[out["종목코드"] == "A"].iloc[0]
     b = out[out["종목코드"] == "B"].iloc[0]
     assert a["P"] == pytest.approx(-20.0)
@@ -1061,7 +1091,7 @@ def test_compute_link_candidates_uses_price_history_start_as_baseline():
         ("X", "2026-08-19", 100, 10.0),
         ("X", "2026-08-26", 100, 12.0),
     ])
-    out = core.compute_link_candidates(price, flow, min_price_days=2, min_flow_days=2)
+    out = core.compute_link_candidates(price, flow, min_price_days=2)
     row = out.iloc[0]
     assert row["기준외인비중"] == pytest.approx(10.0)
     assert row["dF"] == pytest.approx(2.0)
@@ -1074,7 +1104,7 @@ def test_compute_link_candidates_prefers_live_quote_over_stale_db_row():
     price = _price_df([("A", "2026-08-19", 1000), ("A", "2026-08-25", 900)])
     flow = _flow_df([("A", "2026-08-19", 100, 10.0), ("A", "2026-08-25", 100, 12.0)])
     out = core.compute_link_candidates(price, flow, live_quotes={"A": 950.0},
-                                        min_price_days=2, min_flow_days=2)
+                                        min_price_days=2)
     row = out.iloc[0]
     assert row["현재가"] == pytest.approx(950.0)
     assert row["P"] == pytest.approx(-5.0)   # (950-1000)/1000, DB행(900) 기준 -10%이 아님

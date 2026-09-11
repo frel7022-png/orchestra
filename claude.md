@@ -587,12 +587,25 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   작으므로(예: 12.93%→13.04%), "어제 대비"는 상대변화율(%)이 아니라 **%p(퍼센트포인트)
   차이**로 보여주는 게 직관적임 — 화면 만들 때 이 점 지킬 것. 그날의 외국인순매수(주식 수)는
   참고용 숫자로 같이 보여주기로 함.
-  - **알려진 한계 (당장 안 고치기로 함)**: "평균"이 지금은 쌓인 기간(약 20일) 전체의
-    단순평균이라, 그 안에 이상치가 하나 껴있으면 평균이 크게 왜곡돼서 "평균 대비 %"가 실제
-    체감과 안 맞을 수 있음(사례는 `ARCHIVE.md` §6-12 참고). 사용자가 "일단 데이터 더 쌓이면
-    나아질 문제"라고 판단해서 지금은 안 고치기로 함. 그래도 계속 거슬리면 "최근 며칠 평균"
-    기능(기간을 사용자가 지정, 아직 미구현)이나 단순평균 대신 중앙값(median)으로 바꾸는 걸
-    고려할 것 — 둘 다 이상치에 덜 흔들림.
+  - **알려진 한계 (당장 안 고치기로 함, Volume에는 여전히 적용됨)**: "평균"이 지금은 쌓인
+    기간(약 20일) 전체의 단순평균이라, 그 안에 이상치가 하나 껴있으면 평균이 크게 왜곡돼서
+    "평균 대비 %"가 실제 체감과 안 맞을 수 있음(사례는 `ARCHIVE.md` §6-12 참고). Volume(거래량)
+    쪽은 아직 이 방식 그대로 — 사용자가 "일단 데이터 더 쌓이면 나아질 문제"라고 판단해서 안
+    고치기로 함.
+  - **Foreigner(외국인)는 "평균 대비" → "기준일 대비"로 전면 교체함 (2026-09-11)**: 원래
+    Volume과 같은 "vs평균pp"(그 종목 investor_flow 전체 히스토리 단순평균 대비)였는데, 사용자가
+    지적한 두 가지 문제로 폐기 — (1) 평균 자체가 작은 종목에서 체감과 안 맞기 쉬움, (2) 무엇보다
+    §6-28 "Link" 패널이 이미 "기준일(가격추적 시작일) 대비"를 쓰고 있어서 **같은 종목의 외인비중
+    변화가 화면마다 다른 숫자로 보이는 문제**가 실제로 발생함(와이지-원 실측: vs평균 −1.22%p
+    vs 기준일 대비 +0.88%p). `compute_foreign_flags(hist, price_hist)`가 이제 **"기준일pp"**
+    (오늘 − 그 종목 `price_hist` 최초 관측일 값, Fishing/Link와 동일한 "기준일" 개념)를 계산해
+    `FLOW_BASIS_KEY["foreign"]["누적"]`이 이 키를 씀. `get_flow_prev_day_ranks`도 `price_hist`를
+    받아 같이 넘김(순위 배지도 같은 기준일로 계산). **Foreigner·Link·Fishing이 이제 전부 같은
+    DB·같은 기준일을 공유** — 사용자 요청("결국 데이터의 뿌리는 같아야 하고... 포리너의 데이터와
+    피싱의 데이터가 기반이 되어야 하지")대로, `compute_link_candidates`는 외인 계산을 따로 하지
+    않고 `compute_foreign_flags`를 내부에서 그대로 호출(§6-28). 회귀 테스트
+    `test_compute_foreign_flags_uses_price_history_origin_when_given`,
+    `test_compute_link_candidates_reuses_compute_foreign_flags_exactly`.
 - **UI**: Fishing expander 밑에 "Volume", 그 밑에 "Foreigner" 섹션(둘 다 `st.expander`,
   Fishing과 같은 아코디언 패턴). 둘 다 새로고침 버튼 → `load_investor_flow_db`/
   `load_market_flow_db`로 DB 조회 → `st.session_state["flow_hist"]`/`["market_hist"]`에
@@ -1376,33 +1389,40 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
 - **위치/잠금**: §6-18 "외인 매수 → 이후 주가 (실험)" 자리를 통째로 교체 — 포트폴리오 탭
   Foreigner expander 밑 `Link (실험)` expander. 같은 비밀번호 게이트 재사용
   (`ui_portfolio_tab.LINK_PASSWORD`, `st.session_state["link_unlocked"]`).
+- **"뿌리가 같은 데이터" 원칙 (2026-09-11, 사용자 설계 확정)**: "Foreigner는 전체적인 현황과
+  순위를 보려는 입장이고 Link는 그 응용편 — 결국 데이터의 뿌리는 같아야 하고, 누적이든 당일이든
+  표기되는 값 역시 같은 기준으로 같아야 한다"는 사용자 지시로 아래처럼 완전히 통합함(처음엔
+  Link가 자기만의 창(가격추적 시작일)으로 따로 계산했다가, 그 결과가 Foreigner/Fishing 화면
+  숫자와 어긋나 보여 사용자가 지적 — 파마리서치·실리콘투·와이지-원 세 종목으로 실측 대조함):
+  - **외인 계산은 완전히 공유**: `compute_link_candidates`가 외인 쪽을 자체 계산하지 않고
+    §6-12의 `compute_foreign_flags(flow_hist, price_hist)`를 **그대로 호출**해서 그 결과의
+    `"기준일pp"`를 dF로 쓴다. 즉 **Link의 dF === Foreigner의 "기준일pp"**, 항상 정확히 같은 값
+    (회귀 테스트 `test_compute_link_candidates_reuses_compute_foreign_flags_exactly`로 고정).
+  - **기준일도 공유**: `기준일pp`가 쓰는 "기준일"은 그 종목 `price_history` 최초 관측일 —
+    Fishing "누적" 기준일·Link "기준일"과 동일 개념. `compute_foreign_flags`에 `price_hist`를
+    넘겨야 이 기준일을 쓴다(안 넘기면 investor_flow 자체 최초값으로 폴백 — 기준일이 달라질 수
+    있음, 호출부는 항상 넘길 것).
+  - **새로고침도 공유**: Volume/Foreigner/Link **세 패널이 전부 같은
+    `_refresh_flow_data()`(`ui_portfolio_tab.render_portfolio_tab` 안 closure) 하나만 쓴다** —
+    `st.session_state["flow_hist"]`/`["price_hist_flow"]`/`["market_hist"]`/`["live_quotes"]`
+    (전부 공용 키, `link_` 접두어 없음). 셋 중 **어느 버튼을 눌러도 나머지 둘도 같이
+    갱신됨**("포리너의 새로고침할 때 링크도 새로고침 된 걸로 나타나면 딱 맞을거고" — 사용자
+    요청 그대로). Link의 "새로고침" 버튼은 그냥 이 공유 함수를 호출할 뿐, 별도 DB 호출 없음.
+  - **"현재가"만 예외** — `live_quotes`(§1-4 청크 방식 `fetch_quotes()`로 전 종목 실시간가,
+    `_refresh_flow_data()`가 같이 채움): `price_history`는 §6-9 cron이 **장마감 후**에야 그날
+    종가를 채우므로, 장중엔 DB 마지막 행이 어제 종가까지만 있어 Fishing의 실시간 누적%와 하루치
+    갭이 생겼던 실제 버그(2026-09-11, 파마리서치 실측: DB전용 -10.6% vs Fishing 실시간 -12.3%).
+    `compute_link_candidates(..., live_quotes=...)`/`link_watch_status(..., live_quotes=...)`가
+    있으면 우선 사용, 없으면 DB 마지막 행 폴백. **기준가/기준일은 절대 live로 안 바뀜** — 과거
+    시점을 실시간으로 대체할 수 없으니 당연.
 - **핵심 지표 — Divergence Score**: `portfolio_core.compute_link_candidates(price_hist, flow_hist,
-  min_price_days=5, min_flow_days=3)`.
-  - 종목별 **P**(누적등락률 %) = 그 종목 `price_history` 최초 관측일→최신 종가. **F0/F1**(기준/현재
-    외인비중) = **같은 기간(가격 최초 관측일~최신)으로 잘라낸** `investor_flow`의 첫/마지막 값.
-    **ΔF = F1−F0**(%p). **Score = −(ΔF × P)**.
-  - 이 곱셈 하나로 "부호가 반대(가격↓·외인↑ 또는 그 반대)일 때만 양수, 게다가 둘 다 커야 커짐"이
-    자동으로 인코딩됨 — 별도 문턱값(±10% 이상 등) 없이 랭킹 자체가 필터 역할을 함. 방향 무관 —
-    "폭등+외인매도"(예: 태광 +29%·외인 −3.35%p, score 98)도 "폭락+외인매수"(예: 파마리서치 −10.6%·
-    외인 +3.31%p, score 35)도 똑같이 위로 뜬다.
-  - **기준일을 왜 "가격 히스토리 시작일"로 고정하는가 (2026-09-11 실제로 확인한 함정)**:
-    `investor_flow`가 `price_history`보다 훨씬 이전(7/24)부터 있어서, 외인비중 변화를 그 긴
-    구간 전체로 재면 같은 종목이 정반대로 읽힐 수 있음 — 와이지-원 실측: 가격 추적 시작일(8/19)
-    기준 ΔF=+0.88%p(축적처럼 보임)이지만, 7/24부터 보면 ΔF=−3.56%p(사실은 이탈, 8/18 단 하루
-    −2.67%p 급락 후 소폭 반등한 것뿐). 라이브 Foreigner 패널의 "vs평균pp"(`compute_foreign_flags`,
-    전체 히스토리 확장평균 대비)도 같은 이유로 −1.22%p로 반대 부호가 나옴 — **둘 다 틀린 게
-    아니라 기준 구간이 다른 것뿐**이지만, 종목 간 비교가 성립하려면 기준을 하나로 고정해야 함.
-    같은 방법으로 확인: 파마리서치(7/24~ 거의 단조증가, 어느 기준으로도 확실)·OCI홀딩스(7/24~8/11
-    하락 후 8/11부터 뚜렷한 추세전환, 진짜 반등)는 기준을 바꿔도 살아있고, 와이지-원만 기준에
-    따라 뒤집힘 — **스코어가 이미 이 상대적 신뢰도를 반영**(파마리서치 35 > OCI홀딩스 17 >
-    와이지-원 13, 별도 필터 불필요).
-  - **"현재가"는 `live_quotes`(있으면, {종목코드: 실시간가}) 우선, 없으면 `price_history` 마지막
-    저장 행 폴백** (2026-09-11 실제 버그로 발견·수정): 첫 배포 때는 DB 마지막 행만 썼는데,
-    `price_history`는 §6-9 cron이 **장마감 후**에야 그날 종가를 채우므로 장중엔 어제 종가까지만
-    있음 — Fishing은 항상 `fetch_quotes()` 실시간가를 쓰는데 Link만 DB 값을 써서 같은 종목의
-    누적%가 두 화면에서 하루치씩 어긋났다(사용자가 파마리서치·실리콘투·와이지-원 세 종목으로
-    실측: Link -10.6%/DB전용 vs Fishing -12.3%/실시간). **기준가/기준일은 그대로 DB 고정** —
-    과거 시점을 실시간으로 대체할 수 없으니 당연히 안 바뀜.
+  live_quotes=None, min_price_days=5)`. **Score = −(ΔF × P)**(ΔF=기준일pp, P=기준일 종가 대비
+  현재가 누적등락률 %). 부호가 반대(가격↓·외인↑ 또는 그 반대)일 때만 양수, 게다가 둘 다 커야
+  커짐 — 별도 문턱값 없이 랭킹 자체가 필터 역할. 방향 무관 — "폭등+외인매도"(예: 태광 +29%·외인
+  −3.35%p)도 "폭락+외인매수"(예: 파마리서치 −12.8%·외인 +3.31%p)도 똑같이 위로 뜬다. 2026-09-11
+  실측(라이브 시세 반영 후): 파마리서치 P=-12.8%/dF=+3.31%p, 실리콘투 P=-3.2%/dF=+7.11%p,
+  와이지-원 P=-13.4%/dF=+0.88%p, OCI홀딩스 P=-21.3%/dF=+0.86%p — 전부 Foreigner의 "기준일pp"와
+  정확히 일치 확인.
 - **감시목록 — `link_watch_log.csv`** (컬럼: 플래그일,종목코드,종목명,기준일,기준가,기준외인비중,
   P_당시,dF_당시,score_당시). `load_link_watch_log()`/`save_link_watch_log()`/`add_link_watch_entry()`.
   **§1-7 원칙대로 배포된 앱의 실시간 UI에서는 이 파일에 쓰지 않는다** — 사용자가 채팅으로
@@ -1414,18 +1434,10 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   (2026-09-11, 사용자가 직접 이 포맷을 지정). 2026-09-11 최초 3건 시딩: 파마리서치·OCI홀딩스·와이지-원.
 - **감시 현황 읽기**: `link_watch_status(watch_log, price_hist, flow_hist, live_quotes=None)` —
   각 감시 종목의 기준가/기준외인비중 대비 **현재가/현재외인비중/경과일/가격변화%/외인변화%p**를
-  계산(읽기 전용, 로그 자체는 안 건드림). `live_quotes`도 `compute_link_candidates`와 같은 이유로
-  현재가에 우선 사용.
-- **외인비중변화(ΔF)는 Foreigner의 "평균 대비"(vs평균pp)와 다른 숫자다 — 버그 아님**: 둘 다
-  각자 정의로는 맞지만 기준이 다르다(Link=가격추적 시작일 고정 / Foreigner=전체 히스토리
-  확장평균). 패널 캡션에 이 차이를 명시해뒀음(2026-09-11) — 두 화면 숫자를 서로 검증용으로
-  비교하지 말 것.
-- **UI (`_render_link_panel`, `ui_portfolio_tab.py`)**: **자체 "새로고침" 버튼**(다른 섹션
-  새로고침에 얹혀가지 않음, 눌러야만 `load_watchlist_history_db`/`load_investor_flow_db`
-  재조회 — 사용자 명시 요청 "새로고침 기능을 만들어서 누를때만 갱신") →
-  `st.session_state["link_price_hist"]`/`["link_flow_hist"]`에 캐싱, 같이 `fetch_quotes()`로
-  전 종목 실시간가도 받아 `st.session_state["link_live_quotes"]`에 캐싱(Fishing과 같은 청크
-  방식, §1-4). 두 섹션:
+  계산(읽기 전용, 로그 자체는 안 건드림).
+- **UI (`_render_link_panel(ph, fh, live_quotes, refresh_fn, T)`, `ui_portfolio_tab.py`)**:
+  `render_portfolio_tab`이 Foreigner 섹션에서 로드한 공유 session_state와 `_refresh_flow_data`
+  함수를 인자로 넘겨줌 — 이 함수 자체는 DB를 직접 안 건드림. 두 섹션:
   ① **지켜보는 중** — 감시목록 각 줄, 기준일~경과일 + 가격변화%/외인변화%p(빨강/파랑).
   ② **이번 후보** — 상위 8개(스코어 내림차순), 이미 감시 중인 종목은 종목명 옆 ★. 후보를
   실제로 감시목록에 넣을지는 사용자가 눈으로 보고 판단(자동 편입 안 함 — "엉뚱한 놈 고르기"는
@@ -1436,7 +1448,8 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
 - **회귀 테스트**: `test_compute_link_candidates_scores_opposite_direction_higher`(부호 반대가
   스코어 양수·정렬 확인), `test_compute_link_candidates_uses_price_history_start_as_baseline`
   (더 이른 외인 데이터에 기준이 안 끌려가는지), `test_compute_link_candidates_prefers_live_quote_over_stale_db_row`,
-  `test_link_watch_status_prefers_live_quote_over_stale_db_row`(위 라이브 시세 우선 버그 고정),
+  `test_link_watch_status_prefers_live_quote_over_stale_db_row`(라이브 시세 우선 버그 고정),
+  `test_compute_link_candidates_reuses_compute_foreign_flags_exactly`(Foreigner와 dF 완전 일치),
   `test_compute_link_candidates_empty_inputs`, `test_link_watch_status_computes_change_since_flagged`,
   `test_link_watch_status_empty_log_returns_empty`, `test_add_link_watch_entry_overwrites_same_stock_code`.
 - **new1 전용** (포프와 마찬가지로 153+ 관심종목/Supabase 파이프라인에 묶임).

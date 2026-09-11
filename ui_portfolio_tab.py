@@ -252,40 +252,35 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
 LINK_PASSWORD = "653715"
 
 
-def _render_link_panel(T):
+def _render_link_panel(ph, fh, live_quotes, refresh_fn, T):
     """"Link" 패널(§포프 다음 단계, 2026-09-11) — 가격·외인비중이 반대 방향으로 크게 벌어진
-    "엉뚱한 놈"만 골라 감시목록에 올리고 시간을 두고 지켜보는 실험 패널. 이 패널은 자체
-    새로고침 버튼을 눌러야만 DB를 다시 조회한다(다른 섹션 새로고침에 얹혀가지 않음).
+    "엉뚱한 놈"만 골라 감시목록에 올리고 시간을 두고 지켜보는 실험 패널.
+    **Volume/Foreigner와 데이터를 완전히 공유한다**(2026-09-11 갱신 — 사용자 지적: "결국
+    데이터의 뿌리는 같아야 하고, 포리너의 데이터와 피싱의 데이터가 기반이 되어야 한다"). 그래서
+    이 함수는 자체 DB 조회를 하지 않고, `render_portfolio_tab`이 Foreigner 섹션에서 이미 로드한
+    `flow_hist`/`price_hist_flow`/`live_quotes`(session_state 공유)를 그대로 받는다 — Foreigner든
+    Link든 어느 쪽 "새로고침"을 눌러도 **같은 `_refresh_flow_data()` 한 함수, 같은 DB 호출**을
+    타므로 세 패널이 서로 어긋날 일이 없다. 외인 쪽 계산도 `compute_link_candidates` 내부에서
+    `compute_foreign_flags`를 그대로 재사용(§6-28) — Foreigner에 뜨는 "기준일pp"와 Link의 dF는
+    항상 같은 값이다.
     **감시목록(link_watch_log.csv) 편입은 이 UI에서 직접 하지 않는다** — §1-7대로 이 앱은
     CSV 반영이 유일한 데이터 입력 경로라, "이 종목 감시목록에 넣어줘"라고 채팅으로 요청하면
     세션이 add_link_watch_entry()를 스크립트로 실행하고 git commit한다(배포 서버 로컬 디스크에만
     쓰면 재배포 때 사라짐, §1-5). 이 패널은 감시목록 현황 + 후보 랭킹을 읽기 전용으로 보여줄 뿐."""
     st.caption("가격과 외인보유율이 반대 방향으로 크게 벌어진 종목만 골라 지켜보는 실험 패널. "
                "'외인이 사면 오른다'는 상관관계를 보려는 게 아니라, 원래 같이 가야 할 둘이 "
-               "이번엔 반대로 간 예외 케이스를 찾아 한 달쯤 지켜보는 용도. 외인비중변화는 "
-               "Foreigner의 '평균 대비'와 다른 기준(기준일=가격추적 시작일 대비 고정)이라 "
-               "그 화면 숫자와는 다를 수 있음.")
+               "이번엔 반대로 간 예외 케이스를 찾아 한 달쯤 지켜보는 용도. Foreigner·Volume과 "
+               "데이터·기준일을 그대로 공유함 — 아래서 새로고침해도, 위 Foreigner/Volume에서 "
+               "새로고침해도 결과는 같다.")
     if st.button("새로고침", key="link_refresh"):
-        _sb = st.secrets.get("supabase", {})
-        _url, _key = _sb.get("url", ""), _sb.get("anon_key", "")
-        _ph = load_watchlist_history_db(_url, _key)
-        _fh = load_investor_flow_db(_url, _key)
-        # 현재가는 price_history 마지막 저장 행(장마감 후 확정)이 아니라 Fishing과 같은
-        # 실시간 시세를 써야 누적%가 일치한다(2026-09-11 실측 버그 — §6-28).
-        _codes = _ph["종목코드"].unique().tolist() if not _ph.empty else []
-        _quotes, _ = fetch_quotes(_codes) if _codes else ({}, [])
-        st.session_state["link_price_hist"] = _ph
-        st.session_state["link_flow_hist"] = _fh
-        st.session_state["link_live_quotes"] = {c: q["price"] for c, q in _quotes.items()
-                                                   if q and q.get("price") is not None}
+        with st.spinner("데이터 조회 중..."):
+            refresh_fn()
         st.rerun()
 
-    ph = st.session_state.get("link_price_hist")
-    fh = st.session_state.get("link_flow_hist")
     if ph is None or fh is None:
         st.caption("새로고침을 눌러 가격·외인 데이터를 불러오세요.")
         return
-    lq = st.session_state.get("link_live_quotes") or {}
+    lq = live_quotes or {}
 
     watch = load_link_watch_log()
     if not watch.empty:
@@ -900,7 +895,15 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     def _refresh_flow_data():
         st.session_state["flow_hist"] = load_investor_flow_db(sb_url, sb_key)
         st.session_state["market_hist"] = load_market_flow_db(sb_url, sb_key)
-        st.session_state["price_hist_flow"] = load_watchlist_history_db(sb_url, sb_key)
+        _ph = load_watchlist_history_db(sb_url, sb_key)
+        st.session_state["price_hist_flow"] = _ph
+        # Link(§6-28)도 이 새로고침을 그대로 씀 — Foreigner/Volume/Link가 전부 같은 DB 호출
+        # 하나를 공유해야 "같은 기준일이면 흔들림이 없다"는 전제가 실제로 성립한다(사용자 지적,
+        # 2026-09-11). 현재가는 장마감 전엔 DB가 하루 뒤처지므로 실시간 시세도 같이 받아둔다.
+        _codes = _ph["종목코드"].unique().tolist() if not _ph.empty else []
+        _quotes, _ = fetch_quotes(_codes) if _codes else ({}, [])
+        st.session_state["live_quotes"] = {c: q["price"] for c, q in _quotes.items()
+                                            if q and q.get("price") is not None}
 
     with st.expander("Volume", expanded=False):
         if st.button("새로고침", key="volume_refresh", use_container_width=True):
@@ -984,7 +987,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 fkey = FLOW_BASIS_KEY["foreign"][fx_basis]
                 ranked = rank_flow_flags(fx_flags, fkey, fx_dir)
                 prev_ranks = get_flow_prev_day_ranks(flow_hist, "foreign", fx_basis, fx_dir,
-                                                      today_kst_str())
+                                                      today_kst_str(), price_hist_flow)
                 if not ranked:
                     st.caption(f"{fx_basis} 기준 {fx_dir}으로 움직인 종목이 없습니다.")
                 else:
@@ -1004,7 +1007,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         )
                     st.markdown("".join(parts), unsafe_allow_html=True)
                     st.caption(f"종목명 옆은 현재 외국인 보유율 · "
-                               f"{fx_basis}({'평균 대비' if fx_basis == '누적' else '어제 대비'}) "
+                               f"{fx_basis}({'기준일 대비' if fx_basis == '누적' else '어제 대비'}) "
                                f"보유율 {fx_dir} 큰 순 · 상위 20개 표시 "
                                f"(추적 {len(fx_flags)}종목 중 {fx_dir} {len(ranked)}종목)")
 
@@ -1021,7 +1024,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             elif _pw:
                 st.caption("비밀번호가 틀렸습니다.")
         else:
-            _render_link_panel(T)
+            _render_link_panel(flow_hist, price_hist_flow, st.session_state.get("live_quotes"),
+                                _refresh_flow_data, T)
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",

@@ -1025,37 +1025,51 @@ def compute_volume_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = N
 
 
 def compute_foreign_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = None) -> list[dict]:
-    """종목별 오늘 외국인보유율이 평균/어제 대비 얼마나 움직였는지(%p, 퍼센트포인트 차이 —
+    """종목별 오늘 외국인보유율이 기준일/어제 대비 얼마나 움직였는지(%p, 퍼센트포인트 차이 —
     보유율 자체가 이미 %라 상대변화율로 보면 하루 변동폭이 작아 헷갈리므로 %p로 비교).
-    price_hist(선택): compute_volume_flags와 동일 용도(그날 실제 주가 등락률).
-    반환: |오늘 vs 평균 %p| 큰 순으로 정렬된 [{"종목명","종목코드","섹터","오늘보유율",
-    "평균보유율","어제보유율","vs평균pp","vs어제pp","오늘외국인순매수","오늘등락률"}, ...].
+    **"기준일pp" = 오늘 − 그 종목 가격추적 시작일(=price_hist 최초 관측일, Fishing/Link의
+    "기준일"과 동일 개념) 값** (2026-09-11 갱신 — 예전엔 "그 종목 전체 히스토리 단순평균 대비"
+    (vs평균pp)였는데, 사용자가 지적: 평균 기준이면 평균 자체가 작을 때(예: 0.1%대 종목) 체감보다
+    왜곡되기 쉽고, 무엇보다 §6-28 Link가 이미 "기준일 대비"를 쓰고 있어서 **같은 종목의 외인비중
+    변화가 화면마다 다른 숫자로 보이는 문제**(와이지-원 실측: vs평균 −1.22%p vs Link 기준일
+    +0.88%p)가 있었음. price_hist를 넘기면 Fishing/Link와 정확히 같은 기준일을 쓰게 됨 — 세
+    화면이 "같은 DB, 같은 기준일"이라 서로 검증 가능해짐. price_hist 없으면(호출부가 안 넘긴
+    구간) 이 investor_flow 자체의 최초 관측값으로 폴백(기준일이 달라질 수 있음, 호출부는 항상
+    price_hist를 넘길 것).
+    반환: |기준일 대비 %p| 큰 순으로 정렬된 [{"종목명","종목코드","섹터","오늘보유율",
+    "기준일보유율","어제보유율","기준일pp","vs어제pp","오늘외국인순매수","오늘등락률"}, ...].
     "오늘외국인순매수"(원시 주식수)는 DB 원자료용으로 남겨두지만, 화면에는 표시하지
     않기로 함(2026-08-24, 사용자 요청) — 대신 vs어제pp/오늘등락률을 보여줌."""
     price_map = _latest_change_pct_map(price_hist)
+    origin_dates = {}
+    if price_hist is not None and not price_hist.empty:
+        origin_dates = price_hist.groupby("종목코드")["날짜"].min().to_dict()
     results = []
     for code, g in hist.groupby("종목코드"):
         g = g.sort_values("날짜")
-        pct = pd.to_numeric(g["외국인보유율"], errors="coerce").dropna()
-        if len(pct) < 2:
+        g = g.assign(_pct=pd.to_numeric(g["외국인보유율"], errors="coerce")).dropna(subset=["_pct"])
+        if len(g) < 2:
             continue
-        today_pct, avg_pct, yday_pct = pct.iloc[-1], pct.mean(), pct.iloc[-2]
+        today_pct, yday_pct = g["_pct"].iloc[-1], g["_pct"].iloc[-2]
+        origin_date = origin_dates.get(code)
+        base_rows = g[g["날짜"] >= origin_date] if origin_date is not None else g
+        origin_pct = base_rows["_pct"].iloc[0] if not base_rows.empty else g["_pct"].iloc[0]
         net = pd.to_numeric(g["외국인순매수"], errors="coerce").dropna()
         results.append({
             "종목명": g["종목명"].iloc[-1], "종목코드": code, "섹터": g["섹터"].iloc[-1],
-            "오늘보유율": today_pct, "평균보유율": avg_pct, "어제보유율": yday_pct,
-            "vs평균pp": today_pct - avg_pct, "vs어제pp": today_pct - yday_pct,
+            "오늘보유율": today_pct, "기준일보유율": origin_pct, "어제보유율": yday_pct,
+            "기준일pp": today_pct - origin_pct, "vs어제pp": today_pct - yday_pct,
             "오늘외국인순매수": int(net.iloc[-1]) if not net.empty else None,
             "오늘등락률": price_map.get(code),
         })
-    results.sort(key=lambda r: -abs(r["vs평균pp"]))
+    results.sort(key=lambda r: -abs(r["기준일pp"]))
     return results
 
 
-# Volume/Foreigner 화면의 "기준"(누적=평균 대비 / 전일=어제 대비) 라디오 → flags dict의 어느 키를 쓸지
+# Volume/Foreigner 화면의 "기준"(누적=기준일 대비 / 전일=어제 대비) 라디오 → flags dict의 어느 키를 쓸지
 FLOW_BASIS_KEY = {
     "volume": {"누적": "vs평균pct", "전일": "vs어제pct"},
-    "foreign": {"누적": "vs평균pp", "전일": "vs어제pp"},
+    "foreign": {"누적": "기준일pp", "전일": "vs어제pp"},
 }
 
 
@@ -1069,11 +1083,13 @@ def rank_flow_flags(flags: list[dict], basis_key: str, direction: str) -> list[d
 
 
 def get_flow_prev_day_ranks(hist: pd.DataFrame, kind: str, basis: str, direction: str,
-                             today: str) -> dict:
+                             today: str, price_hist: pd.DataFrame | None = None) -> dict:
     """Volume/Foreigner 순위 변동(▲▼) 표시용 — Fishing의 get_watchlist_prev_day_ranks와 같은 목적.
     hist(load_investor_flow_db 결과)에서 today 이전 가장 최근 거래일까지만 잘라 flags를 다시
     계산하고, 지금 화면과 같은 기준(basis)·방향(direction)으로 순위를 매긴다.
-    kind: "volume" | "foreign". 반환: {종목명: 순위(1부터)}."""
+    kind: "volume" | "foreign". price_hist(kind="foreign"일 때만 씀) — compute_foreign_flags의
+    "기준일pp"가 지금 화면과 같은 기준일을 쓰게 넘겨줌(안 넘기면 기준일이 달라질 수 있음).
+    반환: {종목명: 순위(1부터)}."""
     if hist is None or hist.empty:
         return {}
     past = hist[hist["날짜"] < today]
@@ -1081,7 +1097,8 @@ def get_flow_prev_day_ranks(hist: pd.DataFrame, kind: str, basis: str, direction
         return {}
     prev_date = past["날짜"].max()
     trimmed = past[past["날짜"] <= prev_date]
-    flags = compute_volume_flags(trimmed) if kind == "volume" else compute_foreign_flags(trimmed)
+    flags = (compute_volume_flags(trimmed) if kind == "volume"
+             else compute_foreign_flags(trimmed, price_hist))
     ranked = rank_flow_flags(flags, FLOW_BASIS_KEY[kind][basis], direction)
     return {f["종목명"]: i for i, f in enumerate(ranked, 1)}
 
@@ -1118,19 +1135,20 @@ def compute_market_flow_baseline(mkt_hist: pd.DataFrame) -> dict:
 # ------------------------------------------------------------------ #
 def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
                              live_quotes: dict | None = None,
-                             min_price_days: int = 5, min_flow_days: int = 3) -> pd.DataFrame:
+                             min_price_days: int = 5) -> pd.DataFrame:
     """종목별 누적등락률(P)과 외인보유율변화(ΔF)를 계산해 Divergence Score = −(ΔF×P)로 랭킹.
-    **기준일은 그 종목의 price_history 최초 관측일**(=Fishing "누적" 기준일과 동일 개념, 종목마다
-    다름) — 그날 종가·외인보유율을 "기록된" 고정 기준가/기준비중으로 삼고, 최신 값까지의 변화를
-    본다(외인 쪽만 따로 더 긴 구간 평균을 쓰지 않음 — 2026-09-11 실제로 와이지-원에서 확인:
-    투자자 심리·평균 산정 구간을 다르게 잡으면 같은 종목이 "축적"과 "이탈"로 정반대로도 읽힘,
-    기준을 하나로 고정해야 종목 간 비교가 성립함).
+    **외인 쪽 계산은 이 함수가 따로 하지 않고 `compute_foreign_flags(flow_hist, price_hist)`를
+    그대로 재사용한다**(2026-09-11 갱신) — Foreigner는 "전체 현황·순위"를, Link는 그 위에서
+    "가격과 반대로 간 예외만 골라내는 응용편"이라는 사용자 설계라, **데이터의 뿌리(기준일·
+    기준값 정의)가 반드시 같아야** 서로 검증 가능하고 나중에 추세 분석으로 확장할 때도 어긋남이
+    없다. 두 함수를 따로 유지하면(예전 방식) 로직이 미묘하게 갈라지기 쉬움(실제로 겪음: 기준
+    구간을 다르게 잡아서 와이지-원이 화면마다 반대로 보였음) — 이제 ΔF = Foreigner의 "기준일pp"
+    그 값 그대로다.
     **"현재가"는 live_quotes(있으면, {종목코드: 실시간가})를 우선 쓰고 없으면 price_history의
     마지막 저장 행으로 폴백**(2026-09-11 실제 버그로 발견: price_history는 §6-9 cron이 장마감
     후에야 그날 종가를 채우므로, 장중에 DB 마지막 행만 쓰면 Fishing의 실시간 누적%와 하루치
-    갭이 생김 — 파마리서치 실측: DB전용 P=-10.6% vs Fishing 실시간 -12.3%. Fishing과 같은
-    `fetch_quotes()` 결과를 넘기면 정확히 일치한다). **기준가/기준일은 절대 live로 안 바뀜** —
-    DB 최초 관측일 값 그대로(과거 시점을 실시간으로 대체할 수 없으니 당연).
+    갭이 생김. Fishing과 같은 `fetch_quotes()` 결과를 넘기면 정확히 일치한다). **기준가/기준일은
+    절대 live로 안 바뀜** — DB 최초 관측일 값 그대로(과거 시점을 실시간으로 대체할 수 없으니 당연).
     스코어 설계: 부호가 반대(가격↓인데 외인↑, 또는 그 반대)일 때만 양수가 되고, ΔF·P 둘 다
     클수록 커짐 — 별도 문턱값 없이 랭킹 자체가 "부호 반대 + 크기 둘 다 큼"을 인코딩한다.
     반환 컬럼: 종목코드,종목명,섹터,기준일,기준가,현재가,P,기준외인비중,현재외인비중,dF,score,관측일수.
@@ -1140,27 +1158,26 @@ def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
     if price_hist is None or price_hist.empty or flow_hist is None or flow_hist.empty:
         return pd.DataFrame(columns=cols)
     live_quotes = live_quotes or {}
+    fx_by_code = {f["종목코드"]: f for f in compute_foreign_flags(flow_hist, price_hist)}
     rows = []
     for code, g in price_hist.groupby("종목코드"):
         g = g.sort_values("날짜")
         if len(g) < min_price_days:
             continue
-        p0, p1 = g.iloc[0], g.iloc[-1]
+        p0 = g.iloc[0]
         if not p0["종가"]:
             continue
-        cur_price = live_quotes.get(code)
-        cur_price = float(cur_price) if cur_price is not None else float(p1["종가"])
-        P = (cur_price - p0["종가"]) / p0["종가"] * 100
-        fg = flow_hist[flow_hist["종목코드"] == code].sort_values("날짜")
-        fg = fg[(fg["날짜"] >= p0["날짜"]) & (fg["날짜"] <= p1["날짜"])]
-        if len(fg) < min_flow_days:
+        fx = fx_by_code.get(code)
+        if fx is None:
             continue
-        f0, f1 = fg.iloc[0], fg.iloc[-1]
-        dF = float(f1["외국인보유율"]) - float(f0["외국인보유율"])
+        cur_price = live_quotes.get(code)
+        cur_price = float(cur_price) if cur_price is not None else float(g.iloc[-1]["종가"])
+        P = (cur_price - p0["종가"]) / p0["종가"] * 100
+        dF = float(fx["기준일pp"])
         rows.append({
-            "종목코드": code, "종목명": p1["종목명"], "섹터": p1["섹터"],
+            "종목코드": code, "종목명": g.iloc[-1]["종목명"], "섹터": g.iloc[-1]["섹터"],
             "기준일": p0["날짜"], "기준가": float(p0["종가"]), "현재가": cur_price, "P": P,
-            "기준외인비중": float(f0["외국인보유율"]), "현재외인비중": float(f1["외국인보유율"]),
+            "기준외인비중": float(fx["기준일보유율"]), "현재외인비중": float(fx["오늘보유율"]),
             "dF": dF, "score": -(dF * P), "관측일수": len(g),
         })
     out = pd.DataFrame(rows, columns=cols)
