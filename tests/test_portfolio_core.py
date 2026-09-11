@@ -1067,6 +1067,33 @@ def test_compute_link_candidates_uses_price_history_start_as_baseline():
     assert row["dF"] == pytest.approx(2.0)
 
 
+def test_compute_link_candidates_prefers_live_quote_over_stale_db_row():
+    # DB 마지막 저장 행은 어제 종가(900)뿐인데, 장중 실시간가는 950으로 더 올랐다 —
+    # live_quotes를 넘기면 그 값으로 P를 계산해야 한다(2026-09-11 실측 버그: DB 마지막 행만
+    # 쓰면 Fishing의 실시간 누적%와 하루치 갭이 생김).
+    price = _price_df([("A", "2026-08-19", 1000), ("A", "2026-08-25", 900)])
+    flow = _flow_df([("A", "2026-08-19", 100, 10.0), ("A", "2026-08-25", 100, 12.0)])
+    out = core.compute_link_candidates(price, flow, live_quotes={"A": 950.0},
+                                        min_price_days=2, min_flow_days=2)
+    row = out.iloc[0]
+    assert row["현재가"] == pytest.approx(950.0)
+    assert row["P"] == pytest.approx(-5.0)   # (950-1000)/1000, DB행(900) 기준 -10%이 아님
+    assert row["기준가"] == pytest.approx(1000.0)  # 기준가는 live와 무관하게 그대로
+
+
+def test_link_watch_status_prefers_live_quote_over_stale_db_row():
+    log = pd.DataFrame([{
+        "플래그일": "2026-08-20", "종목코드": "A", "종목명": "종목A", "기준일": "2026-08-19",
+        "기준가": 10000.0, "기준외인비중": 10.0, "P_당시": -20.0, "dF_당시": 3.0, "score_당시": 60.0,
+    }])
+    price = _price_df([("A", "2026-08-19", 10000), ("A", "2026-08-27", 9000)])
+    flow = _flow_df([("A", "2026-08-19", 100, 10.0), ("A", "2026-08-27", 100, 13.5)])
+    status = core.link_watch_status(log, price, flow, live_quotes={"A": 9300.0})
+    row = status.iloc[0]
+    assert row["현재가"] == pytest.approx(9300.0)
+    assert row["가격변화"] == pytest.approx(-7.0)  # (9300-10000)/10000, DB행(9000) 기준 -10%이 아님
+
+
 def test_compute_link_candidates_empty_inputs():
     empty_price = _price_df([])
     empty_flow = _flow_df([])

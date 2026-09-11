@@ -1117,6 +1117,7 @@ def compute_market_flow_baseline(mkt_hist: pd.DataFrame) -> dict:
 # 잡음비가 오히려 나을 수 있다는 게 이 패널의 전제(사용자 가설, 2026-09-11).
 # ------------------------------------------------------------------ #
 def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
+                             live_quotes: dict | None = None,
                              min_price_days: int = 5, min_flow_days: int = 3) -> pd.DataFrame:
     """종목별 누적등락률(P)과 외인보유율변화(ΔF)를 계산해 Divergence Score = −(ΔF×P)로 랭킹.
     **기준일은 그 종목의 price_history 최초 관측일**(=Fishing "누적" 기준일과 동일 개념, 종목마다
@@ -1124,6 +1125,12 @@ def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
     본다(외인 쪽만 따로 더 긴 구간 평균을 쓰지 않음 — 2026-09-11 실제로 와이지-원에서 확인:
     투자자 심리·평균 산정 구간을 다르게 잡으면 같은 종목이 "축적"과 "이탈"로 정반대로도 읽힘,
     기준을 하나로 고정해야 종목 간 비교가 성립함).
+    **"현재가"는 live_quotes(있으면, {종목코드: 실시간가})를 우선 쓰고 없으면 price_history의
+    마지막 저장 행으로 폴백**(2026-09-11 실제 버그로 발견: price_history는 §6-9 cron이 장마감
+    후에야 그날 종가를 채우므로, 장중에 DB 마지막 행만 쓰면 Fishing의 실시간 누적%와 하루치
+    갭이 생김 — 파마리서치 실측: DB전용 P=-10.6% vs Fishing 실시간 -12.3%. Fishing과 같은
+    `fetch_quotes()` 결과를 넘기면 정확히 일치한다). **기준가/기준일은 절대 live로 안 바뀜** —
+    DB 최초 관측일 값 그대로(과거 시점을 실시간으로 대체할 수 없으니 당연).
     스코어 설계: 부호가 반대(가격↓인데 외인↑, 또는 그 반대)일 때만 양수가 되고, ΔF·P 둘 다
     클수록 커짐 — 별도 문턱값 없이 랭킹 자체가 "부호 반대 + 크기 둘 다 큼"을 인코딩한다.
     반환 컬럼: 종목코드,종목명,섹터,기준일,기준가,현재가,P,기준외인비중,현재외인비중,dF,score,관측일수.
@@ -1132,6 +1139,7 @@ def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
             "기준외인비중", "현재외인비중", "dF", "score", "관측일수"]
     if price_hist is None or price_hist.empty or flow_hist is None or flow_hist.empty:
         return pd.DataFrame(columns=cols)
+    live_quotes = live_quotes or {}
     rows = []
     for code, g in price_hist.groupby("종목코드"):
         g = g.sort_values("날짜")
@@ -1140,7 +1148,9 @@ def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
         p0, p1 = g.iloc[0], g.iloc[-1]
         if not p0["종가"]:
             continue
-        P = (p1["종가"] - p0["종가"]) / p0["종가"] * 100
+        cur_price = live_quotes.get(code)
+        cur_price = float(cur_price) if cur_price is not None else float(p1["종가"])
+        P = (cur_price - p0["종가"]) / p0["종가"] * 100
         fg = flow_hist[flow_hist["종목코드"] == code].sort_values("날짜")
         fg = fg[(fg["날짜"] >= p0["날짜"]) & (fg["날짜"] <= p1["날짜"])]
         if len(fg) < min_flow_days:
@@ -1149,7 +1159,7 @@ def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
         dF = float(f1["외국인보유율"]) - float(f0["외국인보유율"])
         rows.append({
             "종목코드": code, "종목명": p1["종목명"], "섹터": p1["섹터"],
-            "기준일": p0["날짜"], "기준가": float(p0["종가"]), "현재가": float(p1["종가"]), "P": P,
+            "기준일": p0["날짜"], "기준가": float(p0["종가"]), "현재가": cur_price, "P": P,
             "기준외인비중": float(f0["외국인보유율"]), "현재외인비중": float(f1["외국인보유율"]),
             "dF": dF, "score": -(dF * P), "관측일수": len(g),
         })
@@ -1188,18 +1198,22 @@ def add_link_watch_entry(row: dict) -> pd.DataFrame:
 
 
 def link_watch_status(watch_log: pd.DataFrame, price_hist: pd.DataFrame,
-                       flow_hist: pd.DataFrame) -> pd.DataFrame:
+                       flow_hist: pd.DataFrame, live_quotes: dict | None = None) -> pd.DataFrame:
     """감시목록 각 종목의 '플래그 시점 기준가/기준비중' 대비 지금까지 변화를 계산 — 읽기 전용
-    (감시목록 자체는 안 건드림). 반환 컬럼: watch_log 원본 + 현재가,현재외인비중,경과일,가격변화,외인변화."""
+    (감시목록 자체는 안 건드림). live_quotes(있으면)를 현재가에 우선 사용 — compute_link_candidates와
+    같은 이유(§6-28, price_history는 장마감 후에야 그날 종가가 채워짐). 반환 컬럼: watch_log 원본
+    + 현재가,현재외인비중,경과일,가격변화,외인변화."""
     if watch_log is None or watch_log.empty:
         return pd.DataFrame()
+    live_quotes = live_quotes or {}
     today = today_kst_str()
     rows = []
     for _, w in watch_log.iterrows():
         code = w["종목코드"]
         pg = price_hist[price_hist["종목코드"] == code].sort_values("날짜") if price_hist is not None else pd.DataFrame()
         fg = flow_hist[flow_hist["종목코드"] == code].sort_values("날짜") if flow_hist is not None else pd.DataFrame()
-        cur_price = float(pg.iloc[-1]["종가"]) if not pg.empty else None
+        cur_price = live_quotes.get(code)
+        cur_price = float(cur_price) if cur_price is not None else (float(pg.iloc[-1]["종가"]) if not pg.empty else None)
         cur_f = float(fg.iloc[-1]["외국인보유율"]) if not fg.empty else None
         try:
             days = (pd.Timestamp(today) - pd.Timestamp(w["플래그일"])).days

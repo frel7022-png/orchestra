@@ -1396,6 +1396,13 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
     하락 후 8/11부터 뚜렷한 추세전환, 진짜 반등)는 기준을 바꿔도 살아있고, 와이지-원만 기준에
     따라 뒤집힘 — **스코어가 이미 이 상대적 신뢰도를 반영**(파마리서치 35 > OCI홀딩스 17 >
     와이지-원 13, 별도 필터 불필요).
+  - **"현재가"는 `live_quotes`(있으면, {종목코드: 실시간가}) 우선, 없으면 `price_history` 마지막
+    저장 행 폴백** (2026-09-11 실제 버그로 발견·수정): 첫 배포 때는 DB 마지막 행만 썼는데,
+    `price_history`는 §6-9 cron이 **장마감 후**에야 그날 종가를 채우므로 장중엔 어제 종가까지만
+    있음 — Fishing은 항상 `fetch_quotes()` 실시간가를 쓰는데 Link만 DB 값을 써서 같은 종목의
+    누적%가 두 화면에서 하루치씩 어긋났다(사용자가 파마리서치·실리콘투·와이지-원 세 종목으로
+    실측: Link -10.6%/DB전용 vs Fishing -12.3%/실시간). **기준가/기준일은 그대로 DB 고정** —
+    과거 시점을 실시간으로 대체할 수 없으니 당연히 안 바뀜.
 - **감시목록 — `link_watch_log.csv`** (컬럼: 플래그일,종목코드,종목명,기준일,기준가,기준외인비중,
   P_당시,dF_당시,score_당시). `load_link_watch_log()`/`save_link_watch_log()`/`add_link_watch_entry()`.
   **§1-7 원칙대로 배포된 앱의 실시간 UI에서는 이 파일에 쓰지 않는다** — 사용자가 채팅으로
@@ -1405,13 +1412,20 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   플래그 시점에 **고정 스냅샷으로 기록**되고 이후 절대 안 바뀜 — "A종목 1000원·외인10% → 현재
   900원·외인15%"처럼 그 기준점 대비 변화를 시간을 두고 추적하는 게 이 로그의 존재 이유
   (2026-09-11, 사용자가 직접 이 포맷을 지정). 2026-09-11 최초 3건 시딩: 파마리서치·OCI홀딩스·와이지-원.
-- **감시 현황 읽기**: `link_watch_status(watch_log, price_hist, flow_hist)` — 각 감시 종목의
-  기준가/기준외인비중 대비 **현재가/현재외인비중/경과일/가격변화%/외인변화%p**를 계산(읽기 전용,
-  로그 자체는 안 건드림).
+- **감시 현황 읽기**: `link_watch_status(watch_log, price_hist, flow_hist, live_quotes=None)` —
+  각 감시 종목의 기준가/기준외인비중 대비 **현재가/현재외인비중/경과일/가격변화%/외인변화%p**를
+  계산(읽기 전용, 로그 자체는 안 건드림). `live_quotes`도 `compute_link_candidates`와 같은 이유로
+  현재가에 우선 사용.
+- **외인비중변화(ΔF)는 Foreigner의 "평균 대비"(vs평균pp)와 다른 숫자다 — 버그 아님**: 둘 다
+  각자 정의로는 맞지만 기준이 다르다(Link=가격추적 시작일 고정 / Foreigner=전체 히스토리
+  확장평균). 패널 캡션에 이 차이를 명시해뒀음(2026-09-11) — 두 화면 숫자를 서로 검증용으로
+  비교하지 말 것.
 - **UI (`_render_link_panel`, `ui_portfolio_tab.py`)**: **자체 "새로고침" 버튼**(다른 섹션
   새로고침에 얹혀가지 않음, 눌러야만 `load_watchlist_history_db`/`load_investor_flow_db`
   재조회 — 사용자 명시 요청 "새로고침 기능을 만들어서 누를때만 갱신") →
-  `st.session_state["link_price_hist"]`/`["link_flow_hist"]`에 캐싱. 두 섹션:
+  `st.session_state["link_price_hist"]`/`["link_flow_hist"]`에 캐싱, 같이 `fetch_quotes()`로
+  전 종목 실시간가도 받아 `st.session_state["link_live_quotes"]`에 캐싱(Fishing과 같은 청크
+  방식, §1-4). 두 섹션:
   ① **지켜보는 중** — 감시목록 각 줄, 기준일~경과일 + 가격변화%/외인변화%p(빨강/파랑).
   ② **이번 후보** — 상위 8개(스코어 내림차순), 이미 감시 중인 종목은 종목명 옆 ★. 후보를
   실제로 감시목록에 넣을지는 사용자가 눈으로 보고 판단(자동 편입 안 함 — "엉뚱한 놈 고르기"는
@@ -1421,7 +1435,8 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   쌓이면 그때 재검토.
 - **회귀 테스트**: `test_compute_link_candidates_scores_opposite_direction_higher`(부호 반대가
   스코어 양수·정렬 확인), `test_compute_link_candidates_uses_price_history_start_as_baseline`
-  (더 이른 외인 데이터에 기준이 안 끌려가는지), `test_compute_link_candidates_empty_inputs`,
-  `test_link_watch_status_computes_change_since_flagged`, `test_link_watch_status_empty_log_returns_empty`,
-  `test_add_link_watch_entry_overwrites_same_stock_code`.
+  (더 이른 외인 데이터에 기준이 안 끌려가는지), `test_compute_link_candidates_prefers_live_quote_over_stale_db_row`,
+  `test_link_watch_status_prefers_live_quote_over_stale_db_row`(위 라이브 시세 우선 버그 고정),
+  `test_compute_link_candidates_empty_inputs`, `test_link_watch_status_computes_change_since_flagged`,
+  `test_link_watch_status_empty_log_returns_empty`, `test_add_link_watch_entry_overwrites_same_stock_code`.
 - **new1 전용** (포프와 마찬가지로 153+ 관심종목/Supabase 파이프라인에 묶임).

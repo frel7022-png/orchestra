@@ -18,7 +18,7 @@ from portfolio_core import (
     get_stock_price_history_db,
     compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
-    compute_link_candidates, load_link_watch_log, link_watch_status,
+    compute_link_candidates, load_link_watch_log, link_watch_status, fetch_quotes,
     load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
     load_claude_notes, seed_engine_series,
@@ -262,12 +262,22 @@ def _render_link_panel(T):
     쓰면 재배포 때 사라짐, §1-5). 이 패널은 감시목록 현황 + 후보 랭킹을 읽기 전용으로 보여줄 뿐."""
     st.caption("가격과 외인보유율이 반대 방향으로 크게 벌어진 종목만 골라 지켜보는 실험 패널. "
                "'외인이 사면 오른다'는 상관관계를 보려는 게 아니라, 원래 같이 가야 할 둘이 "
-               "이번엔 반대로 간 예외 케이스를 찾아 한 달쯤 지켜보는 용도.")
+               "이번엔 반대로 간 예외 케이스를 찾아 한 달쯤 지켜보는 용도. 외인비중변화는 "
+               "Foreigner의 '평균 대비'와 다른 기준(기준일=가격추적 시작일 대비 고정)이라 "
+               "그 화면 숫자와는 다를 수 있음.")
     if st.button("새로고침", key="link_refresh"):
         _sb = st.secrets.get("supabase", {})
         _url, _key = _sb.get("url", ""), _sb.get("anon_key", "")
-        st.session_state["link_price_hist"] = load_watchlist_history_db(_url, _key)
-        st.session_state["link_flow_hist"] = load_investor_flow_db(_url, _key)
+        _ph = load_watchlist_history_db(_url, _key)
+        _fh = load_investor_flow_db(_url, _key)
+        # 현재가는 price_history 마지막 저장 행(장마감 후 확정)이 아니라 Fishing과 같은
+        # 실시간 시세를 써야 누적%가 일치한다(2026-09-11 실측 버그 — §6-28).
+        _codes = _ph["종목코드"].unique().tolist() if not _ph.empty else []
+        _quotes, _ = fetch_quotes(_codes) if _codes else ({}, [])
+        st.session_state["link_price_hist"] = _ph
+        st.session_state["link_flow_hist"] = _fh
+        st.session_state["link_live_quotes"] = {c: q["price"] for c, q in _quotes.items()
+                                                   if q and q.get("price") is not None}
         st.rerun()
 
     ph = st.session_state.get("link_price_hist")
@@ -275,10 +285,11 @@ def _render_link_panel(T):
     if ph is None or fh is None:
         st.caption("새로고침을 눌러 가격·외인 데이터를 불러오세요.")
         return
+    lq = st.session_state.get("link_live_quotes") or {}
 
     watch = load_link_watch_log()
     if not watch.empty:
-        status = link_watch_status(watch, ph, fh)
+        status = link_watch_status(watch, ph, fh, live_quotes=lq)
         st.markdown(f"<div style='font-size:12px;color:{T['muted']};font-weight:600;margin:4px 0 2px'>지켜보는 중</div>",
                     unsafe_allow_html=True)
         rows = ""
@@ -297,7 +308,7 @@ def _render_link_panel(T):
         st.markdown(rows, unsafe_allow_html=True)
         st.caption("기준일 이후 가격변화% · 외인비중변화%p (기준가/기준비중 = 플래그 시점에 기록된 고정값)")
 
-    cands = compute_link_candidates(ph, fh)
+    cands = compute_link_candidates(ph, fh, live_quotes=lq)
     if cands.empty:
         st.caption("아직 후보를 계산할 데이터가 부족합니다.")
         return
