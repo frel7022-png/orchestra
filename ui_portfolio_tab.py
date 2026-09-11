@@ -315,10 +315,17 @@ def _render_link_panel(ph, fh, live_quotes, refresh_fn, T):
             p_c = UP_COLOR if r["P"] >= 0 else DOWN_COLOR
             f_c = UP_COLOR if r["dF"] >= 0 else DOWN_COLOR
             mark = " ★" if r["종목코드"] in watched_codes else ""
+            # 추세="꺾임"이면(누적은 이 방향인데 최근 3일은 반대로 감) score 대신 경고 표시 —
+            # 사용자 지적(2026-09-11, 대한항공 예시): 누적만 보면 "아직 덜 먹었다"로 보여도
+            # 최근 며칠 새 이미 방향이 뒤집혔으면 구간이 곧 바뀔 초입일 수 있음.
+            if r["추세"] == "꺾임":
+                detail = f'<span class="detail" style="color:{DOWN_COLOR}">꺾임 최근{r["최근3일dF"]:+.1f}%p</span>'
+            else:
+                detail = f'<span class="detail" style="color:{T["muted"]}">score {r["score"]:.1f}</span>'
             parts += (f'<div class="updown-row flow-row"><span class="name">{r["종목명"]}{mark}</span>'
                       f'<span class="pct" style="color:{p_c}">{r["P"]:+.1f}%</span>'
                       f'<span class="pct" style="color:{f_c}">{r["dF"]:+.2f}%p</span>'
-                      f'<span class="detail" style="color:{T["muted"]}">score {r["score"]:.1f}</span></div>')
+                      f'{detail}</div>')
         return parts
 
     # 4분면(§6-28) 중 "다이버전스"(최우선)·"진행형"(차선)만 화면에 보여줌 — "이탈"/"차익실현"은
@@ -342,7 +349,8 @@ def _render_link_panel(ph, fh, live_quotes, refresh_fn, T):
         st.markdown(_quad_rows(prog, 5), unsafe_allow_html=True)
 
     st.caption(f"기준일({cands.iloc[0]['기준일']} 등, 종목별로 다름) 이후 가격변화% · "
-               "외인비중변화%p · score=−(외인비중변화×가격변화). ★=이미 감시 중")
+               "외인비중변화%p · score=−(외인비중변화×가격변화). '꺾임'=누적은 이 방향인데 "
+               "최근 3거래일은 반대로 가는 중(방향 전환 초입일 수 있음). ★=이미 감시 중")
 
 
 def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets, unrealized_loss, T):

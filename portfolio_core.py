@@ -1025,8 +1025,8 @@ def compute_volume_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = N
 
 
 def compute_foreign_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = None) -> list[dict]:
-    """종목별 오늘 외국인보유율이 기준일/어제 대비 얼마나 움직였는지(%p, 퍼센트포인트 차이 —
-    보유율 자체가 이미 %라 상대변화율로 보면 하루 변동폭이 작아 헷갈리므로 %p로 비교).
+    """종목별 오늘 외국인보유율이 기준일/어제/최근3일 대비 얼마나 움직였는지(%p, 퍼센트포인트
+    차이 — 보유율 자체가 이미 %라 상대변화율로 보면 하루 변동폭이 작아 헷갈리므로 %p로 비교).
     **"기준일pp" = 오늘 − 그 종목 가격추적 시작일(=price_hist 최초 관측일, Fishing/Link의
     "기준일"과 동일 개념) 값** (2026-09-11 갱신 — 예전엔 "그 종목 전체 히스토리 단순평균 대비"
     (vs평균pp)였는데, 사용자가 지적: 평균 기준이면 평균 자체가 작을 때(예: 0.1%대 종목) 체감보다
@@ -1036,10 +1036,16 @@ def compute_foreign_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = 
     화면이 "같은 DB, 같은 기준일"이라 서로 검증 가능해짐. price_hist 없으면(호출부가 안 넘긴
     구간) 이 investor_flow 자체의 최초 관측값으로 폴백(기준일이 달라질 수 있음, 호출부는 항상
     price_hist를 넘길 것).
+    **"최근3일pp" = 오늘 − 3거래일 전 값** (2026-09-11 신설 — 사용자 지적: "기준일pp"는 누적
+    끝점-끝점이라 경로를 못 봄. 예: 대한항공처럼 기준일 대비론 +2.21%p(진행형처럼 보임)여도
+    최근 며칠 사이 꺾여서 빠지는 중이면, 사실은 "아직 덜 먹었다"가 아니라 "슬슬 나가는 초입"일
+    수 있음 — 누적과 최근 추세가 반대로 갈리는 걸 잡아내려면 별도 짧은 창이 필요함). 관측일이
+    4일 미만이면 있는 가장 이른 값으로 폴백.
     반환: |기준일 대비 %p| 큰 순으로 정렬된 [{"종목명","종목코드","섹터","오늘보유율",
-    "기준일보유율","어제보유율","기준일pp","vs어제pp","오늘외국인순매수","오늘등락률"}, ...].
-    "오늘외국인순매수"(원시 주식수)는 DB 원자료용으로 남겨두지만, 화면에는 표시하지
-    않기로 함(2026-08-24, 사용자 요청) — 대신 vs어제pp/오늘등락률을 보여줌."""
+    "기준일보유율","어제보유율","3일전보유율","기준일pp","vs어제pp","최근3일pp",
+    "오늘외국인순매수","오늘등락률"}, ...]. "오늘외국인순매수"(원시 주식수)는 DB 원자료용으로
+    남겨두지만, 화면에는 표시하지 않기로 함(2026-08-24, 사용자 요청) — 대신 vs어제pp/오늘등락률을
+    보여줌."""
     price_map = _latest_change_pct_map(price_hist)
     origin_dates = {}
     if price_hist is not None and not price_hist.empty:
@@ -1051,6 +1057,8 @@ def compute_foreign_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = 
         if len(g) < 2:
             continue
         today_pct, yday_pct = g["_pct"].iloc[-1], g["_pct"].iloc[-2]
+        recent_idx = -4 if len(g) >= 4 else 0
+        recent_pct = g["_pct"].iloc[recent_idx]
         origin_date = origin_dates.get(code)
         base_rows = g[g["날짜"] >= origin_date] if origin_date is not None else g
         origin_pct = base_rows["_pct"].iloc[0] if not base_rows.empty else g["_pct"].iloc[0]
@@ -1058,7 +1066,9 @@ def compute_foreign_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = 
         results.append({
             "종목명": g["종목명"].iloc[-1], "종목코드": code, "섹터": g["섹터"].iloc[-1],
             "오늘보유율": today_pct, "기준일보유율": origin_pct, "어제보유율": yday_pct,
+            "3일전보유율": recent_pct,
             "기준일pp": today_pct - origin_pct, "vs어제pp": today_pct - yday_pct,
+            "최근3일pp": today_pct - recent_pct,
             "오늘외국인순매수": int(net.iloc[-1]) if not net.empty else None,
             "오늘등락률": price_map.get(code),
         })
@@ -1178,10 +1188,18 @@ def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
     기본 정렬은 구간 우선순위(다이버전스→진행형→이탈→차익실현) 안에서 |dF|×|P| 큰 순 —
     score의 부호 혼란과 무관하게 항상 "그 구간 안에서 둘 다 크게 움직인 것"이 위로 오게 한
     별도 키(`_mag`)를 씀.
-    반환 컬럼: 종목코드,종목명,섹터,기준일,기준가,현재가,P,기준외인비중,현재외인비중,dF,구간,score,관측일수.
-    데이터 부족하면 빈 DataFrame."""
+    **"추세"(2026-09-11 신설) — 누적(기준일pp)과 최근3일pp의 부호가 일치하는지**: 구간은 누적
+    기준으로만 정해지는데(끝점-끝점), 그 안에서 "지금도 그 방향으로 계속 가는 중"인지 "최근
+    며칠 사이 이미 꺾였는지"는 다른 정보다. 예: 대한항공이 기준일 대비 외인비중 +2.21%p라
+    "진행형"으로 잡히지만, 최근 3일은 오히려 빠지는 중이라면 사실은 "아직 덜 먹었다"가 아니라
+    "슬슬 나가는 초입"(사용자 표현)일 수 있음 — 누적만 보면 못 잡음. `추세="진행중"`(최근3일pp가
+    기준일pp와 같은 부호, 방향 유지) / `추세="꺾임"`(반대 부호, 최근에 방향이 뒤집힘) 두 값.
+    **"꺾임"인 행은 완전히 빼지 않고 `_mag`에 0.35를 곱해 그 구간 안에서 순위만 낮춘다** — 3일
+    창은 노이즈가 있어서 완전 배제보다는 "덜 믿을 만함" 정도로만 반영.
+    반환 컬럼: 종목코드,종목명,섹터,기준일,기준가,현재가,P,기준외인비중,현재외인비중,dF,최근3일dF,
+    구간,추세,score,관측일수. 데이터 부족하면 빈 DataFrame."""
     cols = ["종목코드", "종목명", "섹터", "기준일", "기준가", "현재가", "P",
-            "기준외인비중", "현재외인비중", "dF", "구간", "score", "관측일수"]
+            "기준외인비중", "현재외인비중", "dF", "최근3일dF", "구간", "추세", "score", "관측일수"]
     if price_hist is None or price_hist.empty or flow_hist is None or flow_hist.empty:
         return pd.DataFrame(columns=cols)
     live_quotes = live_quotes or {}
@@ -1201,20 +1219,23 @@ def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
         cur_price = float(cur_price) if cur_price is not None else float(g.iloc[-1]["종가"])
         P = (cur_price - p0["종가"]) / p0["종가"] * 100
         dF = float(fx["기준일pp"])
+        recent_dF = float(fx["최근3일pp"])
         quad = _link_quadrant(P, dF)
         if quad == "중립":
             continue
+        trend = "진행중" if (dF == 0 or recent_dF == 0 or (dF > 0) == (recent_dF > 0)) else "꺾임"
         rows.append({
             "종목코드": code, "종목명": g.iloc[-1]["종목명"], "섹터": g.iloc[-1]["섹터"],
             "기준일": p0["날짜"], "기준가": float(p0["종가"]), "현재가": cur_price, "P": P,
             "기준외인비중": float(fx["기준일보유율"]), "현재외인비중": float(fx["오늘보유율"]),
-            "dF": dF, "구간": quad, "score": -(dF * P), "관측일수": len(g),
+            "dF": dF, "최근3일dF": recent_dF, "구간": quad, "추세": trend,
+            "score": -(dF * P), "관측일수": len(g),
         })
     out = pd.DataFrame(rows, columns=cols)
     if out.empty:
         return out
     out["_quad_rank"] = out["구간"].map(_LINK_QUAD_PRIORITY)
-    out["_mag"] = out["dF"].abs() * out["P"].abs()
+    out["_mag"] = out["dF"].abs() * out["P"].abs() * out["추세"].map({"진행중": 1.0, "꺾임": 0.35})
     out = (out.sort_values(["_quad_rank", "_mag"], ascending=[True, False])
               .drop(columns=["_quad_rank", "_mag"]).reset_index(drop=True))
     return out
