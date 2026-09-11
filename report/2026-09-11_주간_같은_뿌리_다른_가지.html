@@ -1,0 +1,327 @@
+<title>같은 뿌리, 다른 가지</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:780px; margin:0 auto; padding:56px 24px 96px}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:14px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.5rem; line-height:1.18; letter-spacing:-.01em; margin:0 0 18px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:22px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-size:1.02rem; font-weight:700; letter-spacing:.01em; margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent); font-weight:500}
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent); border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow)}
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+  .flag{background:var(--warn-wash); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:22px 0; font-size:13.5px}
+  .flag .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--warn); margin-bottom:8px}
+  .flag ol,.flag ul{margin:6px 0 0; padding-left:20px}
+  .flag li{margin:8px 0}
+
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:13.5px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:8px 11px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12px; letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  tr.tot td{border-top:1.5px solid var(--rule); font-weight:600}
+  td .sub{display:block; font-size:11px; color:var(--ink-faint)}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+  .chk{color:var(--accent); font-weight:600}
+  a{color:var(--ink); text-decoration-color:var(--rule)}
+  a:hover{text-decoration-color:var(--ink-soft)}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+  .callout ul li::before{content:"·"}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; box-shadow:var(--shadow)}
+  .stat .k{font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; margin-top:3px}
+  .stat .c{font-size:12px; color:var(--ink-soft); margin-top:2px}
+
+  .chart-card{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:18px 18px 8px; margin:22px 0; box-shadow:var(--shadow)}
+
+  .tier{border-left:3px solid var(--rule); padding:2px 0 2px 16px; margin:16px 0}
+  .tier.pass{border-color:var(--accent)}
+  .tier.grey{border-color:var(--warn)}
+  .tier.out{border-color:var(--loss)}
+  .tier .tl{font-weight:600; font-size:13px; margin-bottom:2px}
+  .tier .bd{font-size:13px; color:var(--ink-soft)}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table,.stat,.flag,.chart-card{box-shadow:none}
+    h2{break-after:avoid} table,.verdict,.stat-grid,.flag,.chart-card{break-inside:avoid}
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">주간 리포트 · 2026-09-07 ~ 09-11 (5거래일) · Orchestra 기준</div>
+  <h1>같은 뿌리, 다른 가지</h1>
+  <p class="dek">이번 주는 커밋 137개(new1 94·meritz 43), 리포트 5건, 그리고 금요일 하루 만에
+  새 프로젝트(Link) 하나가 통째로 태어난 주였다. 표면적으로는 기능이 잔뜩 늘었지만, 한 꺼풀
+  벗기면 이번 주 내내 반복된 질문은 하나였다 — <strong>"이 두 화면이 같은 숫자를 보고 있는가."</strong>
+  index_history가 asset_history보다 뒤처지고, Foreigner와 Link가 서로 다른 외인 기준을 쓰고,
+  new1과 meritz가 같은 날짜를 다른 값으로 기억하는 사고가 네 번째로 재발했다. 그때마다 패치가
+  아니라 <em>"뿌리를 하나로 합친다"</em>는 같은 해법으로 풀었다 — 그리고 그 해법이 그대로
+  new1·meritz라는 두 계좌 자체의 이야기이기도 했다: 같은 153종목 뿌리에서 출발했는데, 진입
+  타이밍 하나로 갈린 두 가지.</p>
+  <div class="meta">
+    <span>작성 2026-09-11 (금, 장 마감)</span>
+    <span>Orchestra=new1 · Orchestration=meritz</span>
+    <span>커밋 137건 · 리포트 5건 · 신규 기능 11개 · 재발 버그 3종</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <p class="lead">이번 주 한 줄: 보던 걸 더 잘 보게 만든 주에서, 스스로 지켜보는 주로 넘어갔다.</p>
+  <p>월~목은 기존 화면(지수 대비 계좌, P&L Actions, VIP 비교, Pit Stop)을 다듬는 주였고, 금요일
+  하루 만에 <strong>Link("연결고리")</strong>라는 완전히 새로운 관찰 시스템이 설계·구현·재설계
+  세 바퀴를 돌아 지금 형태에 도달했다. 두 계좌 다 이번 주는 소폭 손실(-0.5%대)로 마감했지만,
+  진짜 사건은 자산 곡선이 아니라 <strong>인프라 쪽</strong>에서 있었다.</p>
+</div>
+
+<h2><span class="n">01</span> 이번 주 숫자로</h2>
+<div class="stat-grid">
+  <div class="stat">
+    <div class="k">Orchestra · new1</div>
+    <div class="v loss">-0.50%</div>
+    <div class="c">10,105,808원 → 10,055,762원 · 매수 68건 234만원 · 매도 26건 181만원(실현 +69,179원)</div>
+  </div>
+  <div class="stat">
+    <div class="k">Orchestration · meritz</div>
+    <div class="v loss">-0.47%</div>
+    <div class="c">8,048,436원 → 8,010,748원 · 매수 39건 169만원 · 매도 5건 58만원(실현 +24,388원)</div>
+  </div>
+</div>
+<div class="chart-card">
+<svg viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+<line x1="50" y1="255.1" x2="624" y2="255.1" stroke="var(--rule-soft)" stroke-width="1"/><text x="44.0" y="258.1" font-size="10" fill="var(--ink-faint)" text-anchor="end">-0.6%</text><line x1="50" y1="197.8" x2="624" y2="197.8" stroke="var(--rule-soft)" stroke-width="1"/><text x="44.0" y="200.8" font-size="10" fill="var(--ink-faint)" text-anchor="end">-0.4%</text><line x1="50" y1="140.5" x2="624" y2="140.5" stroke="var(--rule-soft)" stroke-width="1"/><text x="44.0" y="143.5" font-size="10" fill="var(--ink-faint)" text-anchor="end">-0.2%</text><line x1="50" y1="83.3" x2="624" y2="83.3" stroke="var(--rule-soft)" stroke-width="1"/><text x="44.0" y="86.3" font-size="10" fill="var(--ink-faint)" text-anchor="end">+0.0%</text><line x1="50" y1="26.0" x2="624" y2="26.0" stroke="var(--rule-soft)" stroke-width="1"/><text x="44.0" y="29.0" font-size="10" fill="var(--ink-faint)" text-anchor="end">+0.2%</text><text x="50.0" y="284.0" font-size="10" fill="var(--ink-faint)" text-anchor="middle">09/07</text><text x="193.5" y="284.0" font-size="10" fill="var(--ink-faint)" text-anchor="middle">09/08</text><text x="337.0" y="284.0" font-size="10" fill="var(--ink-faint)" text-anchor="middle">09/09</text><text x="480.5" y="284.0" font-size="10" fill="var(--ink-faint)" text-anchor="middle">09/10</text><text x="624.0" y="284.0" font-size="10" fill="var(--ink-faint)" text-anchor="middle">09/11</text>
+<path d="M50.0,83.3 L193.5,58.9 L337.0,178.7 L480.5,196.5 L624.0,225.1" fill="none" stroke="var(--gain)" stroke-width="2"/>
+<path d="M50.0,83.3 L193.5,171.3 L337.0,131.8 L480.5,216.0 L624.0,217.3" fill="none" stroke="var(--loss)" stroke-width="2"/>
+<circle cx="50.0" cy="83.3" r="3" fill="var(--gain)"/><circle cx="193.5" cy="58.9" r="3" fill="var(--gain)"/><circle cx="337.0" cy="178.7" r="3" fill="var(--gain)"/><circle cx="480.5" cy="196.5" r="3" fill="var(--gain)"/><circle cx="624.0" cy="225.1" r="3" fill="var(--gain)"/><circle cx="50.0" cy="83.3" r="3" fill="var(--loss)"/><circle cx="193.5" cy="171.3" r="3" fill="var(--loss)"/><circle cx="337.0" cy="131.8" r="3" fill="var(--loss)"/><circle cx="480.5" cy="216.0" r="3" fill="var(--loss)"/><circle cx="624.0" cy="217.3" r="3" fill="var(--loss)"/>
+<text x="624" y="14" font-size="11" fill="var(--gain)" text-anchor="end">● Orchestra(new1) -0.50%</text>
+<text x="624" y="28" font-size="11" fill="var(--loss)" text-anchor="end">● Orchestration(meritz) -0.47%</text>
+</svg>
+</div>
+<p>시장 배경: 코스피가 월요일 6,995→금요일 6,909(-1.2%), 코스닥은 822→821로 사실상 보합인데
+그 사이 830대까지 올랐다 빠졌다. 특히 <strong>금요일 하루가 컸다</strong> — 목요일 대비 코스피
+-1.76%, 코스닥 -1.95% — 한 주의 손익 대부분이 금요일 단 하루에 몰렸다. 두 계좌 다 그 하루를
+거의 무피해로 넘겼다(각각 DC 0.10 / 0.00 — 금요일 Claude's Read 참고).</p>
+
+<h2><span class="n">02</span> 이번 주 만든 것 — new1</h2>
+<p>월요일부터 목요일까지는 주로 "이미 있는 화면을 더 정확하게" 만드는 작업이었다.</p>
+<ul>
+  <li><strong>지수 대비 계좌 재설계</strong> — CR·엔진 지수 같은 합성 스칼라를 전부 폐기하고
+  하락/상승/even 3분류 + 캡처(DC/UC) + 승률로 정리(월). "하락 방어와 상승 참여는 성격이 다른
+  두 축이라 하나로 안 뭉친다"는 게 결론.</li>
+  <li><strong>P&L Actions</strong>(§6-20) 신설 — 실현손익을 FA/MO/MA(매매 스타일)로 해부하는
+  패널. 물타기가 실제로 흡수율(+5%p대)과 시드 배수(×2 안팎)를 만들어내는지 확인하는 용도.</li>
+  <li><strong>수수료 모델 전면 교체</strong> — 매수 수수료 0, 매도 시 세금만 실현손익·예수금
+  양쪽에서 차감하는 방식으로. 옛 모델의 알려진 오차가 해소됨.</li>
+  <li><strong>VIP vs Orchestra → 3-way(vs Orchestration)</strong> — 실제 가치투자 펀드 하나와
+  두 계좌를 8/14부터 나란히 비교. 처음엔 both_accounts.csv(수동 동기화)만 썼다가, 장중 지연
+  문제로 <strong>Supabase 런타임 채널(account_snapshot)</strong>을 새로 깔아 실시간화(수·목).</li>
+  <li><strong>Today's Take</strong> — 요약카드에 오늘 내 주식 성과 vs 시장을 3줄로 압축, 내
+  계좌 누적을 8/14=0으로 리베이스.</li>
+  <li><strong>예탁금 이용료(배당/이자) 반영 경로</strong>(§6-25) — "입금/출금" 거래 구분 신설,
+  한국단자 배당 3,000원 등을 이 패턴으로 처리.</li>
+  <li><strong>Bench</strong>(§6-23) — 한 번도 매수한 적 없는 관심종목(소외종목) 목록.</li>
+  <li><strong>섹터 체계 전면 교체</strong>(§6-24) — 사용자가 153종목을 27개로 직접 재분류한
+  엑셀을 그대로 적용, 캐시·보유종목·Supabase 세 곳을 한 번에 갱신.</li>
+  <li><strong>Sour Grapes</strong>(§6-26) — 삼성·삼성우·하이닉스만 담은 시총가중 바스켓 대비
+  계좌. SamHynix extracted(반도체를 뺀 지수)의 정반대 버전.</li>
+  <li><strong>Pit Stop</strong>(§6-27, 구 Seed Engine) — 매입액↑·예수금 평행을 보여주는 스노우볼
+  스코어카드. 금요일 오후 한나절에만 8차례 이름·색·위치가 바뀌며 지금 형태(⛽ 이모지, Cost
+  Basis/Refill/No Refill/Surplus)로 수렴.</li>
+  <li><strong>WATERING 상세 실데이터화</strong> — "현재가" 선이 최초매입일→오늘 직선이던 걸
+  Supabase price_history 일별 종가로 실제 등락 그대로 그리게 바꿈.</li>
+  <li><strong>Link("연결고리")</strong>(§6-28) — 이번 주, 사실상 이번 세션 전체의 하이라이트.
+  아래 07장에서 따로 다룬다.</li>
+</ul>
+
+<h2><span class="n">03</span> 부침과 해결 — 이번 주 걸린 버그들</h2>
+<div class="flag">
+  <div class="h">전부 "패치"가 아니라 "근본 원인 제거"로 처리한 것들</div>
+  <ol>
+    <li><strong>index_history / bigcap_history 오염 — 이번에 4번째 재발</strong> (월·수 이틀에
+    걸쳐 두 번 더). 근본 원인: <code>ingest_daily.py</code>가 과거 날짜를 반영할 때도 실시간
+    시세를 썼음 — 장중에 과거 날짜를 반영하면 그 날짜 행이 "오늘 장중값"으로 덮여버림. 확정
+    종가(<code>fetch_daily_price_history</code>)를 우선하는 <code>_close_on()</code> 헬퍼로
+    양쪽 레포 모두 교체하고 오염된 구간을 재생성. new1·meritz 두 레포가 같은 날짜에 다른 숫자를
+    갖는 사고를 구조적으로 막음.</li>
+    <li><strong>Holdings 카드 raw HTML 노출 — 같은 버그가 두 번</strong>(meritz 화·new1 목).
+    Streamlit 마크다운이 "공백만 있는 줄"을 빈 줄로 취급해 열린 &lt;div&gt; 블록을 끊어버리는
+    문제 — 조건부로 전부 비는 조각을 단독 줄에 두면 재현됨. 두 번째 재발 뒤 <strong>CLAUDE.md
+    §1-8로 원칙화</strong>(비는 조각은 항상 확실히 채워지는 태그와 같은 줄에 붙일 것) — 세
+    번째는 없어야 한다.</li>
+    <li><strong>VIP 패널 staleness</strong> — <code>both_accounts.csv</code>가 세션이 sync를
+    돌린 "그 순간"에 얼어서, 장중엔 상대 계좌가 실제로 얼마나 움직였는지 못 따라감. 패치 대신
+    <strong>Supabase 런타임 채널</strong>을 깔아 양쪽 앱이 새로고침마다 자기 상태를 실시간으로
+    공유하게 구조를 바꿈 — <code>both_accounts.csv</code>는 "마감 후 확정 히스토리"로 역할이
+    좁혀짐.</li>
+    <li><strong>Link 배포 크래시</strong>(금) — <code>_render_link_panel</code> 호출부에서
+    <code>flow_hist</code>/<code>price_hist_flow</code> 인자 순서가 바뀌어 KeyError로 배포판이
+    죽음. 키워드 인자로 고쳐 같은 실수가 조용히 재발하지 않게 함.</li>
+    <li><strong>누락 체결 보정 2건</strong> — meritz 9/1(계룡건설·씨앤씨인터내셔널·오리온),
+    new1 9/10(미스토홀딩스·삼양패키징·크라운해태홀딩스). 둘 다 메리츠증권 앱과 보유수량이
+    달라서 사용자가 실제 체결내역을 대조해준 뒤 정정.</li>
+  </ol>
+</div>
+
+<h2><span class="n">04</span> new1 × meritz — 이번 주의 관계</h2>
+<p>이번 주 화요일, meritz가 <strong>하루 만에</strong> new1과 거의 동등한 기능셋을 갖췄다 —
+§0(레드와이어/USD 배제, 최초자본 10M→8M) → §1(어제대비 카드·Holdings N/M·SamHynix 폭주버그) →
+§2(DC/UC/even 캡처) → §3(VIP 3-way) → §4(수수료 모델) → §5(P&L Actions)까지 6단계 포팅
+시퀀스가 반나절에 끝났다. 이후 목·금에도 Today's Take, 누적 세금, WATERING 실데이터화, 정합성
+자동 체크까지 그대로 따라붙었다 — <strong>Analysis 탭이 이제 사실상 new1과 동일한 포맷</strong>
+이고, meritz만의 차이는 관심종목 스크리너(Fishing/Volume/Foreigner/Link) 부재와 USD 처리뿐이다.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>지표</th><th>Orchestra</th><th>Orchestration</th></tr></thead>
+  <tbody>
+    <tr><td>주간 자산 변화</td><td class="num loss">-0.50%</td><td class="num loss">-0.47%</td></tr>
+    <tr><td>주간 매매</td><td class="num">매수68·매도26</td><td class="num">매수39·매도5</td></tr>
+    <tr><td>주간 실현손익</td><td class="num gain">+69,179원</td><td class="num gain">+24,388원</td></tr>
+    <tr><td>8/14 대비 누적(9/7)</td><td class="num loss">-0.09%</td><td class="num gain">+1.41%</td></tr>
+    <tr><td>8/14 대비 누적(9/11)</td><td class="num loss">-0.58%</td><td class="num gain">+0.14%</td></tr>
+  </tbody>
+  <caption>meritz의 누적 우위(both_accounts.csv, 8/14=0 기준)가 이번 주에만 +1.5%p에서 +0.7%p로
+  절반 가까이 줄었다 — 하락장에서 격차가 좁혀지는 흐름은 "지금 성적은 국면 의존적"이라는 지난주
+  철학감사 리포트의 경고와 일치한다.</caption>
+</table>
+</div>
+<p>이 관계를 숫자로 파고든 게 이번 주 리포트의 절반이다. 화요일 <a href="https://claude.ai/code/artifact/57ff87ae-b636-406b-a194-b29525b6534e">규율로 갈린 한 쌍</a>과
+목요일 <a href="https://claude.ai/code/artifact/226dcae8-3fa1-40bb-8339-c5f286edb15f">코어는 규율대로, 꼬리가 흐려진다</a>가
+"meritz가 40여 개 공유 종목 중 대부분에서 이긴다"는 걸 처음 확인했고, 오늘 <a href="https://claude.ai/code/artifact/29a0ef6d-d3eb-461e-9185-eba9e6d3a017">먼저 담은 값을 치르다</a>가
+그 이유를 끝까지 파고들었다 — <strong>시드 크기도 물타기 횟수도 아니고, 오직 평단가(진입
+타이밍) 하나가 상관 −0.994로 설명한다.</strong> meritz가 평균 8거래일 늦게 들어간 게, 한 달째
+이어진 하락장에서 우연히 유리하게 작동했을 뿐 — 실력 차이가 아니라 시차라는 결론. 두 계좌의
+관계는 "경쟁"이 아니라 "같은 뿌리(153종목 스크린)에서 자란 다른 가지" — 하나는 능동적으로
+수확하고(new1), 하나는 인내하며 쌓는다(meritz)는 설계가 이번 주에도 그대로 확인됐다.</p>
+
+<h2><span class="n">05</span> 이번 주 발행 리포트 5건</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>날짜</th><th>제목</th><th>한 줄</th></tr></thead>
+  <tbody>
+    <tr><td>09-09</td><td><a href="https://claude.ai/code/artifact/57ff87ae-b636-406b-a194-b29525b6534e">규율로 갈린 한 쌍</a></td><td>Orchestra×Orchestration 계좌구조 첫 점검</td></tr>
+    <tr><td>09-10</td><td><a href="https://claude.ai/code/artifact/ba33c6eb-dae6-482b-8a75-f2dc3587841d">10조의 관성</a></td><td>VIP 펀드 vs 두 계좌, 첫 4주 비교</td></tr>
+    <tr><td>09-10</td><td><a href="https://claude.ai/code/artifact/226dcae8-3fa1-40bb-8339-c5f286edb15f">코어는 규율대로, 꼬리가 흐려진다</a></td><td>종목별 철학 감사 — 스크린 이탈은 가장자리뿐</td></tr>
+    <tr><td>09-10</td><td><a href="https://claude.ai/code/artifact/cd62e91e-10eb-41e4-8fb7-c4d0a4eff9e6">흉터로 쓴 설명서</a></td><td>한 달 소회 — 8/14~9/10 회고</td></tr>
+    <tr><td>09-11</td><td><a href="https://claude.ai/code/artifact/29a0ef6d-d3eb-461e-9185-eba9e6d3a017">먼저 담은 값을 치르다</a></td><td>공동보유 43종목, 평단가가 상관 −0.994로 승부를 갈랐다</td></tr>
+    <tr><td>09-11</td><td><a href="https://claude.ai/code/artifact/605231d5-cefa-4871-a8a5-2021a15858d6">조용한 손, 시끄러운 주가</a></td><td>Link 사전조사 — 극단적 움직임엔 외인이 없다</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2><span class="n">06</span> Link("연결고리") — 금요일 하루의 4단계</h2>
+<p>포프(§6-18)의 다음 단계로 금요일 하루 만에 태어나고 세 번 재설계됐다.</p>
+<div class="tier pass">
+  <div class="tl">① 사전조사 (13:47~14:07)</div>
+  <div class="bd">먼저 "외인이 사면 오른다"는 순진한 가설을 178종목 전체로 쳐봤다 — 상관
+  거의 0으로 기각. 대신 ±10% 극단값 구간에서만 방향성 있는 패턴을 발견(리포트 06장).</div>
+</div>
+<div class="tier pass">
+  <div class="tl">② 기본 구현 (14:30~14:44)</div>
+  <div class="bd">Score = −(ΔF×P)로 다이버전스 후보를 뽑는 패널을 만들었는데, 곧바로 "현재가가
+  DB 마지막 행이라 Fishing 실시간과 하루 갭이 생긴다"는 버그를 실측으로 잡아 라이브 시세로
+  교체.</div>
+</div>
+<div class="tier pass">
+  <div class="tl">③ 데이터 뿌리 통합 (14:54)</div>
+  <div class="bd">Foreigner의 "평균 대비"와 Link의 "기준일 대비"가 같은 종목을 다른 숫자로
+  보여주던 문제(와이지-원 사례) — Foreigner 자체를 "기준일pp"로 바꾸고 Link가 그 함수를 그대로
+  재사용하도록 통합. 이제 두 화면은 항상 같은 숫자를 낸다.</div>
+</div>
+<div class="tier grey">
+  <div class="tl">④ 4분면 재설계 + 추세 반영 (15:04~15:33)</div>
+  <div class="bd">"부호 반대=후보"였던 원래 규칙이 태광(+31.6%·외인−3.35%p) 같은 흔한
+  차익실현까지 최상위로 올리는 걸 발견 → 다이버전스/진행형/이탈/차익실현 4분면으로 분리.
+  이어서 "누적은 진행형인데 최근 3일은 꺾인" 대한항공식 반전 조짐까지 잡아내는 추세 필드
+  추가. 배포 크래시 한 번을 거쳐 지금 형태로 정착.</div>
+</div>
+<p>동시에 <strong>CFG(Chicken For Golden eggs)</strong> — Up/Down·Fishing·Link(4분면×볼륨)를
+매일 종합해 상위 3픽을 누적점수로 뽑는 최종 엔진 — 개념이 확정됐다. 지금은 착수하지 않고
+(Link가 먼저), 세션이 <strong>매일 감시목록 확인 + 매주 금요일 검증 리포트</strong>를 쌓아가며
+지금의 4분면 가정이 실제로 맞는지 시험하는 단계다.</p>
+
+<h2><span class="n">07</span> 다음 주 예고</h2>
+<ul>
+  <li>Link 4분면·추세 가정을 감시목록(현재 3종목: 파마리서치·OCI홀딩스·와이지-원)으로 계속
+  검증 — 다음 금요일 첫 주간 검증 리포트.</li>
+  <li>보류된 아이디어: "이탈→다이버전스" 조기 감지 함수(가격 하락 둔화 + 외인 재축적 동시
+  포착) — 설계 먼저 공유하고 컨펌받기로 함.</li>
+  <li>사용자 계획: 다음 주에 이번 주 작업에 살을 붙여 "매뉴얼 버전 1" — 9월 내내 검증, 12월까지
+  전체 완성, 2027년 1월부터 실전 투입이 최종 로드맵.</li>
+</ul>
+
+<div class="verdict">
+  <p class="lead">총평: 화면을 늘린 주가 아니라 뿌리를 맞춘 주였다.</p>
+  <p>이번 주에 새로 생긴 기능은 많지만, 진짜 주제는 "같은 데이터를 보는 화면들이 서로 다른
+  숫자를 말하면 안 된다"였다 — index/bigcap 오염, Foreigner/Link 기준 불일치, VIP 패널 지연이
+  전부 같은 종류의 문제였고, 전부 같은 해법(패치 대신 뿌리 통합)으로 풀렸다. 그리고 그 교훈이
+  그대로 두 계좌의 이야기이기도 했다 — 같은 뿌리에서 갈린 두 가지의 격차가, 실력이 아니라
+  타이밍 하나였다는 걸 오늘 리포트로 증명했다. 9월 넷째 주까지, Link가 내놓는 가정들도 같은
+  잣대로 검증받을 차례다.</p>
+</div>
+
+<footer>
+  주간 리포트 · 2026-09-07~09-11 · new1/report/<br>
+  수치는 각 날짜 장중/장마감 스냅샷 혼재(§6-2 정합성 체크 대상). 커밋 수는 <code>git log
+  --since/--until</code> 기준(문서·데이터 커밋 포함, 코드 커밋만 아님). Orchestra=new1,
+  Orchestration=meritz. 다음 주간 리포트는 2026-09-18(금) 예정.
+</footer>
+</div>
