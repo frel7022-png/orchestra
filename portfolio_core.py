@@ -41,6 +41,7 @@ SECTOR_CACHE_FILE = HERE / "stock_sector_cache.csv"
 MARKET_CACHE_FILE = HERE / "stock_market_cache.csv"  # 종목명→KOSPI/KOSDAQ, §1-3 영구 캐시(§6-17 물타기 성적표에서 종목별 지수 비교용)
 DIVIDEND_CACHE_FILE = HERE / "dividend_cache.csv"  # 종목코드→배당수익률, 하루 1회만 재조회(아래 refresh_dividend_yields 참고)
 WATCHLIST_FILE = HERE / "watchlist.csv"  # "Fishing" 관심종목 리스트 (보유/거래와 무관한 별도 목록)
+LINK_WATCH_LOG_FILE = HERE / "link_watch_log.csv"  # "Link" 감시목록 — 다이버전스 플래그된 종목의 기준 스냅샷(2026-09-11)
 CHECKPOINT_HOLDINGS_FILE = HERE / "checkpoint_holdings.csv"  # rebuild_portfolio_incremental 참고
 CHECKPOINT_STATE_FILE = HERE / "checkpoint_state.csv"
 
@@ -1106,11 +1107,119 @@ def compute_market_flow_baseline(mkt_hist: pd.DataFrame) -> dict:
 
 
 # ------------------------------------------------------------------ #
+# "Link"(연결고리) — 가격·외인비중이 반대 방향으로 크게 벌어진 "엉뚱한 놈"만 골라
+# 감시목록에 올려두고 시간을 두고 지켜보는 실험 패널 (2026-09-11, MEMORY: project_foreigner_fop).
+# 포프(§6-18)의 다음 단계 — "외인이 사면 오른다"류 전체 상관관계를 보려는 게 아니라(2026-09-11
+# 리포트로 확인: 전체 178종목 상관은 거의 0), 원래 같은 방향이어야 할 두 값이 이번엔 크게
+# 반대로 갔다는 예외 케이스 자체를 찾아 개별 관찰하는 용도. 삼성전자 같은 초고유동성 대형주는
+# 외인 물량에 단타·차익거래·지수 리밸런싱이 잔뜩 섞여 신호가 묻히지만, 오케스트라처럼 유동성이
+# 낮고 관심이 적은 종목군은 외인이 들어오는 이유가 좁아서(대체로 실제 펀더멘털 판단) 신호 대
+# 잡음비가 오히려 나을 수 있다는 게 이 패널의 전제(사용자 가설, 2026-09-11).
+# ------------------------------------------------------------------ #
+def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
+                             min_price_days: int = 5, min_flow_days: int = 3) -> pd.DataFrame:
+    """종목별 누적등락률(P)과 외인보유율변화(ΔF)를 계산해 Divergence Score = −(ΔF×P)로 랭킹.
+    **기준일은 그 종목의 price_history 최초 관측일**(=Fishing "누적" 기준일과 동일 개념, 종목마다
+    다름) — 그날 종가·외인보유율을 "기록된" 고정 기준가/기준비중으로 삼고, 최신 값까지의 변화를
+    본다(외인 쪽만 따로 더 긴 구간 평균을 쓰지 않음 — 2026-09-11 실제로 와이지-원에서 확인:
+    투자자 심리·평균 산정 구간을 다르게 잡으면 같은 종목이 "축적"과 "이탈"로 정반대로도 읽힘,
+    기준을 하나로 고정해야 종목 간 비교가 성립함).
+    스코어 설계: 부호가 반대(가격↓인데 외인↑, 또는 그 반대)일 때만 양수가 되고, ΔF·P 둘 다
+    클수록 커짐 — 별도 문턱값 없이 랭킹 자체가 "부호 반대 + 크기 둘 다 큼"을 인코딩한다.
+    반환 컬럼: 종목코드,종목명,섹터,기준일,기준가,현재가,P,기준외인비중,현재외인비중,dF,score,관측일수.
+    점수 내림차순 정렬. 데이터 부족하면 빈 DataFrame."""
+    cols = ["종목코드", "종목명", "섹터", "기준일", "기준가", "현재가", "P",
+            "기준외인비중", "현재외인비중", "dF", "score", "관측일수"]
+    if price_hist is None or price_hist.empty or flow_hist is None or flow_hist.empty:
+        return pd.DataFrame(columns=cols)
+    rows = []
+    for code, g in price_hist.groupby("종목코드"):
+        g = g.sort_values("날짜")
+        if len(g) < min_price_days:
+            continue
+        p0, p1 = g.iloc[0], g.iloc[-1]
+        if not p0["종가"]:
+            continue
+        P = (p1["종가"] - p0["종가"]) / p0["종가"] * 100
+        fg = flow_hist[flow_hist["종목코드"] == code].sort_values("날짜")
+        fg = fg[(fg["날짜"] >= p0["날짜"]) & (fg["날짜"] <= p1["날짜"])]
+        if len(fg) < min_flow_days:
+            continue
+        f0, f1 = fg.iloc[0], fg.iloc[-1]
+        dF = float(f1["외국인보유율"]) - float(f0["외국인보유율"])
+        rows.append({
+            "종목코드": code, "종목명": p1["종목명"], "섹터": p1["섹터"],
+            "기준일": p0["날짜"], "기준가": float(p0["종가"]), "현재가": float(p1["종가"]), "P": P,
+            "기준외인비중": float(f0["외국인보유율"]), "현재외인비중": float(f1["외국인보유율"]),
+            "dF": dF, "score": -(dF * P), "관측일수": len(g),
+        })
+    out = pd.DataFrame(rows, columns=cols)
+    if out.empty:
+        return out
+    return out.sort_values("score", ascending=False).reset_index(drop=True)
+
+
+def load_link_watch_log() -> pd.DataFrame:
+    """link_watch_log.csv 로드 — 없으면 빈 DataFrame. 컬럼: 플래그일,종목코드,종목명,기준일,
+    기준가,기준외인비중,P_당시,dF_당시,score_당시."""
+    cols = ["플래그일", "종목코드", "종목명", "기준일", "기준가", "기준외인비중",
+            "P_당시", "dF_당시", "score_당시"]
+    if LINK_WATCH_LOG_FILE.exists():
+        return pd.read_csv(LINK_WATCH_LOG_FILE, dtype={"종목코드": str})
+    return pd.DataFrame(columns=cols)
+
+
+def save_link_watch_log(df: pd.DataFrame) -> None:
+    df.to_csv(LINK_WATCH_LOG_FILE, index=False)
+
+
+def add_link_watch_entry(row: dict) -> pd.DataFrame:
+    """감시목록에 종목 하나 추가(같은 종목코드가 이미 있으면 최신 플래그로 덮어씀).
+    **배포된 앱의 실시간 UI에서는 호출하지 않는다**(§1-7 — 이 앱은 CSV 반영/CLI 스크립트가
+    데이터 입력 경로고, 로컬 디스크 쓰기는 재배포 때 사라질 수 있음(§1-5) — 사용자가 채팅으로
+    "이 종목 감시목록에 넣어줘" 하면 세션이 이 함수를 스크립트로 실행하고 git commit/push까지
+    한다). row 예: {"플래그일":..., "종목코드":..., "종목명":..., "기준일":..., "기준가":...,
+    "기준외인비중":..., "P_당시":..., "dF_당시":..., "score_당시":...}"""
+    df = load_link_watch_log()
+    df = df[df["종목코드"] != row["종목코드"]]
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    save_link_watch_log(df)
+    return df
+
+
+def link_watch_status(watch_log: pd.DataFrame, price_hist: pd.DataFrame,
+                       flow_hist: pd.DataFrame) -> pd.DataFrame:
+    """감시목록 각 종목의 '플래그 시점 기준가/기준비중' 대비 지금까지 변화를 계산 — 읽기 전용
+    (감시목록 자체는 안 건드림). 반환 컬럼: watch_log 원본 + 현재가,현재외인비중,경과일,가격변화,외인변화."""
+    if watch_log is None or watch_log.empty:
+        return pd.DataFrame()
+    today = today_kst_str()
+    rows = []
+    for _, w in watch_log.iterrows():
+        code = w["종목코드"]
+        pg = price_hist[price_hist["종목코드"] == code].sort_values("날짜") if price_hist is not None else pd.DataFrame()
+        fg = flow_hist[flow_hist["종목코드"] == code].sort_values("날짜") if flow_hist is not None else pd.DataFrame()
+        cur_price = float(pg.iloc[-1]["종가"]) if not pg.empty else None
+        cur_f = float(fg.iloc[-1]["외국인보유율"]) if not fg.empty else None
+        try:
+            days = (pd.Timestamp(today) - pd.Timestamp(w["플래그일"])).days
+        except Exception:
+            days = None
+        chg_p = ((cur_price - w["기준가"]) / w["기준가"] * 100
+                  if cur_price is not None and w["기준가"] else None)
+        chg_f = (cur_f - w["기준외인비중"]) if cur_f is not None else None
+        rows.append({**w.to_dict(), "현재가": cur_price, "현재외인비중": cur_f,
+                     "경과일": days, "가격변화": chg_p, "외인변화": chg_f})
+    return pd.DataFrame(rows)
+
+
+# ------------------------------------------------------------------ #
 # 포리너 프로젝트(포프) — 외인 매수 스파이크 후 주가 반응 이벤트 스터디 (2026-09-03 초안)
 # 관찰 전용, 매매 신호 아님. Foreigner 스크리너와 같은 신호(외국인보유율 %p 변화)로
 # 이벤트를 잡고, 그 뒤 T+1..T+5 거래일 종가수익률을 raw / 시장초과(그 종목이 속한
 # 코스피·코스닥 지수 차감) / 전체 종목·전체일 평균(대조군) 대비로 집계한다.
-# MEMORY: project_foreigner_fop.
+# MEMORY: project_foreigner_fop. **UI는 2026-09-11부터 Link 패널로 교체됨 — 이 계산 함수는
+# 나중에 필요해지면 재사용할 수 있게 남겨둠, 현재 활성 UI 경로 아님.**
 # ------------------------------------------------------------------ #
 def _forward_return_table(price_hist: pd.DataFrame, index_hist: pd.DataFrame,
                            market_map: dict, horizons: tuple) -> dict:

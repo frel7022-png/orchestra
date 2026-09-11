@@ -1028,6 +1028,83 @@ def test_fop_empty_inputs_return_zero_events():
     assert all(h["n"] == 0 for h in r["horizons"].values())
 
 
+# --- "Link" — 가격/외인비중 다이버전스 감시 패널 (2026-09-11) --- #
+def test_compute_link_candidates_scores_opposite_direction_higher():
+    # A: 가격 -20%인데 외인비중은 +3%p(다이버전스) → 스코어 크게 양수여야 함.
+    # B: 가격 -20%에 외인비중도 -3%p(같은 방향, 확증) → 스코어 크게 음수여야 함.
+    price = _price_df([
+        ("A", "2026-08-19", 10000), ("A", "2026-08-25", 8000),
+        ("B", "2026-08-19", 10000), ("B", "2026-08-25", 8000),
+    ])
+    flow = _flow_df([
+        ("A", "2026-08-19", 100, 10.0), ("A", "2026-08-22", 100, 11.0), ("A", "2026-08-25", 100, 13.0),
+        ("B", "2026-08-19", 100, 10.0), ("B", "2026-08-22", 100, 9.0), ("B", "2026-08-25", 100, 7.0),
+    ])
+    out = core.compute_link_candidates(price, flow, min_price_days=2, min_flow_days=2)
+    a = out[out["종목코드"] == "A"].iloc[0]
+    b = out[out["종목코드"] == "B"].iloc[0]
+    assert a["P"] == pytest.approx(-20.0)
+    assert a["dF"] == pytest.approx(3.0)
+    assert a["score"] > 0
+    assert b["score"] < 0
+    assert a["score"] > b["score"]
+    # 스코어 내림차순 정렬 확인
+    assert list(out["종목코드"])[0] == "A"
+
+
+def test_compute_link_candidates_uses_price_history_start_as_baseline():
+    # 외인 히스토리가 가격보다 훨씬 일찍 시작해도(예: 7/24부터), 기준가/기준비중은
+    # 가격 히스토리 시작일(8/19) 값이어야 한다 — 더 긴 구간의 평균/시작값에 안 끌려가야 함.
+    price = _price_df([("X", "2026-08-19", 1000), ("X", "2026-08-26", 900)])
+    flow = _flow_df([
+        ("X", "2026-07-24", 100, 30.0),  # 훨씬 이전의 높은 값 — 기준으로 쓰이면 안 됨
+        ("X", "2026-08-19", 100, 10.0),
+        ("X", "2026-08-26", 100, 12.0),
+    ])
+    out = core.compute_link_candidates(price, flow, min_price_days=2, min_flow_days=2)
+    row = out.iloc[0]
+    assert row["기준외인비중"] == pytest.approx(10.0)
+    assert row["dF"] == pytest.approx(2.0)
+
+
+def test_compute_link_candidates_empty_inputs():
+    empty_price = _price_df([])
+    empty_flow = _flow_df([])
+    out = core.compute_link_candidates(empty_price, empty_flow)
+    assert out.empty
+
+
+def test_link_watch_status_computes_change_since_flagged(tmp_path, monkeypatch):
+    log = pd.DataFrame([{
+        "플래그일": "2026-08-20", "종목코드": "A", "종목명": "종목A", "기준일": "2026-08-19",
+        "기준가": 10000.0, "기준외인비중": 10.0, "P_당시": -20.0, "dF_당시": 3.0, "score_당시": 60.0,
+    }])
+    price = _price_df([("A", "2026-08-19", 10000), ("A", "2026-08-27", 9000)])
+    flow = _flow_df([("A", "2026-08-19", 100, 10.0), ("A", "2026-08-27", 100, 13.5)])
+    status = core.link_watch_status(log, price, flow)
+    row = status.iloc[0]
+    assert row["현재가"] == pytest.approx(9000.0)
+    assert row["가격변화"] == pytest.approx(-10.0)
+    assert row["외인변화"] == pytest.approx(3.5)
+
+
+def test_link_watch_status_empty_log_returns_empty():
+    assert core.link_watch_status(pd.DataFrame(), _price_df([]), _flow_df([])).empty
+
+
+def test_add_link_watch_entry_overwrites_same_stock_code(tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "LINK_WATCH_LOG_FILE", tmp_path / "link_watch_log.csv")
+    core.add_link_watch_entry({"플래그일": "2026-08-20", "종목코드": "A", "종목명": "종목A",
+                                "기준일": "2026-08-19", "기준가": 10000.0, "기준외인비중": 10.0,
+                                "P_당시": -20.0, "dF_당시": 3.0, "score_당시": 60.0})
+    core.add_link_watch_entry({"플래그일": "2026-08-21", "종목코드": "A", "종목명": "종목A",
+                                "기준일": "2026-08-19", "기준가": 10000.0, "기준외인비중": 10.0,
+                                "P_당시": -21.0, "dF_당시": 3.2, "score_당시": 67.2})
+    df = core.load_link_watch_log()
+    assert len(df) == 1
+    assert df.iloc[0]["플래그일"] == "2026-08-21"
+
+
 # --- SamHynix extracted (§6-19): synthetic_kospi_ex_bigcap --- #
 def _bigcap_df(rows):
     """rows: [(날짜, 삼성전자, 삼성전자우, SK하이닉스)] → load_bigcap_history 형태."""
