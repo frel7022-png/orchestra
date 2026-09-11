@@ -1024,8 +1024,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             elif _pw:
                 st.caption("비밀번호가 틀렸습니다.")
         else:
-            _render_link_panel(flow_hist, price_hist_flow, st.session_state.get("live_quotes"),
-                                _refresh_flow_data, T)
+            _render_link_panel(ph=price_hist_flow, fh=flow_hist,
+                                live_quotes=st.session_state.get("live_quotes"),
+                                refresh_fn=_refresh_flow_data, T=T)
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",
