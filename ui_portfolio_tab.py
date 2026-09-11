@@ -1169,8 +1169,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         <span class="stock-title-group"><span class="stock-name" style="{name_style}">{r['종목명']}</span></span>
                         <span class="sector-tag" style="background:{sc}22;color:{sc}">{r['섹터']}</span>
                     </div>
-                    {dividend_row_html}{_entry_row_html}
-                    <div class="stock-grid">
+                    {dividend_row_html}{_entry_row_html}<div class="stock-grid">
                         <div class="cell"><div class="top">{r['수량']:.0f}주</div><div class="bottom">{r['비중']:.1f}%</div></div>
                         <div class="cell"><div class="top">{r['현재가']:,.0f}</div><div class="bottom">{r['평단가']:,.0f}</div></div>
                         <div class="cell"><div class="top">{r['평가금액']:,.0f}</div><div class="bottom">{r['매입금액']:,.0f}</div></div>
