@@ -1472,4 +1472,25 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   `test_compute_link_candidates_reuses_compute_foreign_flags_exactly`(Foreigner와 dF 완전 일치),
   `test_compute_link_candidates_empty_inputs`, `test_link_watch_status_computes_change_since_flagged`,
   `test_link_watch_status_empty_log_returns_empty`, `test_add_link_watch_entry_overwrites_same_stock_code`.
+- **CFG(Chicken For Golden eggs) — 최종 종착역, 아직 미착수**: 2026-09-11 사용자가 개념 확정
+  (MEMORY `project_foreigner_fop` 참고). Up/Down(매도 후 추가 하락)+Fishing(누적 하락 후 횡보)+
+  Link(4분면×볼륨 증폭)를 매일 종합해 리포트 쓰고 상위 3픽(1위 3점, 2·3위 비율) 추리는 엔진 —
+  점수가 시간이 지나며 누적돼 다음 후보군을 과거 후보군과 비교 평가하게 됨. 최강 신호(원픽) =
+  Up/Down "매도 후 급락" + Link④"다이버전스"가 같은 종목에서 동시에 뜨는 경우. **"Link가 먼저,
+  CFG는 나중"** — 지금은 Link 설계가 이 방향과 어긋나지 않게만 유지(이미 4분면을 전부 계산해
+  둬서 나중에 볼륨 얹기만 하면 됨), CFG 자체 구현은 사용자가 별도로 지시할 때.
+- **운영 루틴 — Link 감시 결과 검증 리포트 (2026-09-11 신설, §6-22 Claude's Read와 같은
+  일/주 2단 구조)**: CFG를 실제로 세우기 전에, 지금 4분면 가정("다이버전스=곧 반등,
+  진행형=아직 안 끝남" 등)이 실제로 맞아떨어지는지 스스로 검증해나가는 단계.
+  - **매일**: 사용자가 요청하거나 매매일지 반영하는 김에, `link_watch_status()`로 감시목록
+    (`link_watch_log.csv`) 각 종목의 플래그 시점 대비 현재 가격/외인비중 변화를 확인하고
+    채팅으로 간단히 코멘트(파일 저장 불필요 — Claude's Read처럼 매일 새 리포트 파일을 만들진
+    않음, 그러기엔 아직 감시 종목 수가 적음).
+  - **주 1회(매주 금요일 장 마감 후, §2 report/ 규칙)**: `report/YYYY-MM-DD_제목.html`로 그 주
+    감시목록 전체를 되짚는 깊은 분석 — 각 종목이 플래그 당시 예측(다이버전스=반등 조짐,
+    진행형=모멘텀 지속 등)대로 실제 움직였는지 가격으로 검증, 예측이 맞은 사례/틀린 사례를
+    같이 기록(hit만 모으면 편향 — §6-18 포프의 "틀린 것도 명시적으로 로그" 원칙 재사용).
+    이 리포트들이 쌓이면 나중에 CFG의 점수 기준(어떤 조합이 진짜 잘 맞았는지)이 됨.
+  - 2026-09-11 최초 3건 시딩(파마리서치·OCI홀딩스·와이지-원) 이후 아직 하루도 안 지났으니
+    첫 주간 리포트는 그 다음 금요일부터.
 - **new1 전용** (포프와 마찬가지로 153+ 관심종목/Supabase 파이프라인에 묶임).
