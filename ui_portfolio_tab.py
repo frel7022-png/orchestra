@@ -15,6 +15,7 @@ from portfolio_core import (
     get_holding_trade_summary, get_holding_trade_summary_all_time,
     get_holding_trade_points, get_holding_avg_price_path,
     load_investor_flow_db, load_market_flow_db, load_watchlist_history_db,
+    get_stock_price_history_db,
     compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     study_foreign_buy_forward_returns, load_index_history, load_market_cache,
@@ -103,9 +104,11 @@ def _dividend_badge_html(code: str, dividend_cache: dict, show_period: bool = Tr
 
 def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
     """보유종목 카드를 눌렀을 때 펼쳐지는 상세 — 매수/매도 요약 + "물타기 적정성" 그래프.
-    그래프에 연속된 일별 시세선은 없음(보유종목엔 그런 히스토리가 없음 — Fishing 관심종목만
-    Supabase에 매일 쌓이는 중, 2026-08-21 기준 나흘치뿐이라 아직 못 씀. 장기적으로 여기도
-    DB 시세로 연결할 수 있음). 대신 최초매입일→오늘 두 점을 직선으로 잇고, 그 위에 실제
+    "현재가" 선은 Supabase price_history(§6-9/§6-16)에서 그 종목의 최초매입일~오늘 구간 일별
+    종가를 가져와 실제 등락 그대로 그린다(2026-09-11 갱신 — 예전엔 최초매입일→오늘 두 점을
+    직선으로 이었는데, 그 사이 진짜로 오르내린 걸 사용자가 "꾸준히 내려온 것처럼 보인다"고
+    지적함). DB에 그 구간 데이터가 없으면(아직 watchlist에 편입 안 된 신규 종목 등) 예전처럼
+    두 점 직선으로 폴백 — 네이버를 그때그때 낱개로 조회하지 않고 DB만 조회한다. 그 위에 실제
     매수/매도 시점을 점으로 찍어서 "내가 얼마나 현재가를 따라 물을 탔는지"를 보여준다."""
     name = r["종목명"]
     trades = get_holding_trade_points(tx, name)
@@ -144,6 +147,32 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
     avg_x = list(avg_path["날짜"]) + [today]
     avg_y = list(avg_path["평단가"]) + [avg_price]
 
+    # "현재가" 선의 실제 데이터 — Supabase price_history에서 이 종목코드의 일별 종가를 세션당
+    # 1회만 조회(카드를 열어둔 채 다른 위젯을 눌러 rerun돼도 재조회 안 함). 없으면 빈 DF.
+    code = r["종목코드"]
+    _hist_cache = st.session_state.setdefault("holding_price_hist_cache", {})
+    if code not in _hist_cache:
+        _sb = st.secrets.get("supabase", {})
+        _hist_cache[code] = get_stock_price_history_db(code, _sb.get("url", ""), _sb.get("anon_key", ""))
+    _price_hist = _hist_cache[code]
+    if not _price_hist.empty:
+        _ph = _price_hist[(_price_hist["날짜"] >= entry_date) & (_price_hist["날짜"] <= today)]
+    else:
+        _ph = _price_hist
+    if len(_ph) >= 2:
+        cur_x = list(_ph["날짜"])
+        cur_y = [float(v) for v in _ph["종가"]]
+        if cur_x[0] != entry_date:
+            cur_x, cur_y = [entry_date] + cur_x, [entry_price] + cur_y
+        else:
+            cur_y[0] = entry_price  # 실제 체결가로 첫 점 고정(DB 종가와 살짝 다를 수 있음)
+        if cur_x[-1] != today:
+            cur_x, cur_y = cur_x + [today], cur_y + [current_price]
+        else:
+            cur_y[-1] = current_price  # 실시간가로 마지막 점 고정(DB는 전날 종가까지일 수 있음)
+    else:
+        cur_x, cur_y = [entry_date, today], [entry_price, current_price]
+
     # x축 눈금: 매수가 한 건이고 진입일이 오늘과 하루 이내면 plotly가 날짜축을 "하루 미만"
     # 범위로 보고 23:59:59.999 같은 시:분:초 눈금을 찍어버린다. 항상 날짜 눈금만 나오도록
     # dtick을 '며칠 단위'로 고정하고, 범위를 살짝 넓혀 눈금이 2~4개 찍히게 한다.
@@ -159,9 +188,8 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=[entry_date, today], y=[entry_price, current_price], mode="lines+markers",
-        name="현재가", line=dict(color=T["muted"], width=2, dash="dot"),
-        marker=dict(size=6, color=T["muted"]),
+        x=cur_x, y=cur_y, mode="lines",
+        name="현재가", line=dict(color=T["muted"], width=1.8),
         hovertemplate="%{x}<br>%{y:,.0f}원<extra></extra>",
     ))
     fig.add_trace(go.Scatter(

@@ -887,6 +887,31 @@ def load_watchlist_history_db(supabase_url: str, supabase_key: str) -> pd.DataFr
     return df[["종목코드", "종목명", "섹터", "날짜", "종가", "등락률"]]
 
 
+def get_stock_price_history_db(stock_code: str, supabase_url: str, supabase_key: str) -> pd.DataFrame:
+    """Supabase price_history에서 종목코드 하나의 일별 종가만 조회 (2026-09-11, §6-10 WATERING
+    상세 그래프 갱신용) — load_watchlist_history_db처럼 전체를 다 받지 않고 stock_code로
+    필터링해서 이 종목 하나만 가져온다(카드 하나 열 때마다 4천 행을 다 받을 필요 없음).
+    반환: 날짜 오름차순 DataFrame(날짜, 종가). 접속 실패/그 종목 데이터 없음이면 빈 DataFrame
+    (아직 watchlist에 편입 안 됐거나 cron이 한 번도 못 돈 신규 종목 등 — 호출부가 폴백 처리)."""
+    empty = pd.DataFrame(columns=["날짜", "종가"])
+    if not supabase_url or not supabase_key or not stock_code:
+        return empty
+    headers = {"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"}
+    try:
+        resp = requests.get(
+            f"{supabase_url}/rest/v1/price_history?stock_code=eq.{stock_code}"
+            f"&select=trade_date,close_price&order=trade_date",
+            headers=headers, timeout=15)
+        resp.raise_for_status()
+        rows = resp.json()
+    except Exception:
+        return empty
+    if not rows:
+        return empty
+    df = pd.DataFrame(rows).rename(columns={"trade_date": "날짜", "close_price": "종가"})
+    return df[["날짜", "종가"]]
+
+
 # ------------------------------------------------------------------ #
 # 거래량/외국인 수급 트래킹 (2026-08-24 신설) — investor_flow(종목별)/market_flow(시장
 # 전체) 테이블을 조회해서 "평소보다 튀는지" 계산한다. §6-12 참고. DB엔 원시값만 쌓고
