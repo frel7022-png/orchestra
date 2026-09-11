@@ -1133,28 +1133,55 @@ def compute_market_flow_baseline(mkt_hist: pd.DataFrame) -> dict:
 # 낮고 관심이 적은 종목군은 외인이 들어오는 이유가 좁아서(대체로 실제 펀더멘털 판단) 신호 대
 # 잡음비가 오히려 나을 수 있다는 게 이 패널의 전제(사용자 가설, 2026-09-11).
 # ------------------------------------------------------------------ #
+# 가격(P)·외인비중변화(dF) 부호 조합 4분면 — 사용자가 "설계 시 깔고 갈 전제"로 지정(2026-09-11,
+# 참/거짓 검증 대상이 아니라 그대로 채택):
+#   P<0, dF>0 → "다이버전스": 가격은 빠지는데 외인은 담는 중 — "곧 뭔가 일어난다", 최우선 후보.
+#   P>0, dF>0 → "진행형":    가격도 외인도 같이 오르는 중 — "아직 덜 먹었다"(모멘텀 안 끝남).
+#   P<0, dF<=0 → "이탈":     가격도 빠지고 외인도 같이 빠짐 — "관심에서 멀어진다", 매수 신호는
+#                            아니고 §6-10 WATERING(물타기) 판단 시 참고용 경고.
+#   P>0, dF<=0 → "차익실현": 가격은 올랐는데 외인은 빠짐 — "이제 먹었으니 나가는 중", 흔한 패턴이라
+#                            관심 밖(실제로 태광 +31.6%/−3.35%p·성광벤드 +44.8%/−1.56%p가 이
+#                            구간이었는데, 예전 버전(부호 반대면 무조건 후보)이 이걸 최상위로
+#                            올려서 사용자가 "왜 이게 후보냐"고 지적 → 전면 재설계).
+_LINK_QUAD_PRIORITY = {"다이버전스": 0, "진행형": 1, "이탈": 2, "차익실현": 3}
+
+
+def _link_quadrant(P: float, dF: float) -> str:
+    if P < 0 and dF > 0:
+        return "다이버전스"
+    if P > 0 and dF > 0:
+        return "진행형"
+    if P < 0:
+        return "이탈"
+    if P > 0:
+        return "차익실현"
+    return "중립"  # P==0 극단적 예외(거의 안 나옴)
+
+
 def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
                              live_quotes: dict | None = None,
                              min_price_days: int = 5) -> pd.DataFrame:
-    """종목별 누적등락률(P)과 외인보유율변화(ΔF)를 계산해 Divergence Score = −(ΔF×P)로 랭킹.
-    **외인 쪽 계산은 이 함수가 따로 하지 않고 `compute_foreign_flags(flow_hist, price_hist)`를
-    그대로 재사용한다**(2026-09-11 갱신) — Foreigner는 "전체 현황·순위"를, Link는 그 위에서
-    "가격과 반대로 간 예외만 골라내는 응용편"이라는 사용자 설계라, **데이터의 뿌리(기준일·
-    기준값 정의)가 반드시 같아야** 서로 검증 가능하고 나중에 추세 분석으로 확장할 때도 어긋남이
-    없다. 두 함수를 따로 유지하면(예전 방식) 로직이 미묘하게 갈라지기 쉬움(실제로 겪음: 기준
-    구간을 다르게 잡아서 와이지-원이 화면마다 반대로 보였음) — 이제 ΔF = Foreigner의 "기준일pp"
-    그 값 그대로다.
+    """종목별 누적등락률(P)과 외인보유율변화(ΔF)를 계산하고, 위 4분면(`_link_quadrant`)으로
+    분류한다. **외인 쪽 계산은 이 함수가 따로 하지 않고 `compute_foreign_flags(flow_hist,
+    price_hist)`를 그대로 재사용한다**(2026-09-11 갱신) — Foreigner는 "전체 현황·순위"를, Link는
+    그 위에서 "가격과 반대로 간 예외만 골라내는 응용편"이라는 사용자 설계라, **데이터의 뿌리
+    (기준일·기준값 정의)가 반드시 같아야** 서로 검증 가능하고 나중에 추세 분석으로 확장할 때도
+    어긋남이 없다(실제로 겪음: 기준 구간을 다르게 잡아서 와이지-원이 화면마다 반대로 보였음) —
+    ΔF = Foreigner의 "기준일pp" 그 값 그대로다.
     **"현재가"는 live_quotes(있으면, {종목코드: 실시간가})를 우선 쓰고 없으면 price_history의
     마지막 저장 행으로 폴백**(2026-09-11 실제 버그로 발견: price_history는 §6-9 cron이 장마감
     후에야 그날 종가를 채우므로, 장중에 DB 마지막 행만 쓰면 Fishing의 실시간 누적%와 하루치
     갭이 생김. Fishing과 같은 `fetch_quotes()` 결과를 넘기면 정확히 일치한다). **기준가/기준일은
     절대 live로 안 바뀜** — DB 최초 관측일 값 그대로(과거 시점을 실시간으로 대체할 수 없으니 당연).
-    스코어 설계: 부호가 반대(가격↓인데 외인↑, 또는 그 반대)일 때만 양수가 되고, ΔF·P 둘 다
-    클수록 커짐 — 별도 문턱값 없이 랭킹 자체가 "부호 반대 + 크기 둘 다 큼"을 인코딩한다.
-    반환 컬럼: 종목코드,종목명,섹터,기준일,기준가,현재가,P,기준외인비중,현재외인비중,dF,score,관측일수.
-    점수 내림차순 정렬. 데이터 부족하면 빈 DataFrame."""
+    **`score`(=−ΔF×P)는 구간마다 부호가 다르다**(다이버전스=양수·차익실현도 양수·진행형/이탈=음수)
+    — **score만으로 구간을 섞어서 랭킹하면 절대 안 됨**, 반드시 "구간" 컬럼으로 먼저 나눌 것.
+    기본 정렬은 구간 우선순위(다이버전스→진행형→이탈→차익실현) 안에서 |dF|×|P| 큰 순 —
+    score의 부호 혼란과 무관하게 항상 "그 구간 안에서 둘 다 크게 움직인 것"이 위로 오게 한
+    별도 키(`_mag`)를 씀.
+    반환 컬럼: 종목코드,종목명,섹터,기준일,기준가,현재가,P,기준외인비중,현재외인비중,dF,구간,score,관측일수.
+    데이터 부족하면 빈 DataFrame."""
     cols = ["종목코드", "종목명", "섹터", "기준일", "기준가", "현재가", "P",
-            "기준외인비중", "현재외인비중", "dF", "score", "관측일수"]
+            "기준외인비중", "현재외인비중", "dF", "구간", "score", "관측일수"]
     if price_hist is None or price_hist.empty or flow_hist is None or flow_hist.empty:
         return pd.DataFrame(columns=cols)
     live_quotes = live_quotes or {}
@@ -1174,16 +1201,23 @@ def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
         cur_price = float(cur_price) if cur_price is not None else float(g.iloc[-1]["종가"])
         P = (cur_price - p0["종가"]) / p0["종가"] * 100
         dF = float(fx["기준일pp"])
+        quad = _link_quadrant(P, dF)
+        if quad == "중립":
+            continue
         rows.append({
             "종목코드": code, "종목명": g.iloc[-1]["종목명"], "섹터": g.iloc[-1]["섹터"],
             "기준일": p0["날짜"], "기준가": float(p0["종가"]), "현재가": cur_price, "P": P,
             "기준외인비중": float(fx["기준일보유율"]), "현재외인비중": float(fx["오늘보유율"]),
-            "dF": dF, "score": -(dF * P), "관측일수": len(g),
+            "dF": dF, "구간": quad, "score": -(dF * P), "관측일수": len(g),
         })
     out = pd.DataFrame(rows, columns=cols)
     if out.empty:
         return out
-    return out.sort_values("score", ascending=False).reset_index(drop=True)
+    out["_quad_rank"] = out["구간"].map(_LINK_QUAD_PRIORITY)
+    out["_mag"] = out["dF"].abs() * out["P"].abs()
+    out = (out.sort_values(["_quad_rank", "_mag"], ascending=[True, False])
+              .drop(columns=["_quad_rank", "_mag"]).reset_index(drop=True))
+    return out
 
 
 def load_link_watch_log() -> pd.DataFrame:

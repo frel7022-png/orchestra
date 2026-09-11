@@ -1415,14 +1415,31 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
     `compute_link_candidates(..., live_quotes=...)`/`link_watch_status(..., live_quotes=...)`가
     있으면 우선 사용, 없으면 DB 마지막 행 폴백. **기준가/기준일은 절대 live로 안 바뀜** — 과거
     시점을 실시간으로 대체할 수 없으니 당연.
-- **핵심 지표 — Divergence Score**: `portfolio_core.compute_link_candidates(price_hist, flow_hist,
-  live_quotes=None, min_price_days=5)`. **Score = −(ΔF × P)**(ΔF=기준일pp, P=기준일 종가 대비
-  현재가 누적등락률 %). 부호가 반대(가격↓·외인↑ 또는 그 반대)일 때만 양수, 게다가 둘 다 커야
-  커짐 — 별도 문턱값 없이 랭킹 자체가 필터 역할. 방향 무관 — "폭등+외인매도"(예: 태광 +29%·외인
-  −3.35%p)도 "폭락+외인매수"(예: 파마리서치 −12.8%·외인 +3.31%p)도 똑같이 위로 뜬다. 2026-09-11
-  실측(라이브 시세 반영 후): 파마리서치 P=-12.8%/dF=+3.31%p, 실리콘투 P=-3.2%/dF=+7.11%p,
-  와이지-원 P=-13.4%/dF=+0.88%p, OCI홀딩스 P=-21.3%/dF=+0.86%p — 전부 Foreigner의 "기준일pp"와
-  정확히 일치 확인.
+- **핵심 지표 — 4분면 분류 (2026-09-11, 사용자가 "설계 시 깔고 갈 전제"로 지정, 참/거짓 검증
+  대상 아님)**: `portfolio_core.compute_link_candidates(price_hist, flow_hist, live_quotes=None,
+  min_price_days=5)`가 P(누적등락률 %, 기준일 종가 대비)·ΔF(=기준일pp) 부호 조합으로
+  `_link_quadrant(P, dF)` 4분면을 매긴다(`구간` 컬럼):
+  - **다이버전스**(P<0, dF>0): 가격은 빠지는데 외인은 담는 중 — "곧 뭔가 일어난다", **최우선**.
+  - **진행형**(P>0, dF>0): 가격도 외인도 같이 오르는 중 — "아직 덜 먹었다"(모멘텀 안 끝남).
+  - **이탈**(P<0, dF≤0): 가격도 빠지고 외인도 같이 빠짐 — "관심에서 멀어진다", 매수 신호는 아니고
+    §6-10 WATERING(물타기) 판단 시 참고용 경고(아직 UI 연동 안 함, 데이터만 계산됨).
+  - **차익실현**(P>0, dF≤0): 가격은 올랐는데 외인은 빠짐 — "이제 먹었으니 나가는 중", 흔한 패턴이라
+    관심 밖.
+  - **왜 4분면으로 바꿨나**: 처음엔 "부호 반대면 무조건 후보"(Score=−ΔF×P>0인 쪽 전부)였는데,
+    이러면 **다이버전스와 차익실현이 똑같이 양수 스코어로 섞여서** 태광(+31.6%·외인−3.35%p)·
+    성광벤드(+44.8%·외인−1.56%p) 같은 "오를 만큼 올라서 차익실현"(평범한 패턴)이 최상위 후보로
+    뜨는 버그가 있었음 — 사용자가 실제 후보 목록을 보고 지적: "이거 왜 후보냐, 오히려 실리콘투나
+    엘앤씨바이오가 되어야 할 듯." 4분면으로 나누고서야 파마리서치·실리콘투·엘앤씨바이오·
+    OCI홀딩스가 다이버전스 최상위로, 태광·성광벤드는 차익실현으로 떨어져 나감(정확히 사용자
+    의도대로).
+  - **`score`(=−ΔF×P)는 구간마다 부호가 다르다**(다이버전스·차익실현=양수 / 진행형·이탈=음수) —
+    **score만으로 구간을 섞어서 랭킹하면 안 됨**. `compute_link_candidates`의 기본 정렬은 구간
+    우선순위(다이버전스→진행형→이탈→차익실현) 안에서 `|dF|×|P|`(`_mag`) 큰 순 — score의 부호
+    혼란과 무관하게 항상 "그 구간 안에서 둘 다 크게 움직인 것"이 위로 옴.
+  - 2026-09-11 실측(라이브 시세 반영 후, 다이버전스 top): 파마리서치 P=-12.4%/dF=+3.31%p,
+    실리콘투 P=-3.6%/dF=+7.11%p, 엘앤씨바이오 P=-8.7%/dF=+2.51%p, OCI홀딩스 P=-21.4%/dF=+0.86%p,
+    와이지-원 P=-13.4%/dF=+0.88%p — 전부 Foreigner의 "기준일pp"와 정확히 일치 확인. 전체
+    178종목 분포: 이탈 60·차익실현 49·진행형 41·다이버전스 27.
 - **감시목록 — `link_watch_log.csv`** (컬럼: 플래그일,종목코드,종목명,기준일,기준가,기준외인비중,
   P_당시,dF_당시,score_당시). `load_link_watch_log()`/`save_link_watch_log()`/`add_link_watch_entry()`.
   **§1-7 원칙대로 배포된 앱의 실시간 UI에서는 이 파일에 쓰지 않는다** — 사용자가 채팅으로
@@ -1437,16 +1454,19 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
   계산(읽기 전용, 로그 자체는 안 건드림).
 - **UI (`_render_link_panel(ph, fh, live_quotes, refresh_fn, T)`, `ui_portfolio_tab.py`)**:
   `render_portfolio_tab`이 Foreigner 섹션에서 로드한 공유 session_state와 `_refresh_flow_data`
-  함수를 인자로 넘겨줌 — 이 함수 자체는 DB를 직접 안 건드림. 두 섹션:
+  함수를 인자로 넘겨줌 — 이 함수 자체는 DB를 직접 안 건드림. 세 섹션:
   ① **지켜보는 중** — 감시목록 각 줄, 기준일~경과일 + 가격변화%/외인변화%p(빨강/파랑).
-  ② **이번 후보** — 상위 8개(스코어 내림차순), 이미 감시 중인 종목은 종목명 옆 ★. 후보를
-  실제로 감시목록에 넣을지는 사용자가 눈으로 보고 판단(자동 편입 안 함 — "엉뚱한 놈 고르기"는
-  사람이 한 번 걸러야 의미 있다는 사용자 판단, 2026-09-11).
+  ② **다이버전스** — 구간="다이버전스" 상위 8개(구간 내 `_mag` 내림차순). 최우선 후보 목록.
+  ③ **진행형** — 구간="진행형" 상위 5개. "이탈"·"차익실현" 구간은 매수 후보 성격이 아니라서
+  화면엔 안 띄움(`compute_link_candidates` 반환에는 계속 남아있음, 나중에 WATERING 연동 등에 씀).
+  이미 감시 중인 종목은 종목명 옆 ★. 후보를 실제로 감시목록에 넣을지는 사용자가 눈으로 보고
+  판단(자동 편입 안 함 — "엉뚱한 놈 고르기"는 사람이 한 번 걸러야 의미 있다는 사용자 판단,
+  2026-09-11).
 - **기간 세분화는 보류**: "1개월/2개월 등 기간별로 나눠서 보기"는 지금(DB 약 한 달치)은 의미가
   없다고 사용자가 명시적으로 보류(2026-09-11, "기간은 나중에 나누고") — 데이터가 몇 달 더
   쌓이면 그때 재검토.
-- **회귀 테스트**: `test_compute_link_candidates_scores_opposite_direction_higher`(부호 반대가
-  스코어 양수·정렬 확인), `test_compute_link_candidates_uses_price_history_start_as_baseline`
+- **회귀 테스트**: `test_compute_link_candidates_classifies_four_quadrants`(4분면 분류 + 구간
+  우선순위 정렬 확인), `test_compute_link_candidates_uses_price_history_start_as_baseline`
   (더 이른 외인 데이터에 기준이 안 끌려가는지), `test_compute_link_candidates_prefers_live_quote_over_stale_db_row`,
   `test_link_watch_status_prefers_live_quote_over_stale_db_row`(라이브 시세 우선 버그 고정),
   `test_compute_link_candidates_reuses_compute_foreign_flags_exactly`(Foreigner와 dF 완전 일치),

@@ -267,9 +267,9 @@ def _render_link_panel(ph, fh, live_quotes, refresh_fn, T):
     CSV 반영이 유일한 데이터 입력 경로라, "이 종목 감시목록에 넣어줘"라고 채팅으로 요청하면
     세션이 add_link_watch_entry()를 스크립트로 실행하고 git commit한다(배포 서버 로컬 디스크에만
     쓰면 재배포 때 사라짐, §1-5). 이 패널은 감시목록 현황 + 후보 랭킹을 읽기 전용으로 보여줄 뿐."""
-    st.caption("가격과 외인보유율이 반대 방향으로 크게 벌어진 종목만 골라 지켜보는 실험 패널. "
-               "'외인이 사면 오른다'는 상관관계를 보려는 게 아니라, 원래 같이 가야 할 둘이 "
-               "이번엔 반대로 간 예외 케이스를 찾아 한 달쯤 지켜보는 용도. Foreigner·Volume과 "
+    st.caption("가격은 빠지는데 외인비중은 늘어난 종목만 골라 지켜보는 실험 패널(반대 방향, "
+               "가격↑+외인↓인 흔한 차익실현은 후보에서 뺌). '외인이 사면 오른다'는 상관관계를 "
+               "보려는 게 아니라, 이 예외 케이스를 찾아 한 달쯤 지켜보는 용도. Foreigner·Volume과 "
                "데이터·기준일을 그대로 공유함 — 아래서 새로고침해도, 위 Foreigner/Volume에서 "
                "새로고침해도 결과는 같다.")
     if st.button("새로고침", key="link_refresh"):
@@ -308,21 +308,41 @@ def _render_link_panel(ph, fh, live_quotes, refresh_fn, T):
         st.caption("아직 후보를 계산할 데이터가 부족합니다.")
         return
     watched_codes = set(watch["종목코드"]) if not watch.empty else set()
-    st.markdown(f"<div style='font-size:12px;color:{T['muted']};font-weight:600;margin:10px 0 2px'>이번 후보 (스코어 순)</div>",
-                unsafe_allow_html=True)
-    rows = ""
-    for _, r in cands.head(8).iterrows():
-        p_c = UP_COLOR if r["P"] >= 0 else DOWN_COLOR
-        f_c = UP_COLOR if r["dF"] >= 0 else DOWN_COLOR
-        mark = " ★" if r["종목코드"] in watched_codes else ""
-        rows += (f'<div class="updown-row flow-row"><span class="name">{r["종목명"]}{mark}</span>'
-                 f'<span class="pct" style="color:{p_c}">{r["P"]:+.1f}%</span>'
-                 f'<span class="pct" style="color:{f_c}">{r["dF"]:+.2f}%p</span>'
-                 f'<span class="detail" style="color:{T["muted"]}">score {r["score"]:.1f}</span></div>')
-    st.markdown(rows, unsafe_allow_html=True)
-    st.caption(f"기준일({cands.iloc[0]['기준일'] if not cands.empty else ''} 등, 종목별로 다름) 이후 "
-               "가격변화% · 외인비중변화%p · score=−(외인비중변화×가격변화), 부호 반대+크기 둘 다 "
-               "클수록 위로. ★=이미 감시 중")
+
+    def _quad_rows(df, n):
+        parts = ""
+        for _, r in df.head(n).iterrows():
+            p_c = UP_COLOR if r["P"] >= 0 else DOWN_COLOR
+            f_c = UP_COLOR if r["dF"] >= 0 else DOWN_COLOR
+            mark = " ★" if r["종목코드"] in watched_codes else ""
+            parts += (f'<div class="updown-row flow-row"><span class="name">{r["종목명"]}{mark}</span>'
+                      f'<span class="pct" style="color:{p_c}">{r["P"]:+.1f}%</span>'
+                      f'<span class="pct" style="color:{f_c}">{r["dF"]:+.2f}%p</span>'
+                      f'<span class="detail" style="color:{T["muted"]}">score {r["score"]:.1f}</span></div>')
+        return parts
+
+    # 4분면(§6-28) 중 "다이버전스"(최우선)·"진행형"(차선)만 화면에 보여줌 — "이탈"/"차익실현"은
+    # 매수 후보 성격이 아니라서(물타기 참고·관심 밖) 이 목록엔 안 띄움, compute_link_candidates
+    # 결과에는 계속 남아있어 나중에 §6-10 WATERING 연동 등으로 쓸 수 있음.
+    div = cands[cands["구간"] == "다이버전스"]
+    prog = cands[cands["구간"] == "진행형"]
+
+    st.markdown(f"<div style='font-size:12px;color:{T['muted']};font-weight:600;margin:10px 0 2px'>"
+                f"다이버전스 — 가격↓ 외인↑, 곧 뭔가 일어난다</div>", unsafe_allow_html=True)
+    if div.empty:
+        st.caption("해당 없음")
+    else:
+        st.markdown(_quad_rows(div, 8), unsafe_allow_html=True)
+
+    st.markdown(f"<div style='font-size:12px;color:{T['muted']};font-weight:600;margin:10px 0 2px'>"
+                f"진행형 — 가격↑ 외인↑, 아직 덜 먹었다</div>", unsafe_allow_html=True)
+    if prog.empty:
+        st.caption("해당 없음")
+    else:
+        st.markdown(_quad_rows(prog, 5), unsafe_allow_html=True)
+
+    st.caption(f"기준일({cands.iloc[0]['기준일']} 등, 종목별로 다름) 이후 가격변화% · "
+               "외인비중변화%p · score=−(외인비중변화×가격변화). ★=이미 감시 중")
 
 
 def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets, unrealized_loss, T):
