@@ -308,46 +308,47 @@ def test_parse_daily_trade_csv_rejects_truncated_format():
 
 
 # ------------------------------------------------------------------ #
-# fetch_investor_flow / fetch_market_flow — 네이버 HTML 스크레이핑 파서.
-# 실시간 시세 JSON API와 달리 화면용 HTML을 그대로 긁는 거라 더 깨지기 쉬움(2026-08-24
-# 도입 당시 CLAUDE.md에도 이렇게 적어둠) — 실제 페이지에서 뽑아낸 구조를 그대로 고정
-# fixture로 박아두고, 네이버가 나중에 페이지 구조를 바꾸면 이 테스트가 먼저 잡아내게 함.
-# requests.get을 monkeypatch해서 네트워크 없이 파싱 로직만 검증한다.
+# fetch_investor_flow — m.stock.naver.com JSON API 파서 (2026-09-14부터, §6-9).
+# 원래 네이버 정적 HTML 표(/item/frgn.naver)를 긁었는데 네이버가 종목 페이지를
+# Next.js 클라이언트 렌더링으로 갈아엎으면서 그 표가 사라져 완전히 깨짐(9/10·9/11
+# 이틀 연속 전종목 실패). 지금은 그 페이지가 내부적으로 쓰는 모바일 API의
+# dealTrendInfos JSON을 대신 쓴다. requests.get을 monkeypatch해서 네트워크 없이
+# 파싱 로직만 검증한다.
+# fetch_market_flow는 아직 HTML 스크레이핑(다른 페이지, 이번 개편 영향 없음 확인됨).
 # ------------------------------------------------------------------ #
 class _FakeResp:
-    def __init__(self, content=None, text=None):
+    def __init__(self, content=None, text=None, json_data=None):
         self.content = content
         self.text = text
+        self._json_data = json_data
 
     def raise_for_status(self):
         pass
 
-
-_INVESTOR_FLOW_HTML = """
-<table summary="외국인 기관 순매매 거래량에 관한표이며 날짜별로 정보를 제공합니다." width="680">
-<caption>외국인 기관 순매매 거래량</caption>
-<tr class="title1"><th>날짜</th><th>종가</th><th>전일비</th><th>등락률</th><th>거래량</th>
-<th>기관</th><th>외국인</th><th>보유주수</th><th>보유율</th></tr>
-<tr><td colspan="9" height="8"></td></tr>
-<tr>
-<td width="62" class="tc"><span class="tah p10 gray03">2026.08.21</span></td>
-<td width="67" class="num"><span class="tah p11">184,000</span></td>
-<td width="67" class="num"><em class="bu_p bu_pdn"><span class="blind">하락</span></em>
-<span class="tah p11 nv01">800</span></td>
-<td width="67" class="num"><span class="tah p11 nv01">-0.43%</span></td>
-<td width="67" class="num"><span class="tah p11">55,426</span></td>
-<td width="66" class="num"><span class="tah p11 red01">+17,169</span></td>
-<td width="80" class="num"><span class="tah p11 nv01">-19,294</span></td>
-<td width="76" class="num"><span class="tah p11">1,947,174</span></td>
-<td width="60" class="num"><span class="tah p11">12.93%</span></td>
-</tr>
-</table>
-""".encode("euc-kr")
+    def json(self):
+        return self._json_data
 
 
-def test_fetch_investor_flow_parses_real_table_structure(monkeypatch):
+_INVESTOR_FLOW_JSON = {
+    "dealTrendInfos": [
+        {
+            "itemCode": "097950",
+            "bizdate": "20260821",
+            "foreignerPureBuyQuant": "-19,294",
+            "foreignerHoldRatio": "12.93%",
+            "organPureBuyQuant": "+17,169",
+            "individualPureBuyQuant": "+2,125",
+            "closePrice": "184,000",
+            "compareToPreviousClosePrice": "-800",
+            "accumulatedTradingVolume": "55,426",
+        }
+    ]
+}
+
+
+def test_fetch_investor_flow_parses_real_json_structure(monkeypatch):
     monkeypatch.setattr(core.requests, "get",
-                         lambda url, headers=None, timeout=None: _FakeResp(_INVESTOR_FLOW_HTML))
+                         lambda url, headers=None, timeout=None: _FakeResp(json_data=_INVESTOR_FLOW_JSON))
     rows = core.fetch_investor_flow("097950")
     assert len(rows) == 1
     r = rows[0]

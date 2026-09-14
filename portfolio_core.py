@@ -1687,55 +1687,58 @@ def refresh_market_cache(holdings: pd.DataFrame) -> dict:
 
 
 def fetch_investor_flow(code: str) -> list[dict]:
-    """네이버 개별종목 페이지(`/item/frgn.naver`)의 "외국인 기관 순매매 거래량" 표를 가져온다.
-    실시간 시세 API(JSON)와 달리 **화면용 HTML을 그대로 긁는 것**이라 더 깨지기 쉬움 —
-    네이버가 페이지 구조를 바꾸면 조용히 깨질 수 있다는 걸 알고 씀(2026-08-24, 사용자가
-    거래량/외국인 수급 등락폭을 보고 싶다고 해서 도입). 그래서 실패 시 예외를 던지지 않고
-    조용히 빈 리스트를 반환한다(fetch_index_quotes와 같은 패턴) — 호출부가 그날/그 종목만
-    스킵하고 넘어가면 됨.
+    """종목별 외국인/기관 순매매·보유율 조회.
 
-    한 번 호출로 최근 약 20영업일치가 한꺼번에 나온다 — 그래서 처음 도입할 때 매일 하루씩
-    쌓일 때까지 기다릴 필요 없이 즉시 한 달 가까이 백필(backfill)할 수 있다.
+    **2026-09-14 API 교체**: 원래 네이버 `/item/frgn.naver`의 정적 HTML 표를 긁었는데,
+    네이버가 finance.naver.com의 종목 페이지 전체를 Next.js 클라이언트 렌더링 앱으로
+    갈아엎으면서(2026-09-10 전후) 그 표가 최초 HTML 응답에서 통째로 사라짐 — 실제로
+    9/10·9/11 이틀 연속 180종목 전부 조회 실패(§6-9 cron 로그로 확인, 페이지 자체는
+    200으로 응답하지만 "순매매 거래량" 텍스트도 `<table>` 태그 자체도 없음). 이 함수의
+    옛 docstring이 경고했던 "네이버가 페이지 구조를 바꾸면 조용히 깨질 수 있다"가 실제로
+    발생한 사례. 지금은 그 Next.js 페이지가 내부적으로 부르는 모바일 API
+    (`m.stock.naver.com/api/stock/{code}/integration`, §6-15가 배당락일 조사 때 이미
+    한 번 확인해둔 엔드포인트)의 `dealTrendInfos` JSON을 대신 쓴다 — HTML 파싱보다
+    구조가 안정적이고(공식 API는 아니지만 JSON 스키마라 깨지기 더 어려움), 실패 시
+    빈 리스트 반환하는 기존 계약은 그대로 유지(fetch_index_quotes와 같은 패턴).
+
+    **주의**: 이 엔드포인트는 최근 **5영업일치만** 준다(옛 HTML 표는 ~20일치였음) — 일일
+    cron은 하루 한 행만 새로 필요해서 문제없지만, cron이 5영업일 넘게 멈췄다 재개되면
+    그 사이 공백은 이 함수만으로는 못 채운다(그런 경우 수동 재백필 필요).
 
     반환: [{"날짜": "YYYY-MM-DD", "거래량": int, "기관순매수": int, "외국인순매수": int,
-            "외국인보유율": float}, ...] — 최근 날짜부터 순서대로(페이지가 그렇게 줌)."""
-    url = f"https://finance.naver.com/item/frgn.naver?code={code}"
-    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
+            "외국인보유율": float}, ...] — 최근 날짜부터 순서대로(API가 그렇게 줌)."""
+    url = f"https://m.stock.naver.com/api/stock/{code}/integration"
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
         resp = requests.get(url, headers=headers, timeout=10)
         resp.raise_for_status()
-        html = resp.content.decode("euc-kr", errors="replace")
+        data = resp.json()
     except Exception:
         return []
 
-    def num(td):
-        t = td.get_text(strip=True).replace(",", "").replace("%", "").replace("+", "")
+    def to_num(v):
+        if v is None:
+            return None
+        t = str(v).replace(",", "").replace("%", "").replace("+", "")
         try:
             return float(t)
         except ValueError:
             return None
 
     try:
-        soup = BeautifulSoup(html, "html.parser")
-        table = soup.find("table", summary=lambda s: bool(s) and "순매매 거래량" in s)
-        if table is None:
-            return []
         rows = []
-        for tr in table.find_all("tr"):
-            tds = tr.find_all("td")
-            if len(tds) < 9:
+        for item in data.get("dealTrendInfos", []):
+            bizdate = item.get("bizdate") or ""
+            if len(bizdate) != 8:
                 continue
-            date_txt = tds[0].get_text(strip=True)
-            if not date_txt:
-                continue
-            volume = num(tds[4])
-            inst_net = num(tds[5])
-            foreign_net = num(tds[6])
-            foreign_pct = num(tds[8])
+            volume = to_num(item.get("accumulatedTradingVolume"))
+            inst_net = to_num(item.get("organPureBuyQuant"))
+            foreign_net = to_num(item.get("foreignerPureBuyQuant"))
+            foreign_pct = to_num(item.get("foreignerHoldRatio"))
             if volume is None or inst_net is None or foreign_net is None:
                 continue
             rows.append({
-                "날짜": date_txt.replace(".", "-"),
+                "날짜": f"{bizdate[0:4]}-{bizdate[4:6]}-{bizdate[6:8]}",
                 "거래량": int(volume),
                 "기관순매수": int(inst_net),
                 "외국인순매수": int(foreign_net),
