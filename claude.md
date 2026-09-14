@@ -350,6 +350,24 @@ manual/                           # report/와 성격이 다름 — **살아있�
   `fetch_daily_price_history`로 재생성해 두 레포에 **동일 파일**로 덮어씀(`index_history.csv`,
   `bigcap_history.csv`, `fund_nav_history.csv` 9/10 행도 meritz에 누락돼 있어 같이 맞춤).
   당일(9/10) 값은 장중이라 잠정 — 다음날 9/11 ingest가 9/10을 확정 종가로 자동 정정한다.
+- **5번째 재발 (2026-09-14) — 같은 병이 보유종목 평가(asset_history/sector_history)에도 있었음**:
+  위 수정은 index_history/bigcap_history에만 적용됐고, `asset_history`(보유종목 평가금액+현금)는
+  여전히 `compute_metrics(holdings2, ...)`로 **portfolio_data.csv에 남아있는 현재가**(마지막으로
+  새로고침된 시각의 값)를 그대로 썼다 — ingest는 "코드 없는 종목만" 보충하지 전체를 그 날짜
+  종가로 다시 찍어주지 않아서, **매매일지를 장중에 반영하면 그 시각의 장중가가 asset_history에
+  그날 "총자산"으로 박제**됨. 실제로 겪음: 9/11 반영이 낮 12:36 새로고침 시점 가격으로 찍혀서,
+  9/11 오후 장중 상승분(+약 6만원)이 다음 영업일(9/14)의 "어제 대비"/Today's Take에 통째로
+  잘못 얹혔고, §6-17 DC(하락 캡처)가 -1 근처까지 왜곡됨(벤치는 하락인데 내 계좌는 표면상 상승으로
+  찍혀서). **수정**: `portfolio_core.compute_metrics_at_close(df, cash, trade_date)` 신설 —
+  `compute_metrics`와 동일하지만, 평가 직전에 종목코드별로 `fetch_daily_price_history`로 그
+  trade_date의 **확정 종가**를 조회해 현재가를 바꿔치기하고(없으면 `_close_on`과 같은 원칙으로
+  실시간 시세 폴백, 그마저 없으면 기존 현재가), 그 사본으로 `compute_metrics`를 호출한다.
+  `ingest_daily.py`의 `snapshot_history`/`snapshot_sector_history` 직전 호출을 이걸로 교체했고,
+  **portfolio_data.csv에 저장되는 표시용 현재가는 건드리지 않는다**(스냅샷 계산에만 별도로 씀 —
+  화면에 보이는 현재가는 여전히 앱의 라이브 새로고침이 담당). 오염됐던 9/11 `asset_history`/
+  `sector_history` 행은 이 함수로 재계산해 그 자리에서 덮어씀(9,998,643 → 10,060,154원).
+  회귀 테스트 `test_compute_metrics_at_close_prefers_confirmed_close_over_stale_cached_price`,
+  `test_compute_metrics_at_close_falls_back_to_existing_price_when_all_lookups_fail`.
 
 ### 6-3. 바탕화면 `backup` 폴더
 - `C:\Users\frel\Desktop\backup` — git 저장소 아님, `new1`의 단순 스냅샷 복사본.

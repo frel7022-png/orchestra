@@ -1513,3 +1513,47 @@ def test_snapshot_fund_nav_history_overwrites_same_date(monkeypatch, tmp_path):
     out = core.load_fund_nav_history()
     assert list(out["날짜"]) == ["2026-01-05", "2026-01-06"]
     assert float(out[out["날짜"] == "2026-01-05"]["기준가"].iloc[0]) == 1995.0
+
+
+def test_compute_metrics_at_close_prefers_confirmed_close_over_stale_cached_price(monkeypatch):
+    """장중 반영이어도 스냅샷은 그 날짜 확정 종가 기준이어야 함(2026-09-14 도입 계기:
+    9/11 스냅샷이 낮 12:36 새로고침 시점 가격으로 찍혀 DC 캡처가 -1 근처로 왜곡됨)."""
+    df = pd.DataFrame([
+        {"종목명": "A", "종목코드": "000001", "섹터": "기타", "수량": 10,
+         "평단가": 1000, "현재가": 999999, "등락률": 0},
+        {"종목명": "B", "종목코드": "000002", "섹터": "기타", "수량": 5,
+         "평단가": 2000, "현재가": 111, "등락률": 0},
+    ])
+
+    def fake_close(code, start, end):
+        if code == "000001":
+            return [{"날짜": "2026-09-11", "종가": 1200.0, "거래량": 100}]
+        return []  # 000002는 그 날짜 확정 종가 없음(당일 장중 반영 등)
+
+    def fake_quotes(codes):
+        assert codes == ["000002"]  # 확정 종가 없는 종목만 실시간 폴백 대상
+        return {"000002": {"price": 2500.0, "change_pct": 1.0}}, []
+
+    monkeypatch.setattr(core, "fetch_daily_price_history", fake_close)
+    monkeypatch.setattr(core, "fetch_quotes", fake_quotes)
+
+    snap, stock_val, total_assets, _ = core.compute_metrics_at_close(df, cash=0, trade_date="2026-09-11")
+
+    assert stock_val == pytest.approx(10 * 1200.0 + 5 * 2500.0)
+    assert total_assets == pytest.approx(stock_val)
+    # 원본 df(표시용 현재가)는 안 건드림
+    assert df.loc[0, "현재가"] == 999999
+
+
+def test_compute_metrics_at_close_falls_back_to_existing_price_when_all_lookups_fail(monkeypatch):
+    df = pd.DataFrame([
+        {"종목명": "A", "종목코드": "000001", "섹터": "기타", "수량": 10,
+         "평단가": 1000, "현재가": 1500, "등락률": 0},
+    ])
+    monkeypatch.setattr(core, "fetch_daily_price_history", lambda *a, **k: [])
+    monkeypatch.setattr(core, "fetch_quotes", lambda codes: ({}, codes))
+
+    _, stock_val, total_assets, _ = core.compute_metrics_at_close(df, cash=0, trade_date="2026-09-11")
+
+    assert stock_val == pytest.approx(10 * 1500.0)
+    assert total_assets == pytest.approx(stock_val)

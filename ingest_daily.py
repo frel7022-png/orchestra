@@ -63,7 +63,12 @@ def main():
     core.save_holdings(holdings2)
     core.save_state(state2)
 
-    df, stock_val, total_assets, unrealized_loss = core.compute_metrics(holdings2, state2["cash"])
+    # 확정 종가 기준(compute_metrics_at_close) — 반영 시점이 장중이어도 asset_history
+    # 스냅샷이 항상 그 날짜의 실제 마감 기준이 되게 한다(2026-09-14, 9/11 낮 12:36 스냅
+    # 오염으로 DC 캡처가 -1 근처까지 왜곡된 것을 계기로 도입). portfolio_data.csv의 표시용
+    # 현재가는 그대로 두고(save_holdings는 위에서 이미 끝남) 스냅샷 계산에만 별도로 씀.
+    df, stock_val, total_assets, unrealized_loss = core.compute_metrics_at_close(
+        holdings2, state2["cash"], trade_date)
     core.snapshot_history(total_assets, total_assets + unrealized_loss, on_date=trade_date)
     core.snapshot_sector_history(core.compute_sector_weights(df), on_date=trade_date)
 

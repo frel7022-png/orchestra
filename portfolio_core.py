@@ -2619,6 +2619,51 @@ def compute_metrics(df: pd.DataFrame, cash: float):
     return df, stock_valuation, total_assets, unrealized_loss
 
 
+def compute_metrics_at_close(df: pd.DataFrame, cash: float, trade_date: str):
+    """compute_metrics의 "확정 종가" 버전 — asset_history/sector_history 스냅샷 전용.
+
+    ingest_daily.py는 매매일지를 하루 중 아무 때나(장중 포함) 반영할 수 있는데, 그 시점에
+    portfolio_data.csv에 남아있는 현재가는 마지막으로 새로고침된 시각의 값(장중 한 시점)일
+    뿐 그 날짜의 실제 마감가가 아니다 — 그래서 asset_history에 찍히는 "그날 총자산"이 장중
+    스냅이 되어버리고, 다음날 라이브 시세와 비교하는 "어제 대비"가 왜곡된다(실제로 2026-09-11:
+    낮 12:36 새로고침 시점으로 찍혀서, 그날 오후 장중 변동분이 다음 영업일의 "어제 대비"에
+    잘못 얹힘 → DC 캡처까지 왜곡됨).
+
+    trade_date의 확정 종가(fetch_daily_price_history)를 종목코드별로 조회해 그 값으로
+    평가하고, 아직 확정 종가가 없으면(당일 장중 반영 등, index/bigcap의 _close_on과 동일
+    폴백 원칙) 실시간 시세로, 그마저 안 되면 df에 이미 있던 현재가로 대체한다.
+    **portfolio_data.csv에 저장되는 표시용 현재가는 건드리지 않는다** — 반환된 df는 스냅샷
+    계산에만 쓰고 save_holdings()에 넘기지 말 것."""
+    codes = [clean_str(c) for c in df["종목코드"].tolist()]
+    codes = [c for c in codes if c and c.lower() != "nan"]
+
+    close_map: dict[str, float] = {}
+    for code in dict.fromkeys(codes):
+        try:
+            for row in fetch_daily_price_history(code, trade_date, trade_date) or []:
+                if row.get("날짜") == trade_date and row.get("종가"):
+                    close_map[code] = float(row["종가"])
+        except Exception:
+            pass
+
+    missing = [c for c in dict.fromkeys(codes) if c not in close_map]
+    if missing:
+        try:
+            live_quotes, _ = fetch_quotes(missing)
+        except Exception:
+            live_quotes = {}
+        for c, q in live_quotes.items():
+            close_map[c] = q["price"]
+
+    snap = df.copy()
+    for i, row in snap.iterrows():
+        code = clean_str(row.get("종목코드", ""))
+        if code in close_map:
+            snap.loc[i, "현재가"] = close_map[code]
+
+    return compute_metrics(snap, cash)
+
+
 def compute_sector_weights(df: pd.DataFrame) -> dict:
     """섹터그룹별 비중(%). 주식 평가금액 총합 대비이며 예수금은 포함하지 않음."""
     if df.empty:
