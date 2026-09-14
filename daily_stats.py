@@ -79,7 +79,7 @@ def main() -> None:
     for _, r in sell.sort_values("실현손익", ascending=False).iterrows():
         amt = r["수량"] * r["단가"]
         pct = (r["실현손익"] / amt * 100) if amt else 0
-        print(f"   − {r['종목명']}  {r['수량']:.0f}주 @ {r['단가']:,.0f}  실현 {r['실현손익']:,.0f}원 ({pct:+.1f}%)")
+        print(f"   - {r['종목명']}  {r['수량']:.0f}주 @ {r['단가']:,.0f}  실현 {r['실현손익']:,.0f}원 ({pct:+.1f}%)")
 
     print(f"\n[예수금]  {st['cash']:,.0f}원  (총자산 대비 {st['cash'] / total_assets * 100:.1f}%)")
     print(f"[총자산]  {total_assets:,.0f}원   [미실현손실]  -{unreal:,.0f}원")
