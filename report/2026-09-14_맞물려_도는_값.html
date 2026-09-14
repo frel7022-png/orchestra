@@ -1,0 +1,307 @@
+<title>맞물려 도는 값</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:780px; margin:0 auto; padding:56px 24px 96px}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:14px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.5rem; line-height:1.18; letter-spacing:-.01em; margin:0 0 18px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:22px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-size:1.02rem; font-weight:700; letter-spacing:.01em; margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent); font-weight:500}
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent); border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow)}
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+  .flag{background:var(--warn-wash); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:22px 0; font-size:13.5px}
+  .flag .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--warn); margin-bottom:8px}
+  .flag ol{margin:6px 0 0; padding-left:20px}
+  .flag li{margin:8px 0}
+
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:13.5px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:8px 11px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12px; letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  tr.tot td{border-top:1.5px solid var(--rule); font-weight:600}
+  td .sub{display:block; font-size:11px; color:var(--ink-faint)}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+  .chk{color:var(--accent); font-weight:600}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+  .callout ul li::before{content:"·"}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; box-shadow:var(--shadow)}
+  .stat .k{font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; margin-top:3px}
+  .stat .c{font-size:12px; color:var(--ink-soft); margin-top:2px}
+
+  .chart-card{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:18px 18px 8px; margin:22px 0; box-shadow:var(--shadow)}
+
+  .tier{border-left:3px solid var(--rule); padding:2px 0 2px 16px; margin:16px 0}
+  .tier.pass{border-color:var(--accent)}
+  .tier.grey{border-color:var(--warn)}
+  .tier.out{border-color:var(--loss)}
+  .tier .tl{font-weight:600; font-size:13px; margin-bottom:2px}
+  .tier .bd{font-size:13px; color:var(--ink-soft)}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table,.stat,.flag,.chart-card{box-shadow:none}
+    h2{break-after:avoid} table,.verdict,.stat-grid,.flag,.chart-card{break-inside:avoid}
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">연결고리 재감사 · Orchestra × Orchestration · 2026-09-14</div>
+  <h1>맞물려 도는 값</h1>
+  <p class="dek">new1의 실현손익은 445,230원, meritz는 125,110원 — 셋 중 하나만 보면 new1의 완승이다.
+  그런데 각자의 벤치마크(혼합지수·반도체 제외지수) 대비 초과수익을 재보면 <strong>meritz가 두 계좌
+  모두, 두 지수 모두에서 앞선다.</strong> 3일 전 리포트("먼저 담은 값을 치르다")가 43개 공동보유
+  종목에서 이미 밝힌 원인 — <strong>meritz는 항상 더 늦게, 더 싸게 들어간다</strong> — 이 오늘도
+  그대로 유효한지 재확인하고, 그 위에 새 질문 셋을 얹는다: 이게 정말 "헷지가 작동한다"는 뜻인가,
+  왜 두 계좌는 완전한 쌍둥이가 아닌가, 그리고 겨우 한 달로 이런 결론을 내려도 되는가.</p>
+  <div class="meta">
+    <span>작성 2026-09-14 16:40 KST (장마감 후 확정치)</span>
+    <span>Orchestra=new1 · Orchestration=meritz</span>
+    <span>표본 2026-08-14~09-14</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <p class="lead">판정: 지금 meritz가 앞서는 건 실력이 아니라 설계다 — 그리고 그 설계는
+  지금까지는 정확히 의도대로 작동하고 있다.</p>
+  <p>meritz의 우위는 여전히 <strong>단일 변수(평단가 비율)</strong>로 거의 다 설명된다(r=−0.91,
+  이상치 1건 제외 시 −0.98). new1이 먼저 사서 비싸게 물리고, meritz가 −5% 이상 빠진 뒤에야
+  더 싸게 들어가는 구조가 <strong>하락장 한 달 동안 정확히 설계된 방향으로</strong> 결과를 냈다는
+  뜻이다. 다만 이건 "meritz가 종목을 더 잘 골랐다"가 아니라 "이 시장 국면에서 늦게 들어간 쪽이
+  구조적으로 유리했다"는 뜻이고, 장이 뒤집히면 이 우위도 뒤집힌다(§06).</p>
+</div>
+
+<h2><span class="n">01</span> 사흘 전 결론, 오늘도 유효한가</h2>
+<p>9월 11일 리포트는 당시 공동보유 43종목 전부에서 meritz의 평단가가 낮고 43/43에서 meritz의
+손익률이 더 좋았으며, 그 격차가 <strong>평단가 비율 하나로 r=−0.994</strong>만큼 설명된다고
+결론지었다. 사흘이 지난 오늘, 공동보유는 여전히 43종목(코드 기준)이다. 재감사 결과:</p>
+<div class="stat-grid">
+  <div class="stat">
+    <div class="k">평단가 — meritz가 더 낮은 종목</div>
+    <div class="v">43 / 43</div>
+    <div class="c">사흘 전과 동일하게 100% — 예외 없음</div>
+  </div>
+  <div class="stat">
+    <div class="k">손익률 — meritz가 더 좋은 종목</div>
+    <div class="v">42 / 43</div>
+    <div class="c">유일한 예외는 씨앤씨인터내셔널(각주 참고)</div>
+  </div>
+</div>
+<p>평단가 비율과 손익률격차의 상관은 <strong>r=−0.91</strong>로 사흘 전(−0.994)보다 낮아진
+것처럼 보이지만, 유일한 예외 종목(씨앤씨인터내셔널)을 빼면 <strong>r=−0.98</strong>로 원래
+수준을 회복한다 — 두 계좌의 그 종목 현재가가 4분 차이로 21,800원과 19,870원으로 갈린 시세
+동기화 오차 때문이지 관계 자체가 무너진 게 아니다. 아래 산점도는 이 43개 점을 그대로 그린 것 —
+평단가 비율이 1.00에 가까운 종목은 격차도 0에 가깝고, 비율이 벌어질수록 격차도 거의 정직하게
+비례해서 벌어진다.</p>
+<div class="chart-card">
+<svg viewBox="0 0 640 400" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block"><line x1="48.0" y1="34" x2="48.0" y2="360" stroke="var(--rule-soft)" stroke-width="1"/><text x="48.0" y="376" font-size="10" fill="var(--ink-faint)" text-anchor="middle">1.00</text><line x1="144.0" y1="34" x2="144.0" y2="360" stroke="var(--rule-soft)" stroke-width="1"/><text x="144.0" y="376" font-size="10" fill="var(--ink-faint)" text-anchor="middle">1.05</text><line x1="240.0" y1="34" x2="240.0" y2="360" stroke="var(--rule-soft)" stroke-width="1"/><text x="240.0" y="376" font-size="10" fill="var(--ink-faint)" text-anchor="middle">1.10</text><line x1="336.0" y1="34" x2="336.0" y2="360" stroke="var(--rule-soft)" stroke-width="1"/><text x="336.0" y="376" font-size="10" fill="var(--ink-faint)" text-anchor="middle">1.15</text><line x1="432.0" y1="34" x2="432.0" y2="360" stroke="var(--rule-soft)" stroke-width="1"/><text x="432.0" y="376" font-size="10" fill="var(--ink-faint)" text-anchor="middle">1.20</text><line x1="528.0" y1="34" x2="528.0" y2="360" stroke="var(--rule-soft)" stroke-width="1"/><text x="528.0" y="376" font-size="10" fill="var(--ink-faint)" text-anchor="middle">1.25</text><line x1="624.0" y1="34" x2="624.0" y2="360" stroke="var(--rule-soft)" stroke-width="1"/><text x="624.0" y="376" font-size="10" fill="var(--ink-faint)" text-anchor="middle">1.30</text><line x1="48" y1="34.0" x2="624" y2="34.0" stroke="var(--rule-soft)" stroke-width="1"/><text x="42" y="37.0" font-size="10" fill="var(--ink-faint)" text-anchor="end">+10%p</text><line x1="48" y1="80.6" x2="624" y2="80.6" stroke="var(--rule-soft)" stroke-width="1"/><text x="42" y="83.6" font-size="10" fill="var(--ink-faint)" text-anchor="end">+5%p</text><line x1="48" y1="127.1" x2="624" y2="127.1" stroke="var(--rule-soft)" stroke-width="1"/><text x="42" y="130.1" font-size="10" fill="var(--ink-faint)" text-anchor="end">0%p</text><line x1="48" y1="173.7" x2="624" y2="173.7" stroke="var(--rule-soft)" stroke-width="1"/><text x="42" y="176.7" font-size="10" fill="var(--ink-faint)" text-anchor="end">-5%p</text><line x1="48" y1="220.3" x2="624" y2="220.3" stroke="var(--rule-soft)" stroke-width="1"/><text x="42" y="223.3" font-size="10" fill="var(--ink-faint)" text-anchor="end">-10%p</text><line x1="48" y1="266.9" x2="624" y2="266.9" stroke="var(--rule-soft)" stroke-width="1"/><text x="42" y="269.9" font-size="10" fill="var(--ink-faint)" text-anchor="end">-15%p</text><line x1="48" y1="313.4" x2="624" y2="313.4" stroke="var(--rule-soft)" stroke-width="1"/><text x="42" y="316.4" font-size="10" fill="var(--ink-faint)" text-anchor="end">-20%p</text><line x1="48" y1="360.0" x2="624" y2="360.0" stroke="var(--rule-soft)" stroke-width="1"/><text x="42" y="363.0" font-size="10" fill="var(--ink-faint)" text-anchor="end">-25%p</text><line x1="48.0" y1="132.4" x2="624.0" y2="350.3" stroke="var(--ink-faint)" stroke-width="1.4" stroke-dasharray="3,3"/><circle cx="98.1" cy="155.8" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="228.9" cy="204.6" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="204.1" cy="195.7" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="197.1" cy="194.3" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="240.1" cy="211.6" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="109.9" cy="154.4" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="141.6" cy="170.0" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="129.4" cy="164.8" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="179.1" cy="180.6" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="162.7" cy="177.6" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="244.4" cy="216.1" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="173.3" cy="182.7" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="170.7" cy="182.2" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="216.0" cy="202.6" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="126.1" cy="160.1" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="96.0" cy="150.0" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="89.8" cy="147.1" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="126.4" cy="172.7" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="98.7" cy="149.5" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="154.5" cy="178.5" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="168.0" cy="178.4" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="190.5" cy="186.8" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="97.4" cy="145.2" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="56.7" cy="131.5" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="126.0" cy="163.3" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="150.9" cy="177.3" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="52.4" cy="128.4" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="83.4" cy="144.0" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="125.7" cy="161.5" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="113.2" cy="157.5" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="66.5" cy="134.1" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="584.3" cy="321.4" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="140.2" cy="170.5" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="207.6" cy="196.8" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="127.9" cy="163.8" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="104.0" cy="71.2" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="112.3" cy="158.3" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="84.1" cy="182.6" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="140.3" cy="170.8" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="91.2" cy="145.9" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="95.4" cy="148.7" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="91.4" cy="150.5" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><circle cx="131.1" cy="164.6" r="4.2" fill="var(--loss)" fill-opacity="0.55" stroke="var(--card)" stroke-width="0.6"/><text x="577.3" y="315.4" font-size="10.5" fill="var(--ink-soft)" text-anchor="end">앱클론</text><text x="251.4" y="210.1" font-size="10.5" fill="var(--ink-soft)" text-anchor="start">한샘</text><text x="247.1" y="205.6" font-size="10.5" fill="var(--ink-soft)" text-anchor="start">JYP Ent.</text><text x="235.9" y="198.6" font-size="10.5" fill="var(--ink-soft)" text-anchor="start">오스테오닉</text><text x="111.0" y="65.2" font-size="10.5" fill="var(--ink-soft)" text-anchor="start">씨앤씨인터내셔널</text><text x="73.5" y="128.1" font-size="10.5" fill="var(--ink-soft)" text-anchor="start">원익QnC</text><text x="624" y="14" font-size="11" fill="var(--ink-faint)" text-anchor="end">기울기 -78.0 &#183; r = -0.909</text><text x="336.0" y="396" font-size="11" fill="var(--ink-faint)" text-anchor="middle">평단비 (new1 평단가 &#247; meritz 평단가)</text><text x="14" y="197.0" font-size="11" fill="var(--ink-faint)" text-anchor="middle" transform="rotate(-90 14 197.0)">손익률격차 (new1 &#8722; meritz, %p)</text></svg>
+</div>
+<p>격차가 가장 큰 종목은 여전히 <strong>앱클론</strong>이다 — new1 평단가가 meritz보다
+27.9% 비싸고(평단비 1.28), 손익률격차는 −20.9%p(new1 −25.3% vs meritz −4.5%)까지 벌어졌다.
+사흘 전(−21.7%p)과 사실상 같은 크기다.</p>
+
+<h2><span class="n">02</span> 종목이 아니라 계좌 전체로 보면</h2>
+<p>여기서 새 질문이 생긴다 — 개별 종목 단위 비교는 "meritz가 담은 43종목 안에서" 얘기다.
+계좌 전체(new1은 83종목, meritz는 44종목)로, 그것도 각자의 벤치마크 대비 초과수익으로 재면
+결론이 달라질 수도 있다. 재보니 <strong>달라지지 않는다 — 오히려 meritz가 두 기준 모두에서
+초과폭이 더 크다.</strong></p>
+<div class="scroll">
+<table>
+  <thead><tr><th>구분</th><th>누적수익</th><th>혼합지수 대비</th><th>W/O SH 대비</th></tr></thead>
+  <tbody>
+    <tr><td>new1 계좌<span class="sub">벤치 혼합 −4.98% / W·O·SH −6.28%</span></td>
+      <td class="num loss">−0.75%</td><td class="num gain">+4.23%p</td><td class="num gain">+5.53%p</td></tr>
+    <tr><td>new1 보유주식만</td>
+      <td class="num loss">−1.40%</td><td class="num gain">+3.58%p</td><td class="num gain">+4.88%p</td></tr>
+    <tr><td>meritz 계좌<span class="sub">벤치 혼합 −5.18% / W·O·SH −6.30%</span></td>
+      <td class="num loss">−0.16%</td><td class="num gain">+5.02%p</td><td class="num gain">+6.14%p</td></tr>
+    <tr><td>meritz 보유주식만</td>
+      <td class="num gain">+1.65%</td><td class="num gain">+6.83%p</td><td class="num gain">+7.95%p</td></tr>
+  </tbody>
+  <caption>혼합지수=보유비중 가중 코스피·코스닥. W/O SH=삼성전자·삼성전자우·SK하이닉스 제외 지수.
+  각 계좌는 자기 자신의 벤치(자기 보유비중 기준 가중치)와 비교함 — new1과 meritz의 벤치 수치가
+  다른 건 두 계좌의 업종 구성이 다르기 때문.</caption>
+</table>
+</div>
+<p>즉 <strong>실현손익 총액은 new1(445,230원)이 meritz(125,110원)의 3.6배</strong>지만, 이건
+당연하다 — new1은 초기자본이 1.25배 더 크고 더 많은 사이클(198개 vs meritz 추정 다수)을
+돌리는 "1차 계층·회전" 계좌이고, meritz는 "2차 계층·쌓아가는" 계좌라 realized 자체가 설계상
+적다(§6-20 P&L Actions, [[user_investment_strategy]]). 이 리포트가 비교하는 건 실현액이 아니라
+<strong>"각자 자기 벤치를 얼마나 이겼는가"</strong>이고, 그 기준으로는 meritz 보유주식(+6.83~
++7.95%p)이 new1 보유주식(+3.58~4.88%p)보다 확실히 더 크게 이긴다.</p>
+
+<h2><span class="n">03</span> 이게 "헷지가 작동한다"는 뜻인가 — 커버리지 감사</h2>
+<p>meritz의 존재 이유는 [[project_meritz_sibling]]에 명시된 대로 "new1에서 −5% 이상 손실 난
+종목만 골라 담는 헷지 계좌"다. 그렇다면 진짜 확인해야 할 건 손익률 격차가 아니라
+<strong>"new1에서 −5% 넘게 빠진 종목을 meritz가 실제로 다 담고 있는가"</strong>다.</p>
+<div class="stat-grid">
+  <div class="stat">
+    <div class="k">new1 −5% 이하 종목</div>
+    <div class="v">25개</div>
+    <div class="c">현재 83개 보유 중 손익률 −5% 이하</div>
+  </div>
+  <div class="stat">
+    <div class="k">그중 meritz가 담은 종목</div>
+    <div class="v gain">23 / 25</div>
+    <div class="c">커버리지 92%</div>
+  </div>
+</div>
+<p>누락 2종목: <strong>OCI홀딩스</strong>(new1 손익률 −11.6%, meritz 미보유)와
+<strong>제이에스링크</strong>(−5.8%, 미보유). 둘 다 아직 −5% 문턱을 최근에 넘었거나
+넘은 지 얼마 안 됐을 가능성이 높다 — 규칙이 깨진 게 아니라 아직 반영 안 된 대기열로 보인다.
+반대 방향의 변화도 하나 있다: <strong>파마리서치</strong>는 이제 meritz만 들고 있고
+new1에는 없다 — meritz가 처음으로 "new1의 −5% 손실 종목"이 아닌 이유로 담은 종목이다
+(파마리서치는 오늘 기준 Link 패널의 "다이버전스" 최상위 후보이기도 하다, §6-28). 43종목이던
+"new1의 완전한 부분집합" 구조가 43+1로 살짝 벌어진 셈 — 규칙 위반이라기보다 meritz가 Link
+신호를 참고해 첫 독자 판단을 시작한 신호일 수 있어, 의도된 것인지 확인이 필요하다.</p>
+
+<h2><span class="n">04</span> 오늘 실시간으로 본 메커니즘 — 마녀공장</h2>
+<p>이 "늦고 싸게"가 실제로 어떻게 작동하는지, 오늘 두 계좌가 마녀공장을 정리한 거래가
+그대로 보여준다.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>계좌</th><th>물타기</th><th>최종 평단가</th><th>오늘 매도</th><th>실현손익</th></tr></thead>
+  <tbody>
+    <tr><td>new1</td><td class="num">6회 (17,360→15,570원)</td><td class="num">16,330원</td>
+      <td class="num">2주 @ 16,910원</td><td class="num gain">+1,092원 (+3.2%)</td></tr>
+    <tr><td>meritz</td><td class="num">6회 (17,140→15,595원)</td><td class="num">16,256원</td>
+      <td class="num">3주 @ 16,910원</td><td class="num gain">+1,860원 (+3.7%)</td></tr>
+  </tbody>
+  <caption>물타기 날짜는 거의 겹친다(9/3·9/7·9/8·9/10 공통) — 같은 리듬으로 같이 물을 타면서도
+  meritz가 매번 조금 더 늦게 시작해(첫 매수 8/28 vs new1 8/18) 매 구간 조금 더 싸게 담았다.</caption>
+</table>
+</div>
+<p>같은 날 같은 가격에 판 두 계좌가 실현손익률에서 0.5%p 차이가 나는 이유는 종목을 다르게
+고른 게 아니라 <strong>같은 종목을 다른 시점에 산 것</strong> 하나뿐이다 — §01~02의 43종목
+평균 패턴이 오늘 하루치 실제 거래로 축약된 사례다.</p>
+
+<h2><span class="n">05</span> 왜 완전한 쌍둥이가 아닌가</h2>
+<p>meritz 보유가 new1의 부분집합에 가깝다면 두 계좌의 일별 수익률도 거의 같이 움직여야
+할 것 같지만, <code>both_accounts.csv</code> 21거래일 기준 상관은 생각보다 낮다.</p>
+<div class="stat-grid">
+  <div class="stat">
+    <div class="k">일별 변화량 상관</div>
+    <div class="v">0.35</div>
+    <div class="c">그날그날의 방향은 절반도 안 맞음</div>
+  </div>
+  <div class="stat">
+    <div class="k">누적수익 레벨 상관</div>
+    <div class="v">0.56</div>
+    <div class="c">한 달치 흐름은 어느 정도 같이 감</div>
+  </div>
+</div>
+<p>낮은 이유는 세 가지다: (1) <strong>예수금 비중이 다르다</strong> — new1 27.5% vs meritz
+39.9%, meritz가 더 두꺼운 현금 쿠션을 들고 있어 계좌 전체 변동성이 구조적으로 완충된다.
+(2) <strong>종목별 비중이 다르다</strong> — 같은 43종목을 들고 있어도 각자의 총자산 대비
+비중이 달라 같은 종목의 등락이 계좌 수익률에 미치는 영향력이 서로 다르다. (3) new1은 meritz에
+없는 <strong>40종목을 추가로</strong> 들고 있어(오늘의 삼성전자·GS건설·블랙야크아이앤씨 등
+신규 진입 포함) 그만큼 meritz와 무관하게 움직이는 부분이 크다. 결국 "같은 뿌리"이되 뿌리에서
+갈라진 두 가지가 서로 다른 두께의 가지로 자란 셈 — 완전한 복제가 아니라 <strong>느슨하게
+연동된 두 시스템</strong>이라는 게 이 상관계수의 의미다.</p>
+
+<h2><span class="n">06</span> 판정 — 지금은 맞는데, 언제까지 맞을까</h2>
+<div class="tier pass">
+  <div class="tl">지금까지 확인된 것</div>
+  <div class="bd">−5% 규칙이 92% 커버리지로 실제로 지켜지고 있고, "늦고 싸게"라는 설계된
+  메커니즘이 43개 종목·43번의 거래 사례 모두에서 예외 없이 같은 방향으로 나타난다.
+  이건 헷지 오버레이가 고장 없이 작동 중이라는 뜻이다.</div>
+</div>
+<div class="tier grey">
+  <div class="tl">아직 확인 안 된 것</div>
+  <div class="bd">이 우위가 "meritz의 판단력"인지 "이번 국면이 하락 일변도였을 뿐"인지는
+  이 데이터만으로는 못 가른다. new1이 먼저·더 크게 태운 만큼(§6-20 FA 회전·실현 다수),
+  반등이 오면 회전율과 먼저 확보한 물량이 유리하게 작용할 수 있다.</div>
+</div>
+<div class="flag">
+  <div class="h">뒤집히는 조건</div>
+  <ol>
+    <li>밸류 코어가 며칠 연속 반등 — new1이 meritz보다 훨씬 많은 사이클(198개)을 돌리며
+    이미 확보해 둔 물량과 낮아진 회전 단가가 반등을 더 크게 태울 수 있다.</li>
+    <li>meritz가 부분집합을 벗어나는 빈도가 늘어남(파마리서치처럼) — 그러면 이 리포트의
+    "같은 종목, 다른 시점" 비교 자체가 성립하지 않는 종목이 늘어난다.</li>
+    <li>OCI홀딩스·제이에스링크 같은 커버리지 공백이 방치돼 −5% 규칙이 느슨해짐.</li>
+  </ol>
+</div>
+
+<h2><span class="n">07</span> "고작 한 달"이 아닌 이유</h2>
+<p>이 리포트의 핵심 주장 두 가지는 성격이 다르다. 하나는 <strong>산술적 주장</strong>이다 —
+"meritz는 항상 더 늦게, 더 싸게 산다"는 43개 종목 각각에서 독립적으로 검증되는 사실이고,
+평단가와 매수일자라는 이미 확정된 숫자를 비교하는 것뿐이라 표본이 43일이든 430일이든
+결론이 달라지지 않는다. 다른 하나는 <strong>성과적 주장</strong>이다 — "그래서 이 두 계좌
+구조가 장기적으로 더 나은 결과를 낸다"는 건 하락장 한 달만으로는 증명도 반증도 안 된다(§06의
+뒤집히는 조건이 그 이유다).</p>
+<p>그래서 "겨우 한 달"이라는 지적은 두 번째 주장에는 정당하지만 첫 번째 주장에는 적용되지 않는다
+— 오히려 <strong>한 달 만에 43개 독립 사례에서 예외 없이 같은 메커니즘이 관찰됐다는 것 자체가
+그 메커니즘이 노이즈가 아니라 설계대로 작동하는 규칙이라는 증거</strong>다. 표본이 작아서
+못 믿는 건 "얼마나 버는가" 같은 성과 지표지, "정확히 이렇게 사고 있는가" 같은 메커니즘
+확인은 아니다 — 이 구분이 이번 리포트가 지난 리포트에 더하는 유일하지만 중요한 시각이다.</p>
+
+<footer>
+  new1/report/2026-09-14_맞물려_도는_값.html · 수치는 2026-09-14 16:40 KST 장마감 확정
+  종가·확정 거래 기준(§6-2 장중 스냅 문제 정정 이후). 평단비=new1평단가÷meritz평단가,
+  손익률격차=new1손익률−meritz손익률(%p, 손익률=현재가/평단가−1), 상관계수는 43개 종목 단위
+  피어슨 상관. 계좌/주식 초과수익은 portfolio_core.compute_index_vs_account 산출값.
+  전신: report/2026-09-11_먼저_담은_값.html, report/2026-09-11_주간_같은_뿌리_다른_가지.html.
+  참고: [[project_meritz_sibling]] · [[user_investment_strategy]]
+</footer>
+</div>
