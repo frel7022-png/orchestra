@@ -297,7 +297,7 @@ def _render_link_panel(ph, fh, live_quotes, refresh_fn, T):
             days = r.get("경과일")
             days_s = f"{int(days)}일째" if days is not None else "—"
             rows += (f'<div class="updown-row flow-row"><span class="name">{r["종목명"]}</span>'
-                     f'<span class="detail" style="color:{T["muted"]}">{r["기준일"]}~{days_s}</span>'
+                     f'<span class="detail" style="color:{T["muted"]}">{r["플래그일"]}~{days_s}</span>'
                      f'<span class="pct" style="color:{cp_c}">{cp_s}</span>'
                      f'<span class="pct" style="color:{cf_c}">{cf_s}</span></div>')
         st.markdown(rows, unsafe_allow_html=True)
