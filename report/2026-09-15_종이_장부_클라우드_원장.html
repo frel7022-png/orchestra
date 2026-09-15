@@ -1,0 +1,355 @@
+<title>종이 장부, 클라우드 원장</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:780px; margin:0 auto; padding:56px 24px 96px}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:14px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.5rem; line-height:1.18; letter-spacing:-.01em; margin:0 0 18px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:22px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-size:1.02rem; font-weight:700; letter-spacing:.01em; margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent); font-weight:500}
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent); border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow)}
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+  .flag{background:var(--warn-wash); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:22px 0; font-size:13.5px}
+  .flag .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--warn); margin-bottom:8px}
+  .flag ol{margin:6px 0 0; padding-left:20px}
+  .flag li{margin:8px 0}
+
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:13.5px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:8px 11px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12px; letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  td .sub{display:block; font-size:11px; color:var(--ink-faint)}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; box-shadow:var(--shadow)}
+  .stat .k{font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; margin-top:3px}
+  .stat .c{font-size:12px; color:var(--ink-soft); margin-top:2px}
+
+  .chart-card{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:18px 18px 10px; margin:22px 0; box-shadow:var(--shadow)}
+  figure{margin:0}
+  figcaption{font-size:12px; color:var(--ink-faint); text-align:left; padding-top:10px}
+  svg text{fill:currentColor; color:var(--ink-soft)}
+
+  .tier{border-left:3px solid var(--rule); padding:2px 0 2px 16px; margin:16px 0}
+  .tier.pass{border-color:var(--accent)}
+  .tier.grey{border-color:var(--warn)}
+  .tier .tl{font-weight:600; font-size:13px; margin-bottom:2px}
+  .tier .bd{font-size:13px; color:var(--ink-soft)}
+
+  code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--rule-soft); padding:.1em .35em; border-radius:4px}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table,.stat,.flag,.chart-card{box-shadow:none}
+    h2{break-after:avoid} table,.verdict,.stat-grid,.flag,.chart-card{break-inside:avoid}
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">구조 해설 · new1 & meritz 인프라 · 2026-09-15</div>
+  <h1>종이 장부, 클라우드 원장</h1>
+  <p class="dek">CSV는 <strong>종이 장부</strong>다 — 내가 쓰고, 파일 캐비닛(GitHub)에 넣어두고,
+  필요하면 다시 꺼내 읽는다. DB(Supabase)는 <strong>클라우드 원장</strong>이다 — 나도 쓰고
+  다른 지점(meritz)도 동시에 같은 장부를 본다. 지금 이 앱은 이 둘을 용도에 맞게 나눠 쓰고 있고,
+  그 경계가 왜 거기 그어져 있는지, 어제·오늘 겪은 버그들이 왜 하필 그 경계 근처에서만 터지는지를
+  이 리포트에서 그림과 함께 정리한다.</p>
+  <div class="meta">
+    <span>작성 2026-09-15</span>
+    <span>대상: new1(Orchestra) · meritz(Orchestration)</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <p class="lead">한 줄 요약: 코드가 아니라 "같은 사실을 누가 어디서 몇 번 저장하는가"가 지금까지
+  터진 버그의 90%를 설명한다.</p>
+  <p>혼자만 아는 사실(내 거래 내역)은 CSV+git으로 충분하고 실제로 잘 작동해왔다. 반대로
+  <strong>여러 곳(153종목 스크리너, new1·meritz 양쪽 앱)이 동시에 참조해야 하는 사실</strong>
+  (코스피 시세, 외국인 수급)은 CSV로 관리하는 순간 "누가 언제 받아왔느냐"에 따라 서로 다른
+  버전이 생긴다 — 어제의 investor_flow 스크레이핑 중단, 오늘의 new1·meritz 코스피 수치 불일치가
+  전부 이 구조적 이유 하나로 설명된다.</p>
+</div>
+
+<h2><span class="n">01</span> 지금 실제로 이렇게 돌아간다</h2>
+<p>말로 설명하면 복잡한데, 그림으로 보면 왜 CSV 쪽(왼쪽)이 DB 쪽(오른쪽)보다 손이 더 많이
+가는지 한눈에 보인다.</p>
+<div class="chart-card">
+<figure>
+<svg viewBox="0 0 720 470" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="세션이 GitHub에 git push해야 Streamlit Cloud 컨테이너에 CSV가 반영되고, 그 컨테이너는 재배포마다 초기화된다. 반면 GitHub Actions는 매일 자동으로 Supabase에 직접 저장하고 앱은 그걸 읽기만 한다."
+     style="width:100%;height:auto;display:block">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <!-- column labels -->
+  <text x="185" y="16" font-size="11" text-anchor="middle" fill="var(--ink-faint)" letter-spacing="0.06em">CSV 경로 (수동 왕복)</text>
+  <text x="555" y="16" font-size="11" text-anchor="middle" fill="var(--ink-faint)" letter-spacing="0.06em">DB 경로 (자동·직결)</text>
+
+  <!-- 세션 -->
+  <rect x="30" y="30" width="230" height="50" rx="8" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.55"/>
+  <text x="145" y="59" font-size="13" text-anchor="middle">세션 (Claude, 대화)</text>
+
+  <!-- GitHub Actions -->
+  <rect x="450" y="30" width="240" height="50" rx="8" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.55"/>
+  <text x="570" y="53" font-size="13" text-anchor="middle">GitHub Actions</text>
+  <text x="570" y="69" font-size="11" text-anchor="middle" fill="var(--ink-faint)">매일 16:13 KST 자동 실행</text>
+
+  <!-- arrow 세션->github repo -->
+  <line x1="145" y1="80" x2="145" y2="120" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)"/>
+  <text x="152" y="103" font-size="10.5" fill="var(--gain)">git push (수동)</text>
+
+  <!-- GitHub 저장소 -->
+  <rect x="30" y="120" width="290" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+  <text x="175" y="145" font-size="13.5" font-weight="600" text-anchor="middle">GitHub 저장소</text>
+  <text x="175" y="163" font-size="11" text-anchor="middle" fill="var(--ink-soft)">코드(.py) + CSV 데이터, 버전관리됨</text>
+  <text x="175" y="177" font-size="10" text-anchor="middle" fill="var(--ink-faint)">orchestra.git / Ochestration.git</text>
+
+  <!-- arrow github repo -> Supabase (cron writes) -->
+  <line x1="570" y1="80" x2="570" y2="288" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)"/>
+  <text x="578" y="185" font-size="10.5" fill="var(--ink-faint)">upsert</text>
+
+  <!-- arrow repo -> streamlit container -->
+  <line x1="175" y1="184" x2="175" y2="288" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)"/>
+  <text x="182" y="240" font-size="10.5" fill="var(--ink-faint)">배포마다 pull</text>
+
+  <!-- arrow container -> repo (dashed, fragile loop) -->
+  <line x1="130" y1="288" x2="130" y2="184" stroke="var(--gain)" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#ar)"/>
+  <text x="60" y="240" font-size="10.5" fill="var(--gain)">커밋해야 영구화</text>
+
+  <!-- Streamlit 컨테이너 -->
+  <rect x="30" y="288" width="290" height="92" rx="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+  <text x="175" y="312" font-size="13.5" font-weight="600" text-anchor="middle">Streamlit Cloud 컨테이너</text>
+  <text x="175" y="330" font-size="11" text-anchor="middle" fill="var(--ink-soft)">app.py 실행, CSV를 로컬 디스크에 읽고 씀</text>
+  <text x="175" y="346" font-size="10.5" text-anchor="middle" fill="var(--gain)">⚠ 재배포마다 이 디스크는 통째로 새로 만들어짐</text>
+  <text x="175" y="366" font-size="10" text-anchor="middle" fill="var(--ink-faint)">(git에 커밋 안 된 변경은 여기서 소멸)</text>
+
+  <!-- Supabase -->
+  <rect x="450" y="288" width="240" height="92" rx="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+  <text x="570" y="312" font-size="13.5" font-weight="600" text-anchor="middle">Supabase (Postgres)</text>
+  <text x="570" y="330" font-size="11" text-anchor="middle" fill="var(--ink-soft)">영구 저장, 재배포와 무관</text>
+  <text x="570" y="348" font-size="10.5" text-anchor="middle" fill="var(--ink-faint)">price_history · investor_flow</text>
+  <text x="570" y="362" font-size="10.5" text-anchor="middle" fill="var(--ink-faint)">market_flow · watchlist</text>
+
+  <!-- arrow container -> supabase (read only, dashed) -->
+  <line x1="320" y1="334" x2="450" y2="334" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2,3" marker-end="url(#ar)"/>
+  <text x="385" y="326" font-size="10" text-anchor="middle" fill="var(--ink-faint)">SELECT</text>
+
+  <!-- arrow container -> user -->
+  <rect x="490" y="405" width="200" height="50" rx="8" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.55"/>
+  <text x="590" y="435" font-size="13" text-anchor="middle">사용자 (브라우저)</text>
+  <line x1="270" y1="380" x2="500" y2="418" stroke="currentColor" stroke-width="1.2" opacity="0.7" marker-end="url(#ar)"/>
+  <text x="400" y="404" font-size="10.5" fill="var(--ink-faint)">웹 UI</text>
+</svg>
+</figure>
+<figcaption>왼쪽(CSV): 세션 → GitHub → Streamlit 컨테이너로 흐르는 경로에 <strong>"컨테이너가
+재배포되면 초기화된다"</strong>는 함정이 있어, 세션이 매번 git commit으로 되돌려 놓지 않으면
+다음 배포 때 사라진다. 오른쪽(DB): GitHub Actions가 사람 개입 없이 매일 자동으로 Supabase에
+직접 쓰고, 앱은 그 값을 읽기만(SELECT) 한다 — 재배포와 완전히 무관하게 항상 최신이다.</figcaption>
+</div>
+
+<h2><span class="n">02</span> CSV가 담당하는 것, DB가 담당하는 것</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>기준</th><th>CSV (+ git)</th><th>DB (Supabase)</th></tr></thead>
+  <tbody>
+    <tr><td>담당 데이터</td><td>내 거래·보유·현금·캐시(종목코드·섹터)·히스토리 스냅샷</td>
+      <td>153+ 관심종목의 시세·거래량·외국인수급(price_history 등)</td></tr>
+    <tr><td>누가 읽나</td><td>new1 혼자, meritz 혼자<span class="sub">(서로 다른 파일)</span></td>
+      <td>new1·meritz 둘 다<span class="sub">(같은 테이블)</span></td></tr>
+    <tr><td>누가 쓰나</td><td>세션이 실행하는 스크립트(ingest_daily.py) 1개, 한 번에 하나씩</td>
+      <td>GitHub Actions cron(매일 1회) + 세션이 가끔 직접</td></tr>
+    <tr><td>규모</td><td>거래 수백 건, 파일 몇~수십 KB</td><td>153종목×수십 일 = 수천~수만 행</td></tr>
+    <tr><td>영구성</td><td>git 커밋이 곧 백업(무료 버전관리 포함)</td><td>DB 자체가 영구(클라우드 서버에 계속 존재)</td></tr>
+    <tr><td>동시 접근</td><td>필요 없음(한 번에 한 세션만 씀)</td><td>필요함(cron 쓰기 + 앱 두 개가 동시에 읽음)</td></tr>
+    <tr><td>조회 방식</td><td>매번 전체를 pandas로 읽어서 메모리에서 계산</td><td>필요한 행만 SQL로 필터링해서 가져옴</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2><span class="n">03</span> DB 없이 CSV만으로 굴러가는 이유</h2>
+<p>"DB가 없으면 원래 앱이 안 돌아가는 거 아니야?"라고 생각하기 쉬운데, 이 앱의 CSV 파트는
+DB가 아예 없어도 처음부터 지금까지 문제없이 돌아가고 있다. 이유는 네 가지 전제가 전부
+충족되기 때문이다:</p>
+<div class="tier pass">
+  <div class="tl">1. 데이터가 작다</div>
+  <div class="bd">거래가 수백 건, 보유종목이 수십 개 — pandas가 CSV 전체를 통째로 메모리에
+  읽어도 밀리초 단위로 끝난다. DB의 "필요한 행만 조회"라는 장점 자체가 발휘될 규모가 아니다.</div>
+</div>
+<div class="tier pass">
+  <div class="tl">2. 한 번에 한 사람(세션)만 쓴다</div>
+  <div class="bd">DB가 해결하는 핵심 문제는 "여러 명이 동시에 같은 행을 고치면 어떻게 하나"인데,
+  이 CSV들은 세션이 순서대로 하나씩 스크립트를 돌려서 고치지 두 프로세스가 동시에 같은 파일에
+  쓰는 경우가 없다. 동시성 문제가 원천적으로 발생하지 않는다.</div>
+</div>
+<div class="tier pass">
+  <div class="tl">3. 버전관리를 git이 공짜로 준다</div>
+  <div class="bd">"어제 이 값이 뭐였지"를 알고 싶으면 <code>git log</code>/<code>git show</code>로
+  바로 볼 수 있다 — DB였다면 이런 이력 추적을 위해 별도로 감사로그(audit log) 테이블을
+  설계해야 했을 것이다. CSV+git 조합이 오히려 이 앱의 "매일 무슨 일이 있었는지 기록한다"는
+  목적에 더 잘 맞는다.</div>
+</div>
+<div class="tier pass">
+  <div class="tl">4. 복잡한 질의가 필요 없다</div>
+  <div class="bd">"이 종목의 평단가"처럼 계산은 복잡해도(§1-1 재생 로직), 그 계산에 필요한 건
+  <em>내 거래 전체</em>뿐이다 — "여러 테이블을 조인해서" 같은 진짜 DB가 필요한 질의 패턴이
+  없다. Fishing/Link처럼 "153종목 중 조건에 맞는 것만" 걸러내는 질의가 나오는 순간부터
+  DB가 필요해졌고, 실제로 그 부분만 §6-9에서 DB로 옮겨졌다.</div>
+</div>
+
+<h2><span class="n">04</span> 파이썬 파일이 이렇게 나뉜 이유</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>파일</th><th>줄 수</th><th>역할</th></tr></thead>
+  <tbody>
+    <tr><td>app.py</td><td class="num">493</td><td>진입점 — 로그인, 데이터 로드, 새로고침, 탭 조립만</td></tr>
+    <tr><td>portfolio_core.py</td><td class="num">3,011</td><td>데이터 계층 전체(로드/저장/재생/시세조회/CSV파싱/지표계산) — <strong>UI가 없는 순수 로직</strong>이라 테스트하기 쉽고, ingest_daily.py와도 공유</td></tr>
+    <tr><td>ui_portfolio_tab.py</td><td class="num">1,270</td><td>포트폴리오 탭 렌더링만</td></tr>
+    <tr><td>ui_transactions_tab.py</td><td class="num">907</td><td>거래 기록 탭 렌더링만</td></tr>
+    <tr><td>ingest_daily.py</td><td class="num">176</td><td>매매일지 CSV 반영 스크립트(앱과 무관하게 단독 실행)</td></tr>
+    <tr><td>db_fetch_daily_prices.py</td><td class="num">166</td><td>GitHub Actions가 매일 돌리는 cron 스크립트</td></tr>
+    <tr><td>tests/test_portfolio_core.py</td><td class="num">1,560</td><td>회귀 테스트 87개</td></tr>
+  </tbody>
+  <caption>meritz는 app.py(1,910줄)+portfolio_core.py(1,765줄) 두 파일에 다 들어있다 — UI 분리를
+  아직 안 했다(§2, "필요해지면 다시 검토"로 남겨둔 상태). new1이 먼저 커지면서 쪼갠 거라
+  meritz는 아직 그 시점이 안 왔다고 보면 된다.</caption>
+</table>
+</div>
+<p>기준은 단순하다 — <strong>"UI를 그리는 코드"</strong>(streamlit 위젯 호출)와
+<strong>"데이터를 계산하는 코드"</strong>(pandas만 다루는 순수 함수)를 분리했다. 이렇게
+나눈 이유: (1) portfolio_core.py는 화면이 없는 순수 로직이라 <code>tests/</code>에서
+Streamlit 없이도 테스트할 수 있다. (2) ingest_daily.py(매일 실행되는 배치 스크립트)와
+app.py(웹 화면)가 <strong>같은 계산 로직을 공유</strong>해야 하는데, 그 공유 지점이
+바로 portfolio_core.py다 — 로직이 두 벌로 복제되면 한쪽만 고치고 다른 쪽을 잊는 사고가
+난다(실제로 이런 종류의 버그를 §1-1 원칙으로 막고 있음).</p>
+
+<h2><span class="n">05</span> 세션(나)이 실제로 어떻게 고치는지</h2>
+<p><strong>매번 파이썬 파일 7,000줄을 전부 읽지는 않는다.</strong> 오늘 실제로 있었던
+사례로 설명하면 —</p>
+<div class="callout">
+<div class="h">사례: "Link에서 날짜가 이상하게 뜬다"는 신고</div>
+<p>1) 신고 내용에 있는 단어("기준일", "경과일")로 <code>ui_portfolio_tab.py</code> 안에서
+grep — 두 단어가 같이 쓰인 줄을 바로 찾음(1,270줄짜리 파일에서 처음부터 안 읽고 검색으로
+직행). 2) 그 줄 앞뒤 30줄만 Read로 열어서 문맥 확인 — <code>link_watch_status</code>가
+"플래그일" 기준으로 경과일을 계산하는데 라벨은 "기준일"이라는 다른 필드를 잘못 쓰고 있는 걸
+발견. 3) 한 줄만 수정(<code>기준일</code> → <code>플래그일</code>). 4) <code>pytest</code>로
+회귀 테스트 85개를 돌려서 이 수정이 다른 곳을 안 건드렸는지 확인. 5) git commit.</p>
+</div>
+<p>이 흐름이 가능한 이유는 두 가지다 — <strong>파일이 역할별로 나뉘어 있어서</strong> "어디를
+찾아야 할지"가 좁혀지고(UI 문제면 ui_*.py, 계산 문제면 portfolio_core.py), <strong>회귀
+테스트가 안전망 역할</strong>을 해서 "내가 고친 게 다른 걸 깨뜨렸는지"를 직접 코드를 다 안
+읽어도 자동으로 확인해준다. 반대로 오늘 9/11 asset_history 버그처럼 <strong>기존 테스트가
+없던 영역</strong>은 실제로 실행해서 숫자를 대조해보는 수밖에 없었다 — 이게 "테스트가
+있는 곳은 빠르게, 없는 곳은 검증해가며 천천히" 라는 실제 작업 리듬이다.</p>
+
+<h2><span class="n">06</span> GitHub · Streamlit Cloud · Supabase — 사실 이미 셋 다 "클라우드"다</h2>
+<p>"깃허브에서 클라우드로 언제 가나"라는 질문은 사실 이미 답이 반쯤 나와 있다 —
+<strong>이 앱은 이미 세 개의 클라우드 서비스를 쓰고 있다.</strong> 헷갈리는 건 세 서비스가
+각자 다른 일을 하는데 이름이 비슷하게 느껴져서다:</p>
+<ul>
+<li><strong>GitHub</strong> = 코드와 (지금은) CSV 데이터의 <em>버전관리 저장소</em>. "회사
+서버"가 아니라 "파일 캐비닛" 역할 — 여기 있는 파일이 저절로 실행되진 않는다.</li>
+<li><strong>Streamlit Community Cloud</strong> = 그 GitHub 저장소를 당겨와서 <code>app.py</code>를
+실제로 <em>실행하는 서버</em>. 사용자가 보는 웹페이지가 여기서 나온다. 이미 클라우드다 —
+다만 컨테이너가 재배포마다 새로 만들어지는 "휘발성" 서버라는 게 §1-5의 근본 원인.</li>
+<li><strong>Supabase</strong> = Postgres 데이터베이스를 호스팅하는 <em>클라우드 DB 서비스</em>.
+이미 이 앱의 일부(153종목 시세)가 여기 저장돼 있다.</li>
+</ul>
+<p>즉 "GitHub에서 클라우드로 옮긴다"는 표현은 정확하지 않다 — <strong>앱은 이미 클라우드에서
+돌고 있고, 데이터의 일부(시세)도 이미 클라우드 DB에 있다.</strong> 진짜 남은 질문은
+"<strong>내 거래·보유 데이터(지금 GitHub 저장소 안 CSV 파일)를 언제 Supabase 같은 클라우드
+DB로 옮기나</strong>"다 — 어제·오늘 계속 얘기한 그 마이그레이션이 바로 이거고, GitHub나
+Streamlit Cloud 자체를 떠나는 일은 아니다(코드는 계속 GitHub에 있고 앱도 계속 Streamlit
+Cloud에서 돈다).</p>
+
+<h2><span class="n">07</span> 그래서, 언제 옮기나 — 어제와 오늘의 판단</h2>
+<p>어제(9/14) 이 질문에 <strong>시급도 10~20/100</strong>으로 답했다 — 실제 데이터 유실은
+없었고, lock-step류 버그는 매번 그날 안에 잡혔기 때문. 오늘(9/15) 같은 부류의 버그가
+재발했다 — new1·meritz가 <strong>같은 코스피 값을 서로 다르게 기억</strong>하는 걸
+발견(§방금 리포트). 그래서 오늘 <strong>35~40/100으로 올렸다.</strong> 60~70까지 안 올린
+이유는 이번 영향이 작아서다(0.06% 오차, 실제 판단을 왜곡할 정도는 아님) — 하지만 패턴 자체가
+재발했다는 사실은 그대로 기록해 둔다.</p>
+<div class="flag">
+  <div class="h">다음에 시급도를 60~70으로 더 올릴 조건</div>
+  <ol>
+    <li>같은 부류 버그가 또 재발하거나(3번째), <code>check_history_alignment()</code> 같은
+    기존 방어막을 뚫고 발생.</li>
+    <li>실제로 데이터가 유실되거나, 틀린 채로 하루 이상 방치되는 사고.</li>
+    <li>어느 한쪽이라도 발생하면 로드맵대로 <strong>index_history/bigcap_history부터</strong>
+    (이미 Supabase price_history와 같은 시계열 구조라 옮기기 제일 쉽고, 오늘 문제가 난 바로
+    그 데이터이기도 함) 먼저 Supabase 공유 테이블로 옮기는 걸 시작한다 — transactions.csv처럼
+    재생(replay) 로직이 얽힌 무거운 데이터는 그 다음.</li>
+  </ol>
+</div>
+<p class="dek" style="font-size:.95rem">결론: 지금 구조가 "빨리 만들어져서 구멍이 많다"기보다는,
+<strong>"혼자 쓰던 장부가 여러 지점이 같이 보는 장부로 요구사항이 바뀌는 중"</strong>인 자연스러운
+성장통에 가깝다. 각 기능은 그때그때 테스트와 문서화를 곁들여 만들어졌지만(§1~§6-28 전부),
+"공유돼야 할 사실을 두 곳에 따로 저장한다"는 설계 선택 하나가 이번 달 재발한 버그 대부분의
+공통 조상이다 — 이 리포트의 구조도가 보여주는 딱 그 지점.</p>
+
+<footer>
+  new1/report/2026-09-15_종이_장부_클라우드_원장.html · [[project_csv_to_db_migration_watch]]
+  참고. 시급도 갱신 이력: 2026-09-14 10~20/100 → 2026-09-15 35~40/100(new1·meritz 코스피 수치
+  불일치 재발).
+</footer>
+</div>
