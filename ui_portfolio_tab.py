@@ -417,13 +417,11 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                                        state["initial"], _fr, kospi_weight=_wk)
               if _idx_ex_h is not None else None)
 
-    # ---- "지수로 환산한 내 주식" — 코스피/ex-반도체와 같은 출발점(8/14 종가)에서 시작했다면
-    # 지금 몇 포인트일지(2026-09-15 사용자 요청) — 보유종목 평가손익 옆에 나란히 두면 %보다
-    # "지수 포인트"로 바로 비교가 됨. 앵커=index_history 첫 행의 KOSPI 종가(≈6,978).
-    # synthetic_kospi_ex_bigcap도 첫날 레벨을 원본 KOSPI와 같게 앵커링해서 출발점이 동일하다(§6-19).
+    # ---- "Orchestra 지수" — 8/14 종가(≈6,978)를 앵커로 "내 주식"(Rs) 누적수익률을 지수
+    # 포인트로 환산(2026-09-15 사용자 요청, 처음엔 코스피/Ex-반도체도 같이 뒀다가 "그렇게까지
+    # 필요 없다"고 정리 — Orchestra 지수 값 + 어제 대비 등락%만 남김). 보유종목 평가손익
+    # 원/% 바로 옆에 나란히, 지수는 크게·등락%는 작게.
     _idx_anchor = float(_idx_h["KOSPI"].iloc[0]) if not _idx_h.empty else None
-    _idx_kospi_now = float(_idx_h["KOSPI"].iloc[-1]) if not _idx_h.empty else None
-    _idx_ex_now = float(_idx_ex_h["KOSPI"].iloc[-1]) if _idx_ex_h is not None and not _idx_ex_h.empty else None
     _stk_cum = (_iva_m.get("latest", {}).get("주식") or (None, None))[0]
     _idx_orch_now = (_idx_anchor * (1 + _stk_cum)) if (_idx_anchor is not None and _stk_cum is not None) else None
 
@@ -448,16 +446,14 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     _tt_arrow = "▲" if day_change > 0 else ("▼" if day_change < 0 else "·")
 
     idx_compare_html = ""
-    if _idx_anchor is not None and _idx_orch_now is not None:
-        _orch_c = UP_COLOR if _idx_orch_now >= _idx_anchor else DOWN_COLOR
-        _ex_seg = (f' · Ex-반도체 {_idx_anchor:,.0f}→{_idx_ex_now:,.0f}'
-                   if _idx_ex_now is not None else "")
+    if _idx_orch_now is not None:
+        _orch_c = UP_COLOR if (_stk_day or 0) > 0 else (DOWN_COLOR if (_stk_day or 0) < 0 else T["muted"])
+        _orch_day_s = f"{'+' if (_stk_day or 0) >= 0 else ''}{(_stk_day or 0) * 100:.2f}%"
         idx_compare_html = (
-            f'<div style="font-size:11.5px;color:{T["muted"]};margin-top:5px;line-height:1.6">'
-            f'코스피 {_idx_anchor:,.0f}→{_idx_kospi_now:,.0f}'
-            f'{_ex_seg}'
-            f' · <span style="color:{_orch_c};font-weight:600">Orchestra '
-            f'{_idx_anchor:,.0f}→{_idx_orch_now:,.0f}</span></div>'
+            f'<span style="font-size:20px;font-weight:700;margin-left:14px;color:{_orch_c}">'
+            f'{_idx_orch_now:,.0f}</span>'
+            f'<span style="font-size:12px;font-weight:600;margin-left:4px;color:{_orch_c}">'
+            f'{_orch_day_s}</span>'
         )
 
     # ---- 오늘의 거래 요약 (매수/매도 총금액) ----
