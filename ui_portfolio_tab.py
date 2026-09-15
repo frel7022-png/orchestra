@@ -450,9 +450,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         _orch_c = UP_COLOR if (_stk_day or 0) > 0 else (DOWN_COLOR if (_stk_day or 0) < 0 else T["muted"])
         _orch_day_s = f"{'+' if (_stk_day or 0) >= 0 else ''}{(_stk_day or 0) * 100:.2f}%"
         idx_compare_html = (
-            f'<span style="font-size:20px;font-weight:700;margin-left:14px;color:{_orch_c}">'
+            f'<span style="font-size:17px;font-weight:700;margin-left:10px;color:{_orch_c};white-space:nowrap">'
             f'{_idx_orch_now:,.0f}</span>'
-            f'<span style="font-size:12px;font-weight:600;margin-left:4px;color:{_orch_c}">'
+            f'<span style="font-size:11px;font-weight:600;margin-left:3px;color:{_orch_c};white-space:nowrap">'
             f'{_orch_day_s}</span>'
         )
 
@@ -480,9 +480,10 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         st.markdown(f"""
         <div class="summary-box sc-top">
             <div class="summary-label">보유종목 평가손익</div>
-            <span class="summary-main" style="color:{color}">{sign}{stock_profit:,.0f}원</span>
-            <span class="summary-sub" style="color:{color}">{sign}{stock_profit_pct:.2f}%</span>
-            {idx_compare_html}<div class="summary-grid">
+            <div style="display:flex;align-items:baseline;flex-wrap:nowrap;overflow-x:auto">
+            <span class="summary-main" style="color:{color};white-space:nowrap">{sign}{stock_profit:,.0f}원</span>
+            <span class="summary-sub" style="color:{color};white-space:nowrap">{sign}{stock_profit_pct:.2f}%</span>
+            {idx_compare_html}</div><div class="summary-grid">
                 <div>예수금<b>{state['cash']:,.0f}원</b></div>
                 <div>총 매입<b>{total_cost:,.0f}원</b></div>
                 <div>총 평가<b>{stock_valuation:,.0f}원</b></div>
