@@ -1356,25 +1356,46 @@ def test_seed_engine_series_tracks_cash_and_cost(monkeypatch):
     assert s.iloc[2]["예수금비중"] == pytest.approx(86_000.0 / 102_000.0 * 100)
 
 
-def test_seed_engine_series_bench_cum_uses_full_initial_capital(monkeypatch):
-    """2026-09-16 개정: No Refill = 예수금 − 누적실현 + 초기자본×벤치누적수익률. 실제 투입한
-    금액이 아니라 초기자본 전체를 반사실 기준으로 삼는다(사용자 지적 — "보통 사람이면 초기자본
-    다 넣었을 것"). bench_cum에 없는 날짜는 0%로 취급(예: index_history 시작 전)."""
-    monkeypatch.setattr(core, "load_code_cache", lambda: {})
-    monkeypatch.setattr(core, "load_sector_cache", lambda: {})
+def test_virtual_realized_cum_by_close_date_scales_to_actual_buy_amount(monkeypatch):
+    """2026-09-16 최종안: 벤치 반사실은 초기자본 전체가 아니라 "청산된 사이클이 실제로 투입한
+    금액(buy_amt)"에만, 그 사이클의 보유기간(최초매수일~청산일)만큼만 적용한다 — 안 굴린 현금은
+    실제로도 가상으로도 시장 노출이 없어야 "예수금 대 예수금" 비교가 맞다는 사용자 지적."""
+    tx = pd.DataFrame([
+        {"id": "1", "날짜": "2026-01-05", "종목명": "A", "구분": "매수", "수량": 10, "단가": 1000, "실현손익": "", "메모": "", "정산반영": True},
+        {"id": "2", "날짜": "2026-01-07", "종목명": "A", "구분": "매도", "수량": 10, "단가": 1500, "실현손익": "", "메모": "", "정산반영": True},
+    ])
+    bench_cum = {"2026-01-05": 0.0, "2026-01-07": -0.10}
+    out = core.virtual_realized_cum_by_close_date(tx, bench_cum)
+    # buy_amt = 10*1000 = 10,000, 보유기간 벤치수익률 = (1-0.10)/(1+0.0) - 1 = -0.10
+    assert out == {"2026-01-07": pytest.approx(10_000.0 * -0.10)}
+
+
+def test_virtual_realized_cum_by_close_date_ignores_open_cycles():
+    """아직 전량매도 안 된(열린) 사이클은 실제 실현손익이 없는 것처럼, 가상실현손익도 없다."""
     tx = pd.DataFrame([
         {"id": "1", "날짜": "2026-01-05", "종목명": "A", "구분": "매수", "수량": 10, "단가": 1000, "실현손익": "", "메모": "", "정산반영": True},
         {"id": "2", "날짜": "2026-01-07", "종목명": "A", "구분": "매도", "수량": 4, "단가": 1500, "실현손익": "", "메모": "", "정산반영": True},
     ])
-    # 1/5엔 벤치 데이터 없음(0% 취급), 1/7엔 벤치 -10%.
-    bench_cum = {"2026-01-07": -0.10}
+    out = core.virtual_realized_cum_by_close_date(tx, {"2026-01-05": 0.0, "2026-01-07": -0.10})
+    assert out == {}
+
+
+def test_seed_engine_series_bench_cum_scales_to_closed_cycle_buy_amount(monkeypatch):
+    """No Refill = 예수금 − 누적실현 + 그날까지 누적 가상실현손익(사이클별 buy_amt 기준)."""
+    monkeypatch.setattr(core, "load_code_cache", lambda: {})
+    monkeypatch.setattr(core, "load_sector_cache", lambda: {})
+    tx = pd.DataFrame([
+        {"id": "1", "날짜": "2026-01-05", "종목명": "A", "구분": "매수", "수량": 10, "단가": 1000, "실현손익": "", "메모": "", "정산반영": True},
+        {"id": "2", "날짜": "2026-01-07", "종목명": "A", "구분": "매도", "수량": 10, "단가": 1500, "실현손익": "", "메모": "", "정산반영": True},
+    ])
+    bench_cum = {"2026-01-05": 0.0, "2026-01-07": -0.10}
     s = core.seed_engine_series(tx, 100_000.0, 0.0, bench_cum=bench_cum)
-    # 1/5: 예수금 90,000, 실현 0, 벤치 0% → 무연료예수금 = 90,000 - 0 + 0 = 90,000 (변화 없음)
+    # 1/5: 매수만 있고 사이클이 아직 안 닫혀 가상실현손익 0 → 무연료예수금 = 90,000 - 0 + 0 = 90,000
     assert s.iloc[0]["무연료예수금"] == pytest.approx(90_000.0)
-    # 1/7: 매도 4주@1500(평단 1000, 수수료 0) → 예수금 90,000+6,000=96,000, 누적실현 2,000,
-    #      벤치 -10%×초기자본(100,000) = -10,000
-    #      무연료예수금 = 96,000 - 2,000 + (-10,000) = 84,000
-    assert s.iloc[1]["무연료예수금"] == pytest.approx(84_000.0)
+    # 1/7: 전량매도 10주@1500(평단 1000, 수수료 0) → 예수금 90,000+15,000=105,000, 누적실현 5,000
+    #      가상실현손익 = buy_amt(10,000)×-10% = -1,000
+    #      무연료예수금 = 105,000 - 5,000 + (-1,000) = 99,000
+    assert s.iloc[1]["무연료예수금"] == pytest.approx(99_000.0)
 
 
 def test_blended_benchmark_cum_weights_kospi_and_kosdaq():

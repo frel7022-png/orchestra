@@ -2277,6 +2277,47 @@ def blended_benchmark_cum(index_cum: pd.DataFrame, kospi_weight: float | None) -
     return dict(zip(index_cum["날짜"].astype(str), pd.to_numeric(blended, errors="coerce")))
 
 
+def _bench_cum_on(bench_cum: dict | None, d: str) -> float:
+    """bench_cum(날짜→누적수익률 dict)에서 d 이하 가장 최근 값 — 없으면(bench_cum 자체가
+    없거나 d보다 이른 날짜가 없으면, 예: index_history 시작일 이전) 0.0."""
+    if not bench_cum:
+        return 0.0
+    prior = [bd for bd in bench_cum if bd <= d]
+    v = bench_cum[max(prior)] if prior else None
+    return float(v) if v is not None and pd.notna(v) else 0.0
+
+
+def virtual_realized_cum_by_close_date(tx: pd.DataFrame, bench_cum: dict | None) -> dict:
+    """청산된(전량매도 완료) 사이클마다 "그 매수금액이 실제 보유기간(최초매수일~청산일) 동안
+    실현손익 대신 벤치(bench_cum)만큼만 벌었다면"을 계산해, 청산일 기준 누적한 dict(날짜→
+    누적 가상실현손익)를 반환한다 — Pit Stop No Refill의 "실제 투입한 돈만" 반사실(2026-09-16,
+    §6-27). 사이클 단위로 잡는 이유(사용자 지적): 안 굴린 현금은 실제로도 가상으로도 시장에
+    노출된 적이 없어야 "예수금 대 예수금" 비교가 맞고, 미실현 손익은 예수금에 안 닿아야 한다 —
+    그래서 벤치 반사실도 "실제로 팔아서 현금화한(=실현된) 사이클"에만, 그 사이클이 실제로
+    투입했던 금액(buy_amt)과 보유기간에만 적용한다. 아직 안 팔린(열린) 사이클은 제외(실제
+    실현손익과 동일한 기준). 사이클 내부의 부분매도 타이밍까지는 안 쪼개고 청산일에 그 사이클의
+    가상손익 전체를 한 번에 반영(§6-20 pl_first_pct와 같은 수준의 근사)."""
+    if tx is None or tx.empty or not bench_cum:
+        return {}
+    cycles = _all_cycles(tx)
+    events = []
+    for c in cycles:
+        if not c["closed"] or not c.get("first_buy_date") or not c.get("close_date"):
+            continue
+        b0 = _bench_cum_on(bench_cum, str(c["first_buy_date"]))
+        b1 = _bench_cum_on(bench_cum, str(c["close_date"]))
+        bench_ret = (1.0 + b1) / (1.0 + b0) - 1.0 if (1.0 + b0) != 0 else 0.0
+        events.append((str(c["close_date"]), float(c["buy_amt"]) * bench_ret))
+    if not events:
+        return {}
+    events.sort(key=lambda x: x[0])
+    out, cum = {}, 0.0
+    for d, v in events:
+        cum += v
+        out[d] = cum   # 같은 날짜에 여러 사이클이 닫히면 그날의 값 = 그날까지 누적(정상)
+    return out
+
+
 def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float,
                        asset_hist: pd.DataFrame | None = None,
                        bench_cum: dict | None = None) -> pd.DataFrame:
@@ -2285,15 +2326,16 @@ def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float
     확대를 따라잡으며 예수금 버퍼를 유지한다는 뜻. 예수금 선이 같이 처지면 씨앗보다 배치가 빠름(경고).
     `_cash_by_date`와 같은 재생 루프(§1-1)라 예수금이 rebuild_portfolio_*와 안 어긋난다.
 
-    무연료예수금(No Refill, 2026-09-16 개정) = 예수금 − 그날까지 누적 실현손익 + 초기자본×
-    그날의 벤치(bench_cum) 누적수익률. "실현손익 대신 초기자본 전체를 처음부터 벤치(보통
-    삼성·하이닉스 제외 혼합지수)에 넣어뒀으면 남았을 예수금"이라는 뜻 — 사용자 지적(2026-09-16):
-    실제 투입한 원가만 벤치와 비교하는 건 지나치게 보수적이다. "보통 사람이면 초기자본을
-    다 넣었을 것"이므로 실제로 얼마를 굴렸는지와 무관하게 **초기자본 전체**를 반사실 기준으로
-    삼는다 — 현금을 아껴둔 것도, 적게 굴린 것도 전략의 결과로 그대로 드러나야 하기 때문.
-    `bench_cum`은 날짜(str)→누적수익률(소수) dict(`blended_benchmark_cum` 참고) — 없거나 그
-    날짜가 없으면 누적수익률 0으로 취급해(예: index_history 시작일 이전 구간) 예전 정의
-    (실현손익 0% 가정)로 자연스럽게 축소된다.
+    무연료예수금(No Refill, 2026-09-16 개정) = 예수금 − 그날까지 누적 실현손익 + 그날까지
+    누적된 "벤치 기준 가상실현손익"(`virtual_realized_cum_by_close_date`, 청산된 사이클마다
+    실제 투입금액만큼만 벤치 수익률 적용). "실현손익 대신, 실제로 팔아서 현금화했던 그 돈이
+    벤치(보통 삼성·하이닉스 제외 혼합지수)를 따라갔다면 남았을 예수금"이라는 뜻.
+    **초기자본 전체가 아니라 사이클별 실제 투입 금액만 반사실 기준으로 삼는다**(2026-09-16
+    사용자 지적 — 안 굴리고 남겨둔 현금은 실제로도 가상으로도 시장 노출이 없어야 "예수금 대
+    예수금" 비교가 맞고, 미실현 손익은 예수금에 안 닿아야 한다. 처음엔 초기자본 전체를 쓰는
+    안을 시도했는데, 그러면 한 번도 안 굴린 현금 몫까지 손실로 잡혀 비교가 왜곡됨을 확인함).
+    `bench_cum`은 날짜(str)→누적수익률(소수) dict(`blended_benchmark_cum` 참고) — 없으면
+    가상실현손익이 전부 0이 돼 예전 정의(실현손익 0% 가정)로 자연스럽게 축소된다.
     반환 DataFrame(거래가 있었던 날짜만): 날짜, 총매입(=Σ수량×평단가), 예수금(=W Fuel), 무연료예수금
     (W/o Fuel), 총자산, 예수금비중(%)."""
     cols = ["날짜", "총매입", "예수금", "무연료예수금", "총자산", "예수금비중"]
@@ -2317,17 +2359,18 @@ def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float
         ah = dict(zip(asset_hist["날짜"].astype(str),
                       pd.to_numeric(asset_hist["총자산"], errors="coerce")))
 
-    def _bench_cum_on(d):
-        if not bench_cum:
+    virtual_cum = virtual_realized_cum_by_close_date(tx, bench_cum)
+
+    def _virtual_on(d):
+        if not virtual_cum:
             return 0.0
-        prior = [bd for bd in bench_cum if bd <= d]
-        v = bench_cum[max(prior)] if prior else None
-        return float(v) if v is not None and pd.notna(v) else 0.0
+        prior = [vd for vd in virtual_cum if vd <= d]
+        return float(virtual_cum[max(prior)]) if prior else 0.0
 
     out = []
     for d in sorted(rows):
         cash, cost, cr = rows[d]
-        virtual_pl = float(initial_capital) * _bench_cum_on(d)
+        virtual_pl = _virtual_on(d)
         ta = ah.get(d)
         if ta is None or pd.isna(ta):
             ta = cash + cost   # asset_hist에 없는 날은 근사(예수금+원가, 평가손익 제외)
