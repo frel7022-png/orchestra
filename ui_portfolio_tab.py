@@ -260,7 +260,7 @@ def _render_link_panel(ph, fh, live_quotes, refresh_fn, T):
     데이터의 뿌리는 같아야 하고, 포리너의 데이터와 피싱의 데이터가 기반이 되어야 한다"). 그래서
     이 함수는 자체 DB 조회를 하지 않고, `render_portfolio_tab`이 Foreigner 섹션에서 이미 로드한
     `flow_hist`/`price_hist_flow`/`live_quotes`(session_state 공유)를 그대로 받는다 — Foreigner든
-    Link든 어느 쪽 "새로고침"을 눌러도 **같은 `_refresh_flow_data()` 한 함수, 같은 DB 호출**을
+    Link든 어느 쪽 "새로고침"을 눌러도 **같은 `refresh_flow_data()` 한 함수, 같은 DB 호출**을
     타므로 세 패널이 서로 어긋날 일이 없다. 외인 쪽 계산도 `compute_link_candidates` 내부에서
     `compute_foreign_flags`를 그대로 재사용(§6-28) — Foreigner에 뜨는 "기준일pp"와 Link의 dF는
     항상 같은 값이다.
@@ -352,6 +352,64 @@ def _render_link_panel(ph, fh, live_quotes, refresh_fn, T):
     st.caption(f"기준일({cands.iloc[0]['기준일']} 등, 종목별로 다름) 이후 가격변화% · "
                "외인비중변화%p · score=−(외인비중변화×가격변화). '꺾임'=누적은 이 방향인데 "
                "최근 3거래일은 반대로 가는 중(방향 전환 초입일 수 있음). ★=이미 감시 중")
+
+
+def refresh_updown_data(holdings, tx) -> None:
+    """Up/Down "새로고침" 버튼과 완전히 같은 로직 — 모듈 최상위 함수로 빼서 app.py의
+    "Setting"(전체 새로고침, §6-33)도 그대로 재사용할 수 있게 함. 로직 복제 금지 원칙."""
+    closed = get_closed_out_last_sells(holdings, tx)
+    results = []
+    if not closed.empty:
+        prices = get_current_prices_for_names(closed["종목명"].tolist())
+        for _, row in closed.iterrows():
+            cp = prices.get(row["종목명"])
+            if cp is None:
+                continue
+            pct = (cp - row["매도가"]) / row["매도가"] * 100
+            results.append({
+                "종목명": row["종목명"], "매도일": row["매도일"],
+                "매도가": row["매도가"], "현재가": cp, "pct": pct,
+            })
+    st.session_state["updown_results"] = results
+    st.session_state["updown_checked_at"] = now_kst_str()
+    save_ui_cache_json("updown", {"results": results, "checked_at": st.session_state["updown_checked_at"]})
+
+
+def refresh_fishing_data() -> list:
+    """Fishing "새로고침" 버튼과 완전히 같은 로직. §6-33 "Setting"에서도 재사용.
+    관심종목이 없으면 아무 것도 안 하고 빈 에러 목록을 반환."""
+    sb_secrets = st.secrets.get("supabase", {})
+    sb_url, sb_key = sb_secrets.get("url", ""), sb_secrets.get("anon_key", "")
+    watchlist = load_watchlist()
+    if watchlist.empty:
+        return []
+    prices_df, quote_errors = refresh_watchlist_prices(watchlist, sb_url, sb_key)
+    hist_df = load_watchlist_history_db(sb_url, sb_key)
+    st.session_state["fishing_prices"] = prices_df
+    st.session_state["fishing_hist"] = hist_df
+    save_ui_cache_df("fishing_prices", prices_df)
+    save_ui_cache_df("fishing_hist", hist_df)
+    return quote_errors
+
+
+def refresh_flow_data() -> None:
+    """Volume/Foreigner/Link가 공유하는 새로고침 로직(§6-28 "뿌리가 같은 데이터" 원칙) —
+    모듈 최상위로 빼서 §6-33 "Setting"에서도 재사용. investor_flow/market_flow/price_history/
+    실시간가를 한 번에 갱신하고 §6-31 로컬 캐시에도 저장한다."""
+    sb_secrets = st.secrets.get("supabase", {})
+    sb_url, sb_key = sb_secrets.get("url", ""), sb_secrets.get("anon_key", "")
+    st.session_state["flow_hist"] = load_investor_flow_db(sb_url, sb_key)
+    st.session_state["market_hist"] = load_market_flow_db(sb_url, sb_key)
+    _ph = load_watchlist_history_db(sb_url, sb_key)
+    st.session_state["price_hist_flow"] = _ph
+    _codes = _ph["종목코드"].unique().tolist() if not _ph.empty else []
+    _quotes, _ = fetch_quotes(_codes) if _codes else ({}, [])
+    st.session_state["live_quotes"] = {c: q["price"] for c, q in _quotes.items()
+                                        if q and q.get("price") is not None}
+    save_ui_cache_df("flow_hist", st.session_state["flow_hist"])
+    save_ui_cache_df("market_hist", st.session_state["market_hist"])
+    save_ui_cache_df("price_hist_flow", _ph)
+    save_ui_cache_json("live_quotes", st.session_state["live_quotes"])
 
 
 def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets, unrealized_loss, T):
@@ -799,23 +857,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                                 label_visibility="collapsed", key="updown_mode")
 
         if st.button("새로고침", key="updown_refresh", use_container_width=True):
-            closed = get_closed_out_last_sells(holdings, tx)
-            results = []
-            if not closed.empty:
-                with st.spinner("매도 종목 현재가 조회 중..."):
-                    prices = get_current_prices_for_names(closed["종목명"].tolist())
-                for _, row in closed.iterrows():
-                    cp = prices.get(row["종목명"])
-                    if cp is None:
-                        continue
-                    pct = (cp - row["매도가"]) / row["매도가"] * 100
-                    results.append({
-                        "종목명": row["종목명"], "매도일": row["매도일"],
-                        "매도가": row["매도가"], "현재가": cp, "pct": pct,
-                    })
-            st.session_state["updown_results"] = results
-            st.session_state["updown_checked_at"] = now_kst_str()
-            save_ui_cache_json("updown", {"results": results, "checked_at": st.session_state["updown_checked_at"]})
+            with st.spinner("매도 종목 현재가 조회 중..."):
+                refresh_updown_data(holdings, tx)
             st.rerun()
 
         updown_results = st.session_state.get("updown_results")
@@ -958,9 +1001,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 대비 등락률)를 기준으로 ±3% 이상 움직인 종목만 걸러서 보여준다 — 자세한 건
     # refresh_watchlist_prices 참고.
     with st.expander("Fishing", expanded=False):
-        sb_secrets = st.secrets.get("supabase", {})
-        sb_url, sb_key = sb_secrets.get("url", ""), sb_secrets.get("anon_key", "")
-
         watchlist = load_watchlist()
         if watchlist.empty:
             st.caption("관심종목이 없습니다. temporary/ 폴더에 리스트 CSV를 넣고 "
@@ -968,12 +1008,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         else:
             if st.button("새로고침", key="fishing_refresh", use_container_width=True):
                 with st.spinner("관심종목 시세 조회 중..."):
-                    prices_df, quote_errors = refresh_watchlist_prices(watchlist, sb_url, sb_key)
-                    hist_df = load_watchlist_history_db(sb_url, sb_key)
-                st.session_state["fishing_prices"] = prices_df
-                st.session_state["fishing_hist"] = hist_df
-                save_ui_cache_df("fishing_prices", prices_df)
-                save_ui_cache_df("fishing_hist", hist_df)
+                    quote_errors = refresh_fishing_data()
                 for err in quote_errors:
                     st.warning(err)
                 st.rerun()
@@ -1130,28 +1165,14 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     market_hist = st.session_state.get("market_hist")
     price_hist_flow = st.session_state.get("price_hist_flow")
 
-    def _refresh_flow_data():
-        st.session_state["flow_hist"] = load_investor_flow_db(sb_url, sb_key)
-        st.session_state["market_hist"] = load_market_flow_db(sb_url, sb_key)
-        _ph = load_watchlist_history_db(sb_url, sb_key)
-        st.session_state["price_hist_flow"] = _ph
-        # Link(§6-28)도 이 새로고침을 그대로 씀 — Foreigner/Volume/Link가 전부 같은 DB 호출
-        # 하나를 공유해야 "같은 기준일이면 흔들림이 없다"는 전제가 실제로 성립한다(사용자 지적,
-        # 2026-09-11). 현재가는 장마감 전엔 DB가 하루 뒤처지므로 실시간 시세도 같이 받아둔다.
-        _codes = _ph["종목코드"].unique().tolist() if not _ph.empty else []
-        _quotes, _ = fetch_quotes(_codes) if _codes else ({}, [])
-        st.session_state["live_quotes"] = {c: q["price"] for c, q in _quotes.items()
-                                            if q and q.get("price") is not None}
-        # §6-31: 세션이 리셋돼도 마지막 새로고침 결과가 바로 보이게 로컬에도 같이 저장.
-        save_ui_cache_df("flow_hist", st.session_state["flow_hist"])
-        save_ui_cache_df("market_hist", st.session_state["market_hist"])
-        save_ui_cache_df("price_hist_flow", _ph)
-        save_ui_cache_json("live_quotes", st.session_state["live_quotes"])
+    # Link(§6-28)도 이 새로고침을 그대로 씀 — Foreigner/Volume/Link가 전부 같은 DB 호출
+    # 하나를 공유해야 "같은 기준일이면 흔들림이 없다"는 전제가 실제로 성립한다(사용자 지적,
+    # 2026-09-11). refresh_flow_data()(모듈 최상위, §6-33 "Setting"에서도 재사용)가 실제 로직.
 
     with st.expander("Volume", expanded=False):
         if st.button("새로고침", key="volume_refresh", use_container_width=True):
             with st.spinner("거래량 데이터 조회 중..."):
-                _refresh_flow_data()
+                refresh_flow_data()
             st.rerun()
 
         if flow_hist is None:
@@ -1202,7 +1223,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     with st.expander("Foreigner", expanded=False):
         if st.button("새로고침", key="foreigner_refresh", use_container_width=True):
             with st.spinner("외국인 수급 데이터 조회 중..."):
-                _refresh_flow_data()
+                refresh_flow_data()
             st.rerun()
 
         if flow_hist is None:
@@ -1269,7 +1290,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         else:
             _render_link_panel(ph=price_hist_flow, fh=flow_hist,
                                 live_quotes=st.session_state.get("live_quotes"),
-                                refresh_fn=_refresh_flow_data, T=T)
+                                refresh_fn=refresh_flow_data, T=T)
 
     # ---- 종목별 보유현황 ----
     SORT_OPTIONS = {"비중": "weight", "섹터": "sector", "현재가": "price",

@@ -24,7 +24,7 @@ from portfolio_core import (
     compute_index_vs_account, load_index_history, load_history, append_capture_anomalies,
     write_account_snapshot, resolve_trading_date,
 )
-from ui_portfolio_tab import render_portfolio_tab
+from ui_portfolio_tab import render_portfolio_tab, refresh_updown_data, refresh_fishing_data, refresh_flow_data
 from ui_transactions_tab import render_transactions_tab
 from ui_statistics_tab import render_statistics_tab
 
@@ -436,11 +436,16 @@ if "auto_refreshed" not in st.session_state:
     st.session_state["auto_refreshed"] = True
     auto_refresh_triggered = True
 
-top_l, top_r = st.columns([5, 2])
+top_l, top_setting, top_r = st.columns([3.9, 1.1, 2])
+with top_setting:
+    # §6-33: Up/Down·Fishing·Volume/Foreigner/Link까지 이 앱의 새로고침 버튼을 전부 한 번에
+    # 눌러주는 버튼 — 하루 시작에 한 번만 누르면 되게 하려는 목적("시세 새로고침" 옆에
+    # 나란히, 2026-09-16 사용자 요청).
+    settings_clicked = st.button("Setting", use_container_width=True, key="refresh_btn_all")
 with top_r:
     refresh_clicked_top = st.button("시세 새로고침", use_container_width=True, key="refresh_btn_top")
 
-if refresh_clicked_top or auto_refresh_triggered:
+if refresh_clicked_top or auto_refresh_triggered or settings_clicked:
     with st.spinner("종목명으로 시세를 찾는 중..."):
         holdings, refresh_report = refresh_all_prices(holdings)
         refresh_dividend_yields(holdings["종목코드"].tolist())
@@ -472,6 +477,14 @@ if refresh_clicked_top or auto_refresh_triggered:
                                        resolve_trading_date(), _sb.get("url", ""), _sb.get("anon_key", ""))
         except Exception:
             pass
+    if settings_clicked:
+        # §6-33: 시세 새로고침 다음으로 Up/Down·Fishing·Volume/Foreigner(+Link) 새로고침까지
+        # 이어서 실행 — Quiet Hands/Bench는 이 셋의 session_state를 그대로 재사용하므로
+        # 별도 호출이 필요 없다.
+        with st.spinner("Up/Down · Fishing · Volume/Foreigner 새로고침 중..."):
+            refresh_updown_data(holdings, tx)
+            refresh_fishing_data()
+            refresh_flow_data()
     if refresh_report["updated"]:
         st.toast(f"{refresh_report['updated']}개 종목 시세 갱신 완료")
     if refresh_report["unresolved"]:

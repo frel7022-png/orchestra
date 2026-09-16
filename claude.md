@@ -1854,3 +1854,44 @@ manual/                           # report/와 성격이 다름 — **살아있�
   P&L Actions처럼 이미 있는 결과 지표들을 이 탭으로 옮기거나 참조할지, meritz에도
   이식할지는 아직 미정.
 - **new1 전용**.
+
+### 6-33. "Setting" — 여러 개로 흩어진 새로고침 버튼을 한 번에 (2026-09-16, new1 전용)
+- **동기**: Up/Down·Fishing·Volume·Foreigner(+Link)는 전부 §6-31처럼 세션 리셋돼도 마지막
+  값이 남긴 하지만, 그건 어디까지나 "마지막으로 새로고침 버튼을 눌렀을 때" 값이다 — 결국
+  하루에 한 번은 이 패널들을 전부 눌러서 그날 값으로 갱신해야 한다. 지금까지는 "시세
+  새로고침"(맨 위, holdings/지수/체크포인트류) 하나만 누르고 나머지 5개 새로고침 버튼은
+  각 expander를 하나씩 펼쳐 따로 눌러야 했음 — 사용자 요청: "하루 시작에 한 번 누를
+  건데, 시세 새로고침·업다운·피싱·볼륨·포리너(→ 콰이어트 핸즈까지 커버) 전부 새로고침을
+  눌러주는 버튼이 가능하니?"
+- **위치**: 맨 위 "시세 새로고침" 버튼 **바로 왼쪽**에 나란히 `Setting` 버튼 신설
+  (`app.py`, `top_l, top_setting, top_r = st.columns([3.9, 1.1, 2])` — `top_r`(시세
+  새로고침) 폭 비율은 그대로 유지해 기존 줄바꿈 동작 안 바뀌게 함, `top_setting`은 좁아도
+  "Setting" 한 단어라 문제없음. Playwright로 모바일 폭(390px) 확인).
+  Quiet Hands·Bench는 **버튼이 따로 없다** — 이미 Fishing/Volume/Foreigner/Up-Down의
+  session_state를 그대로 재사용하는 구조(§6-29 "공유 새로고침" 원칙)라 저 넷만 갱신되면
+  자동으로 같이 갱신됨. 그래서 실제로 눌러야 하는 건 4가지뿐: 시세 새로고침·Up/Down·
+  Fishing·Volume/Foreigner(둘이 이미 `refresh_flow_data()` 하나 공유, §6-28).
+- **로직 복제 금지 원칙 그대로 적용**: 기존 3개 버튼(Up/Down·Fishing·Volume·Foreigner)의
+  인라인 핸들러 로직을 각각 `ui_portfolio_tab.py`의 모듈 최상위 함수로 뽑아냄
+  (`refresh_updown_data(holdings, tx)`, `refresh_fishing_data() -> list[str]`,
+  `refresh_flow_data()` — 마지막 것은 원래 `render_portfolio_tab` 안의 로컬 클로저
+  `_refresh_flow_data()`였던 걸 그대로 승격). 각 버튼 핸들러는 이제 이 함수를 호출만
+  하고(로직 중복 없음), `app.py`가 같은 함수들을 import해서 "Setting"에서도 그대로 씀 —
+  두 곳에 같은 로직이 따로 존재하지 않음.
+  - `app.py`의 refresh 블록 조건을 `if refresh_clicked_top or auto_refresh_triggered or
+    settings_clicked:`로 확장해 "Setting"도 기존 "시세 새로고침"(holdings/배당/시장캐시/
+    지수·bigcap 히스토리/캡처로그/계좌스냅샷) 전체를 그대로 타게 하고, 그 뒤에
+    `if settings_clicked:` 블록에서 `refresh_updown_data(holdings, tx)` →
+    `refresh_fishing_data()` → `refresh_flow_data()`를 순서대로 추가 실행.
+  - 세 함수 다 §6-31 로컬 캐시(`save_ui_cache_df`/`save_ui_cache_json`)에도 이미 저장하는
+    로직을 그대로 갖고 있어서, "Setting"으로 갱신한 값도 §6-31처럼 세션 리셋에 버틴다 —
+    새 캐시 배선 불필요.
+- **네트워크 호출 총량은 안 늘어남** — 각 함수가 원래 그 버튼을 눌렀을 때 나가던 요청과
+  정확히 같은 호출을 한다. "Setting" 자체가 새 조회를 추가하는 게 아니라 기존 4개 버튼
+  클릭을 순서대로 대신 눌러주는 것뿐.
+- **검증**: `python -c "import app"`은 Streamlit 세션 밖이라 직접 실행 불가 — 대신
+  `pytest tests/ -q`(106개, `test_app_smoke.py` AppTest 포함) 전체 통과로 import·조립
+  단계에서 깨진 게 없는지 확인. 실제 버튼 클릭(라이브 새로고침 4종 동시 실행) 자체는
+  로컬 `streamlit run app.py`에서 사람이 확인할 부분(자동 테스트로는 실시간 네이버/
+  Supabase 조회를 매번 트리거하고 싶지 않아 여기서는 스킵).
+- **new1 전용** (meritz는 Fishing/Volume/Foreigner류 새로고침 패널 자체가 없음).
