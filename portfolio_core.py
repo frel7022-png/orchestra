@@ -2202,9 +2202,11 @@ def compute_fa_win_rate(tx: pd.DataFrame) -> dict:
     _cycle_bucket을 쓰지만 holdings 없이 카운트만 뽑는 가벼운 버전 — "매일 앞에서 보는" 용도라
     별도 함수로 둠(2026-09-16, "3박자로 다 보여달라"는 사용자 요청으로 total/n_out/ma 추가).
     반환: {"win"(FA 수), "total"(전체 사이클 수, open 포함), "n_out"(전량청산 완료 수 =
-    FA+MA+MO_closed), "ma"(물타서 전량청산한 수), "win_rate": %, "avg_days": FA 사이클의
-    평균 보유일수(달력일, 없으면 None)}."""
-    empty = {"win": 0, "total": 0, "n_out": 0, "ma": 0, "win_rate": 0.0, "avg_days": None}
+    win+ma+mo_closed), "ma"(물타서 전량청산한 수), "mo_closed"(나눠 팔아서 전량청산한 수 —
+    n_out = win+ma+mo_closed로 검산됨, 2026-09-16 사용자가 "합이 안 맞는다"고 지적해서 추가),
+    "win_rate": %, "avg_days": FA 사이클의 평균 보유일수(달력일, 없으면 None)}."""
+    empty = {"win": 0, "total": 0, "n_out": 0, "ma": 0, "mo_closed": 0,
+             "win_rate": 0.0, "avg_days": None}
     cycles = _all_cycles(tx)
     if not cycles:
         return empty
@@ -2212,6 +2214,7 @@ def compute_fa_win_rate(tx: pd.DataFrame) -> dict:
         c["bucket"] = _cycle_bucket(c)
     fa = [c for c in cycles if c["bucket"] == "FA"]
     ma = [c for c in cycles if c["bucket"] == "MA"]
+    mo_closed = [c for c in cycles if c["bucket"] == "MO" and c["closed"]]
     n_out = sum(1 for c in cycles if c["closed"])
     total = len(cycles)
     win = len(fa)
@@ -2224,7 +2227,7 @@ def compute_fa_win_rate(tx: pd.DataFrame) -> dict:
             except (ValueError, TypeError):
                 pass
     avg_days = (sum(days) / len(days)) if days else None
-    return {"win": win, "total": total, "n_out": n_out, "ma": len(ma),
+    return {"win": win, "total": total, "n_out": n_out, "ma": len(ma), "mo_closed": len(mo_closed),
             "win_rate": (win / total * 100.0) if total else 0.0, "avg_days": avg_days}
 
 

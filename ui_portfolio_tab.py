@@ -469,14 +469,16 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 팔았든(MO), 아직도 들고 있든(HOLD) 전부 실패로 센다 — 손익이 아니라 "최초 판단의
     # 정확도"를 재는 지표. compute_fa_win_rate() 참고.
     # 1번째 박자: 총 진입(open 포함 전체 사이클)/총 아웃(전량청산 완료). 2번째: 1회 진입
-    # 1회 나온 것(FA). 3번째: 물타서 나온 것(MA). 평균일수는 FA 기준 부가정보로 이어붙임.
+    # 1회 나온 것(FA)/물타서 나온 것(MA)/나눠 팔아서 나온 것(MO_closed) — 이 셋의 합이
+    # 총아웃과 정확히 일치(2026-09-16 사용자가 "합이 안 맞는다"고 지적해서 나눔도 추가해
+    # 검산되게 함). 평균일수는 FA 기준 부가정보로 이어붙임.
     _fa = compute_fa_win_rate(tx)
     _fa_days = f" · 평균 {_fa['avg_days']:.0f}일" if _fa["avg_days"] is not None else ""
     _fa_html = (
         f'<div style="font-size:12px;color:{T["text"]};font-weight:600;margin-top:4px">'
         f'총진입 {_fa["total"]} · 총아웃 {_fa["n_out"]}</div>'
         f'<div style="font-size:12px;color:{T["text"]};font-weight:600;margin-top:1px">'
-        f'1회 {_fa["win"]}({_fa["win_rate"]:.0f}%) · 물타 {_fa["ma"]}{_fa_days}</div>'
+        f'1회 {_fa["win"]}({_fa["win_rate"]:.0f}%) · 물타 {_fa["ma"]} · 나눔 {_fa["mo_closed"]}{_fa_days}</div>'
         if _fa["total"] else ""
     )
 
