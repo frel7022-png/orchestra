@@ -26,6 +26,7 @@ from portfolio_core import (
 )
 from ui_portfolio_tab import render_portfolio_tab
 from ui_transactions_tab import render_transactions_tab
+from ui_statistics_tab import render_statistics_tab
 
 
 def theme() -> dict:
@@ -484,10 +485,13 @@ if refresh_clicked_top or auto_refresh_triggered:
 # 두 탭이 동일한 holdings/cash로 각자 compute_metrics를 다시 부르던 걸 여기서 한 번만 계산해서 공유
 df, stock_valuation, total_assets, unrealized_loss = compute_metrics(holdings, state["cash"])
 
-tab_port, tab_tx = st.tabs(["Portfolio", "Analysis"])
+tab_port, tab_tx, tab_stats = st.tabs(["Portfolio", "Analysis", "Statistics"])
 
 with tab_port:
     render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets, unrealized_loss, T)
 
 with tab_tx:
     render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, T)
+
+with tab_stats:
+    render_statistics_tab(tx, T)

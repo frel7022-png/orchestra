@@ -1512,6 +1512,84 @@ def test_compute_fa_win_rate_empty_transactions():
         "win_rate": 0.0, "avg_days": None}
 
 
+# ------------------------------------------------------------------ #
+# Statistics 탭 (§6-32): price_bracket_distribution / top_traded_stocks
+# ------------------------------------------------------------------ #
+def _cycle_tx(name, buy_px, sell_px, buy_date="2026-01-05", sell_date="2026-01-07", qty=10):
+    return [
+        {"id": f"{name}-b-{buy_date}", "날짜": buy_date, "종목명": name, "구분": "매수",
+         "수량": qty, "단가": buy_px, "실현손익": "", "메모": "", "정산반영": True},
+        {"id": f"{name}-s-{sell_date}", "날짜": sell_date, "종목명": name, "구분": "매도",
+         "수량": qty, "단가": sell_px, "실현손익": (sell_px - buy_px) * qty, "메모": "", "정산반영": True},
+    ]
+
+
+def test_price_bracket_distribution_buckets_by_first_buy_price():
+    tx = pd.DataFrame(
+        _cycle_tx("A", 9000, 9500)      # 1만원 이하
+        + _cycle_tx("B", 10001, 15000)  # 1~2만원
+        + _cycle_tx("C", 20000, 21000)  # 1~2만원 (경계값: 정확히 2만원은 하한 포함)
+        + _cycle_tx("D", 150000, 160000)  # 10만원 이상
+    )
+    dist = core.price_bracket_distribution(tx)
+    got = dict(zip(dist["구간"], dist["건수"]))
+    assert got["1만원 이하"] == 1
+    assert got["1~2만원"] == 2
+    assert got["10만원 이상"] == 1
+    assert got["2~3만원"] == 0
+    assert dist["건수"].sum() == 4
+
+
+def test_price_bracket_distribution_excludes_open_cycles():
+    tx = pd.DataFrame([
+        {"id": "1", "날짜": "2026-01-05", "종목명": "A", "구분": "매수", "수량": 10, "단가": 5000, "실현손익": "", "메모": "", "정산반영": True},
+    ])
+    dist = core.price_bracket_distribution(tx)
+    assert dist["건수"].sum() == 0
+
+
+def test_top_traded_stocks_ranks_by_cycle_count_then_price():
+    # A: 2회 청산(각 1만원대), B: 1회 청산(5만원) — A가 횟수 많아서 1위.
+    tx = pd.DataFrame(
+        _cycle_tx("A", 10000, 12000, "2026-01-01", "2026-01-02")
+        + _cycle_tx("A", 11000, 13000, "2026-01-03", "2026-01-04")
+        + _cycle_tx("B", 50000, 55000, "2026-01-01", "2026-01-02")
+    )
+    top = core.top_traded_stocks(tx, top_n=10)
+    assert list(top["종목명"]) == ["A", "B"]
+    a = top.iloc[0]
+    assert a["청산횟수"] == 2
+    assert a["최초진입가"] == pytest.approx(10000.0)
+    assert a["최후매도가"] == pytest.approx(13000.0)
+    assert a["가격변화"] == pytest.approx(3000.0)
+    assert a["가격변화율"] == pytest.approx(30.0)
+    # 실현손익: (12000-10000)*10 + (13000-11000)*10 = 40,000
+    assert a["누적실현손익"] == pytest.approx(40000.0)
+    # 매수총액: 10000*10 + 11000*10 = 210,000
+    assert a["누적실현손익률"] == pytest.approx(40000.0 / 210000.0 * 100)
+
+
+def test_top_traded_stocks_tie_breaks_by_higher_first_entry_price():
+    tx = pd.DataFrame(
+        _cycle_tx("Cheap", 10000, 11000, "2026-01-01", "2026-01-02")
+        + _cycle_tx("Pricey", 90000, 91000, "2026-01-01", "2026-01-02")
+    )
+    top = core.top_traded_stocks(tx, top_n=10)
+    assert list(top["종목명"]) == ["Pricey", "Cheap"]  # 둘 다 1회 청산 → 가격 높은 쪽 우선
+
+
+def test_top_traded_stocks_excludes_open_cycles_and_respects_top_n():
+    rows = []
+    for i, name in enumerate(["A", "B", "C"]):
+        rows += _cycle_tx(name, 10000 + i, 11000 + i, "2026-01-01", "2026-01-02")
+    rows += [{"id": "open", "날짜": "2026-01-05", "종목명": "D", "구분": "매수", "수량": 5,
+              "단가": 5000, "실현손익": "", "메모": "", "정산반영": True}]
+    tx = pd.DataFrame(rows)
+    top = core.top_traded_stocks(tx, top_n=2)
+    assert len(top) == 2
+    assert "D" not in set(top["종목명"])
+
+
 def test_compute_index_vs_account_caps_me_to_index_coverage():
     """index_hist가 asset_hist보다 뒤처지면(매매일지 반영으로 asset엔 오늘 행이 생겼는데
     index_history엔 아직 없음) 그 앞선 asset 행의 벤치당일이 0으로 계산돼 "혼합지수 당일

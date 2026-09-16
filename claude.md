@@ -136,6 +136,7 @@ portfolio_core.py        # 데이터 계층 전체(로드/저장/replay/시세�
                           #   재분리는 안 함, 판단만 남겨둠).
 ui_portfolio_tab.py       # render_portfolio_tab() — 요약카드/섹터비중/Up-Down/종목현황/Volume/Foreigner.
 ui_transactions_tab.py     # render_transactions_tab() — 실현손익 그래프/거래 캘린더/누적요약.
+ui_statistics_tab.py        # render_statistics_tab() — Price Brackets/Top Traded (§6-32, 2026-09-16 신설).
 ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-2 참고, 내부적으로 rebuild_portfolio_incremental 사용 — §6-14).
 fix_sector.py                  # 보유종목 섹터만 안전하게 고치는 스크립트 (§1-7 참고, 2026-08-28 신설).
 db_fetch_daily_prices.py       # watchlist 종목 전체 시세/거래량/수급을 매일 Supabase에 적재하는 cron 스크립트 (§6-9, §6-12 참고).
@@ -1738,3 +1739,71 @@ manual/                           # report/와 성격이 다름 — **살아있�
   한 번만 로드해야 순서 문제가 없다(처음엔 각 섹션 안에 개별로 넣었다가 Quiet Hands가 아직
   못 채워진 session_state를 읽는 문제를 발견해 함수 최상단으로 옮김).
 - **new1 전용** (meritz는 Fishing/Foreigner류 새로고침 패널 자체가 없음).
+
+### 6-32. "Statistics" 탭 — 지금까지의 매매 결과를 총량으로 보는 세 번째 탭 (2026-09-16, new1 전용)
+- **동기**: Portfolio 탭이 "지금 서 있는 자리"(현재 보유·물타기), Analysis 탭이 "시장 대비
+  어떻게 하고 있나"(벤치마크·DC/UC·P&L Actions)라면, "그동안 무슨 일이 있었나"를 총량으로
+  집계해서 보여주는 자리가 없었다 — 리포트 `report/2026-09-16_정교한_방패.html` §02가
+  지적한 "Holdings 카드는 종목 하나엔 강한데 81개를 훑어보는 통계 뷰가 없다"는 공백과
+  정확히 맞물림. 사용자 지시: "모든 건 정의를 하고 논리를 펼치지. 그 간 나온 결과를
+  통계치로 보이는 게 일종의 서비스야 — 나만 보는 게 아니라 향후 멤버로 올 사람을 위해서도."
+  즉 정의(함수 docstring) → 로직(계산) → 결과(숫자)라는, 논문 Results 섹션과 같은 순서로
+  쌓아가는 걸 원칙으로 함.
+- **탭 구성**: `app.py`의 `st.tabs(["Portfolio", "Analysis", "Statistics"])` — 세 번째 탭,
+  `ui_statistics_tab.render_statistics_tab(tx, T)`. 새 파일 `ui_statistics_tab.py`
+  (`ui_portfolio_tab.py`/`ui_transactions_tab.py`와 같은 분리 규칙).
+- **공통 원칙 — "사이클" 단위, 청산 완료된 것만**: 두 기능 다 `_all_cycles`(§6-20)의
+  `closed=True`인 사이클(FA/MA/MO_closed)만 대상으로 한다. **아직 보유 중인(open) 사이클은
+  제외**(사용자 확정: "지금 보유중인건 손절의 확률도 열려있잖아" — 미확정 결과를 통계에
+  섞지 않는다는 원칙, FA 승률·물타기 지표와 같은 맥락). "5번 물타서 2번만 팔았다"처럼
+  청산 요건(수량 0)을 못 채운 사이클은 애초에 `closed=False`라 안 잡힘.
+- **① Price Brackets — 가격대별 구성**: `portfolio_core.price_bracket_distribution(tx)` —
+  청산된 사이클을 **진입가(첫 매수 단가, `first_buy_px`)** 기준으로 `PRICE_BRACKET_LABELS`
+  (1만원 이하 / 1~2만원 / … / 9~10만원 / 10만원 이상, 11구간)에 묶어 건수·비율(%)을 낸다.
+  - **사이클 단위 카운트**(종목 단위 아님, 사용자 확정: "그간 몇 종목 왔다갔다 했나"는 사이클
+    카운트) — 같은 종목이 1만원대에서도 3만원대에서도 청산된 적 있으면 각 구간에 1건씩 잡힘.
+  - **물타기해도 진입가는 첫 매수 단가 하나로 고정** — 사이클 안에서 여러 번 산 가격은 안 섞음.
+  - UI: `app.py`의 기존 `.sector-bar-*` CSS 클래스(섹터 비중 막대와 동일 컴포넌트, 2026-09-16
+    재사용 — 새 CSS 없이 "카테고리→막대+건수(%)" 패턴을 그대로 씀) 재사용, 최댓값 기준
+    상대 스케일(고정 스케일 아님, 섹터 목표 마커 같은 부가 요소 없음).
+  - **2026-09-16 실측**: 청산 121건 — 2~3만원(24건, 20%)·10만원 이상(24건, 20%)·1만원
+    이하(21건, 17%)·3~4만원(17건, 14%) 순으로 저가~중저가 구간에 몰려있고, 5~9만원대는
+    합쳐도 13건(11%)뿐 — 애매한 중고가 구간은 거의 안 건드림.
+- **② Top Traded — 최다 청산 종목 + 효율성**: `portfolio_core.top_traded_stocks(tx, top_n=10)` —
+  종목명별로 청산 사이클을 묶어 **청산 횟수** 내림차순(동률이면 **최초 진입가** 내림차순,
+  사용자 확정 "가격순") top_n개.
+  - 반환 컬럼: 종목명, 청산횟수, **최초진입가/최초진입일**(그 종목의 시간순 첫 번째 청산
+    사이클 — 같은 종목의 더 이른 사이클이 안 닫혔으면 다음 사이클 자체가 시작 못 하므로,
+    "첫 번째 closed 사이클"은 항상 그 종목의 진짜 최초 진입과 일치함), **최후매도가/최후매도일**
+    (시간순 마지막 청산 사이클의 `close_price`/`close_date` — 이번에 `_all_cycles`에
+    `close_price` 필드 신설), **가격변화/가격변화율**(최후매도가−최초진입가, "순수 가격
+    이동"만), **누적실현손익/누적실현손익률**(그 종목의 청산 사이클 전부의 실현손익 합 /
+    매수총액 합).
+  - **핵심 — "효율성" 비교(사용자 설계)**: "1만원 진입·2만원 매도를 5회 반복했다면, 가격
+    자체는 1만원만 움직였어도 나는 5만원을 번 것 — 이게 Up/Down(매도 후 재진입)이 실제로
+    먹히는지 체크하는 것"이라는 사용자 설계 그대로, **가격변화율과 누적실현손익률을 나란히
+    보여줘서** 반복매매가 단순 보유보다 더(또는 덜) 벌었는지 한눈에 비교되게 한다 — 별도
+    "효율 지수" 하나로 뭉치지 않고 두 숫자를 그대로 병기(§6-17의 "하락 방어·상승 참여를
+    스칼라 하나로 안 뭉친다"는 원칙과 같은 맥락).
+  - **2026-09-16 실측 상위**: NAVER(8회, 205,500→216,000원 +5.1%, 누적실현 +46,462원/+2.7%),
+    서진시스템(5회, 38,650→36,600원 **-5.3%**인데 누적실현 **+5.3%** — 가격은 순수하게
+    내렸는데 반복 매매로는 플러스를 냄, 정확히 사용자가 찾으려던 "가격 역행+매매 효율" 사례),
+    실리콘투(4회, +25.7% 가격변화 대비 누적실현 +3.6% — 반대로 가격은 크게 올랐는데 반복매매
+    효율은 상대적으로 낮은 사례).
+- **함수 추가**(`portfolio_core.py`): `_all_cycles`에 `close_price` 필드 신설(그 사이클을
+  닫은 매도의 단가). `PRICE_BRACKET_LABELS`, `price_bracket_distribution(tx)`,
+  `top_traded_stocks(tx, top_n=10)`.
+- 회귀 테스트 6개: `test_price_bracket_distribution_buckets_by_first_buy_price`(구간 경계값
+  포함), `test_price_bracket_distribution_excludes_open_cycles`,
+  `test_top_traded_stocks_ranks_by_cycle_count_then_price`,
+  `test_top_traded_stocks_tie_breaks_by_higher_first_entry_price`,
+  `test_top_traded_stocks_excludes_open_cycles_and_respects_top_n`.
+- **검증**: 함수 단위 테스트(6개, 위) + `AppTest`(`test_app_smoke.py`)로 탭 3개 조립까지
+  예외 없이 실행되는지 확인 + 실제 데이터로 계산해 수치 확인(위 실측). 픽셀 레이아웃은
+  Playwright로 (Streamlit 세션의 느린 실시간 시세 새로고침을 피하려고) `st.markdown`을
+  스텁으로 캡처해 만든 독립 HTML로 모바일 폭(390px) 확인 — `.sector-bar-*` 막대와 Top
+  Traded 카드 모두 정상 렌더 확인함.
+- **아직 안 한 것 (다음에 이어서)**: "완성하자, 해보고 고치면서"(사용자) — 이 두 기능이
+  1차분. FA 승률·P&L Actions처럼 이미 있는 결과 지표들을 이 탭으로 옮기거나 참조할지,
+  meritz에도 이식할지는 아직 미정.
+- **new1 전용**.

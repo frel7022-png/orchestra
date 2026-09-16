@@ -2056,7 +2056,8 @@ def get_holding_avg_price_path(tx: pd.DataFrame, name: str) -> pd.DataFrame:
 def _all_cycles(tx: pd.DataFrame) -> list[dict]:
     """모든 종목의 모든 사이클(진입 ~ 전량청산, 청산 안 됐으면 open)을 리스트로.
     사이클 dict: 종목, n_buy, n_sell, n_partial, first_buy_qty, first_buy_px, first_buy_date,
-    close_date(전량청산된 마지막 매도일, closed=False면 None), buy_amt(Σ매수 수량×단가),
+    close_date(전량청산된 마지막 매도일, closed=False면 None), close_price(그 청산 매도의
+    단가, Statistics §6-32 최초/최후 가격 드리프트용), buy_amt(Σ매수 수량×단가),
     sell_amt(Σ매도 수량×단가), realized(Σ실현손익), closed."""
     if tx is None or tx.empty:
         return []
@@ -2077,7 +2078,7 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
             if cur is None:
                 cur = {"종목": name, "n_buy": 0, "n_sell": 0, "n_partial": 0,
                        "first_buy_qty": 0.0, "first_buy_px": 0.0, "first_buy_date": None,
-                       "close_date": None,
+                       "close_date": None, "close_price": None,
                        "buy_amt": 0.0, "sell_amt": 0.0, "realized": 0.0, "closed": False}
             if r["구분"] == "매수":
                 if cur["n_buy"] == 0:
@@ -2094,6 +2095,7 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
                 if qty <= 1e-9:
                     cur["closed"] = True
                     cur["close_date"] = r["날짜"]
+                    cur["close_price"] = float(r["단가"])
                     out.append(cur)
                     cur, qty = None, 0.0
                 else:
@@ -2233,6 +2235,86 @@ def compute_fa_win_rate(tx: pd.DataFrame) -> dict:
     avg_days = (sum(days) / len(days)) if days else None
     return {"win": win, "total": total, "n_out": n_out, "ma": len(ma), "mo_closed": len(mo_closed),
             "win_rate": (win / total * 100.0) if total else 0.0, "avg_days": avg_days}
+
+
+PRICE_BRACKET_LABELS = ["1만원 이하", "1~2만원", "2~3만원", "3~4만원", "4~5만원",
+                        "5~6만원", "6~7만원", "7~8만원", "8~9만원", "9~10만원", "10만원 이상"]
+
+
+def price_bracket_distribution(tx: pd.DataFrame) -> pd.DataFrame:
+    """Statistics 탭(§6-32): 청산 완료된 사이클을 진입가(첫 매수 단가) 기준으로 가격대별로
+    묶어 몇 사이클이 그 구간에서 있었는지 센다 — "이 계좌가 실제로 어떤 가격대 주식을 사고
+    파는가"를 보는 가장 기초적인 서술 통계(2026-09-16, 리포트 §02 "Holdings 카드는 종목
+    하나엔 강한데 전체를 훑는 통계가 없다" 지적에서 시작).
+    - **사이클 단위** — 종목이 아니라 "진입~청산 1회"를 1건으로 센다. 같은 종목이 1만원대에서도,
+      3만원대에서도 청산된 적이 있으면 각 구간에 1건씩 잡힌다(사용자 확정: "그간 몇 종목
+      왔다갔다 했나"는 사이클 카운트를 뜻함).
+    - **청산 완료(closed)된 사이클만** — 아직 보유 중인 건 손절 가능성이 열려있어 제외
+      (사용자 확정, FA 승률과 같은 원칙).
+    - 물타기해도 진입가는 **첫 매수 단가**(first_buy_px) 하나로 고정 — "5번 물타서 2번만
+      팔았다"처럼 청산 요건을 못 채운 사이클은 애초에 여기 안 들어옴.
+    반환: DataFrame[구간(PRICE_BRACKET_LABELS 순서), 건수, 비율(%)]."""
+    cycles = [c for c in _all_cycles(tx) if c["closed"]]
+    counts = {label: 0 for label in PRICE_BRACKET_LABELS}
+    for c in cycles:
+        px = float(c["first_buy_px"])
+        if px <= 10_000:
+            label = "1만원 이하"
+        elif px > 100_000:
+            label = "10만원 이상"
+        else:
+            idx = int((px - 1) // 10_000)  # 10,001~20,000 -> 1 -> PRICE_BRACKET_LABELS[1] = "1~2만원"
+            label = PRICE_BRACKET_LABELS[min(idx, 9)]
+        counts[label] += 1
+    total = sum(counts.values())
+    return pd.DataFrame([
+        {"구간": label, "건수": counts[label],
+         "비율": (counts[label] / total * 100.0) if total else 0.0}
+        for label in PRICE_BRACKET_LABELS
+    ])
+
+
+def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
+    """Statistics 탭(§6-32): 청산 완료된 사이클이 가장 많은 종목 top_n개 — "가장 많이
+    들어갔다 나온 종목"과, 그 반복 매매가 "가격이 움직인 것보다 더 벌었는지"(효율성, 사용자
+    표현: "1만원 진입·2만원 매도를 5회 반복했다면 가격은 1만원만 움직였어도 5만원을 번
+    거다 — Up/Down이 실제로 먹히는지 체크하는 것")를 같이 보여준다.
+    - 종목명별로 청산된 사이클을 전부 묶어 n_cycles(청산 횟수) 계산, 내림차순 정렬 —
+      동률이면 최초 진입가(first_entry_price) 내림차순(사용자 확정: "가격순").
+    - first_entry_price/first_entry_date = 그 종목의 (시간순) 첫 번째 청산 사이클의
+      first_buy_px/first_buy_date — 같은 종목의 더 이른 사이클이 아직 안 닫혔다면 더 나중
+      사이클도 존재할 수 없으므로(다음 사이클은 이전 사이클이 전량청산돼야 시작됨) 여기서
+      "첫 번째 closed 사이클"은 항상 그 종목의 진짜 최초 진입과 같다.
+    - last_exit_price/last_exit_date = (시간순) 마지막 청산 사이클의 close_price/close_date.
+    - price_diff/price_diff_pct = last_exit_price − first_entry_price (그 사이의 "순수 가격
+      이동"만 놓고 본 것 — 매매 횟수와 무관).
+    - cum_realized/cum_realized_pct = 그 종목의 청산된 사이클 전부의 실현손익 합 / 총매수액
+      합 대비 % — 이게 price_diff_pct보다 훨씬 크면(특히 같은 방향이 아니어도) 반복 매매가
+      단순 보유보다 더 벌었다는 뜻(=Up/Down 재진입 타이밍이 실제로 유효했다는 신호).
+    반환: DataFrame[종목명, 청산횟수, 최초진입가, 최초진입일, 최후매도가, 최후매도일,
+    가격변화, 가격변화율, 누적실현손익, 누적실현손익률]."""
+    cycles = [c for c in _all_cycles(tx) if c["closed"]]
+    by_name: dict[str, list[dict]] = {}
+    for c in cycles:
+        by_name.setdefault(c["종목"], []).append(c)
+    rows = []
+    for name, cs in by_name.items():
+        cs = sorted(cs, key=lambda c: (str(c["first_buy_date"]), str(c["close_date"])))
+        first, last = cs[0], cs[-1]
+        buy_total = sum(c["buy_amt"] for c in cs)
+        realized_total = sum(c["realized"] for c in cs)
+        price_diff = float(last["close_price"]) - float(first["first_buy_px"])
+        rows.append({
+            "종목명": name, "청산횟수": len(cs),
+            "최초진입가": float(first["first_buy_px"]), "최초진입일": first["first_buy_date"],
+            "최후매도가": float(last["close_price"]), "최후매도일": last["close_date"],
+            "가격변화": price_diff,
+            "가격변화율": (price_diff / first["first_buy_px"] * 100.0) if first["first_buy_px"] else 0.0,
+            "누적실현손익": realized_total,
+            "누적실현손익률": (realized_total / buy_total * 100.0) if buy_total else 0.0,
+        })
+    rows.sort(key=lambda r: (-r["청산횟수"], -r["최초진입가"]))
+    return pd.DataFrame(rows[:top_n])
 
 
 # ------------------------------------------------------------------ #
