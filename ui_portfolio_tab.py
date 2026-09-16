@@ -820,7 +820,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
 
             rows_html = "".join(
                 f'<div class="updown-row"><span class="name">{r["종목명"]}</span>'
-                f'{_wd_span(r["pct_first_cur"])}{_wd_mid(r)}{_wd_span(r["pct_last"])}</div>'
+                f'<span class="wd-extra">{_wd_span(r["pct_first_cur"])}{_wd_mid(r)}</span>'
+                f'{_wd_span(r["pct_last"])}</div>'
                 for r in watering_rows
             )
             st.markdown(rows_html, unsafe_allow_html=True)

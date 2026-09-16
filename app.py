@@ -100,6 +100,10 @@ st.markdown(f"""
     .updown-row.flow-row .pct {{ width:58px; }}
     .updown-row.flow-row .name {{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
     .updown-row .hold {{ font-size:11px; color:{T['muted']}; font-family: ui-monospace, monospace; width:44px; text-align:right; flex-shrink:0; }}
+    /* Watering Detect: 모바일 좁은 화면에선 최초가/흡수율/시드 상세를 숨기고 마지막 매수 대비%만
+       보여줌(2026-09-16 사용자 요청 — 3개 숫자가 모바일에서 자리를 너무 차지함). */
+    .wd-extra {{ display:inline-flex; align-items:center; gap:8px; }}
+    @media (max-width:480px) {{ .wd-extra {{ display:none; }} }}
 
 
     .stock-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:12px; padding:10px 16px; margin-bottom:7px; }}
