@@ -1815,6 +1815,38 @@ manual/                           # report/와 성격이 다름 — **살아있�
 - **섹션 설명 캡션 전부 제거 (2026-09-16 당일, 사용자 지시)**: Price Brackets/Top Traded
   헤더 밑에 붙였던 설명 문단·"총 N건" 요약·"현재가 없으면 Up/Down에서 새로고침" 안내까지
   전부 제거함 — [[feedback_no_ui_explainer_captions]] 원칙 그대로(개인용, 설명 캡션 불필요).
+- **Top Traded를 Price Brackets 하위 expander로, 전종목 표시 + 하루 1회 고정 새로고침
+  (2026-09-16 당일, 사용자 지시)**: Price Brackets는 그대로 항상 펼쳐진 채로 두고, 그
+  바로 밑에 `st.expander("Top Traded")`를 둠 — "항상 해오던" 이 앱의 아코디언 패턴
+  (Up/Down·Fishing·Volume·Foreigner와 동일 UX). `top_n` 상한을 없애고(`top_traded_stocks
+  (tx, top_n=None)` — `list[:None]`이 파이썬에서 전체 슬라이스라 함수 코드 변경 불필요)
+  **청산 완료된 사이클이 있는 종목 전부**를 보여줌(사용자: "121개가 5회도 있고 1회도
+  있으니 그냥 다 나오게 하자").
+  - **하루 1회 고정(pin) 새로고침 — 사용자가 직접 설계한 캐싱 메커니즘**: "121개(청산
+    사이클)는 9/16까지는 고정이니 매번 다시 계산할 필요 없다. 새로고침을 오늘 또 눌러도
+    이미 오늘 자로 고정했으면 그대로 두고, 새 날짜(예: 9/17)에 누르면 그 사이 새로 닫힌
+    사이클만 반영해서 다시 그 날짜로 고정한다. 9/17에 누른 뒤 휴가 가서 9/25에 다시
+    누르면 9/18~25 사이를 한 번에 보고 9/25로 고정. 부하 때문에." — `_refresh_top_traded()`가
+    `st.session_state["top_traded_cache"]["as_of_date"]`를 오늘 날짜(`today_kst_str()`)와
+    비교해서 **같으면 아무것도 안 하고 즉시 반환**(네트워크 요청 0), **다르면** 그 시점
+    기준으로 전체를 다시 계산 + 현재가를 새로 조회하고 오늘 날짜로 다시 고정(re-pin)한다.
+    사이클 집계 자체(`_all_cycles` 기반, 121건 스캔)는 가벼워서 매번 다시 훑어도 문제없다 —
+    **실제로 아끼는 비용은 현재가 네트워크 조회 하나뿐**이고, 그걸 하루 최대 1회로 제한하는
+    게 이 메커니즘의 전부다(사이클 델타를 따로 병합하는 정교한 로직은 불필요 — 그냥 그
+    시점의 `tx` 전체로 다시 계산해도 결과는 항상 같고 비용도 무시할 만함).
+  - **현재가 조회 우선순위(부하 최소화)**: `_current_price_map(holdings)`(보유 중이면
+    holdings, 아니면 Up/Down 캐시 — 전부 공짜)로 먼저 채우고, **그래도 못 찾은 종목만**
+    `get_current_prices_for_names()`로 실제 네트워크 조회. 즉 새로고침을 눌러도 이미 알고
+    있는 가격은 다시 안 물어봄.
+  - **세션 간 유지(§6-31)**: 새로고침 결과를 `save_ui_cache_json("top_traded", ...)`로
+    로컬에도 저장, `render_statistics_tab()`이 `st.session_state`에 `top_traded_cache`가
+    없을 때(세션 리셋) 이 파일에서 먼저 채운다 — 앱을 나갔다 들어와도 마지막 고정값이
+    바로 보임.
+  - **검증**: 날짜를 가짜로 바꿔가며(`today_kst_str`/`get_current_prices_for_names` 몽키패치)
+    같은 날 두 번째 호출은 네트워크 호출이 0번, 날짜가 바뀐 세 번째 호출은 1번 더 나가는
+    것을 직접 스크립트로 확인함(2026-09-16). 별도 pytest 케이스는 아직 안 만듦(이 프로젝트는
+    ui_*.py 로직을 `test_app_smoke.py`의 `AppTest`로만 "예외 없음"을 검증하는 관례라 이
+    함수도 그 수준 — `st.session_state` 의존적인 순수 함수 단위 테스트를 원하면 다음에 추가).
 - 회귀 테스트 6개: `test_price_bracket_distribution_buckets_by_first_buy_price`(구간 경계값
   포함), `test_price_bracket_distribution_excludes_open_cycles`,
   `test_top_traded_stocks_ranks_by_cycle_count_then_price`,
