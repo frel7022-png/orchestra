@@ -1558,3 +1558,30 @@ def test_compute_metrics_at_close_falls_back_to_existing_price_when_all_lookups_
 
     assert stock_val == pytest.approx(10 * 1500.0)
     assert total_assets == pytest.approx(stock_val)
+
+
+def test_foreign_pct_change_since_uses_exact_or_next_available_date():
+    flow = pd.DataFrame([
+        {"종목명": "A", "날짜": "2026-08-20", "외국인보유율": 10.0},
+        {"종목명": "A", "날짜": "2026-08-25", "외국인보유율": 12.0},
+        {"종목명": "A", "날짜": "2026-09-01", "외국인보유율": 14.0},
+    ])
+    # 정확히 그 날짜에 관측치가 있으면 그걸 기준으로
+    assert core.foreign_pct_change_since(flow, "A", "2026-08-20") == pytest.approx(4.0)
+    # 그 날짜엔 관측치가 없으면 그 이후 가장 이른 값으로
+    assert core.foreign_pct_change_since(flow, "A", "2026-08-21") == pytest.approx(2.0)
+
+
+def test_foreign_pct_change_since_falls_back_to_earliest_when_since_date_precedes_coverage():
+    flow = pd.DataFrame([
+        {"종목명": "A", "날짜": "2026-08-25", "외국인보유율": 12.0},
+        {"종목명": "A", "날짜": "2026-09-01", "외국인보유율": 14.0},
+    ])
+    # since_date(8/1)가 DB 커버리지 시작(8/25)보다 이르면 가장 이른 값(8/25)을 기준으로
+    assert core.foreign_pct_change_since(flow, "A", "2026-08-01") == pytest.approx(2.0)
+
+
+def test_foreign_pct_change_since_returns_none_when_no_data():
+    assert core.foreign_pct_change_since(pd.DataFrame(), "A", "2026-08-01") is None
+    flow = pd.DataFrame([{"종목명": "B", "날짜": "2026-08-25", "외국인보유율": 12.0}])
+    assert core.foreign_pct_change_since(flow, "A", "2026-08-01") is None

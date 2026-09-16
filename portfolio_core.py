@@ -1076,6 +1076,28 @@ def compute_foreign_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = 
     return results
 
 
+def foreign_pct_change_since(flow_hist: pd.DataFrame, name: str, since_date: str) -> float | None:
+    """종목명 name의 외국인보유율이 since_date 대비 지금까지 몇 %p 움직였는지(2026-09-16,
+    Foreign Arrows §6-28 확장). compute_foreign_flags의 "기준일pp"와 같은 계산이지만, 기준일이
+    price_history 최초 관측일로 고정되지 않고 **호출부가 원하는 임의의 날짜**(내 최초진입일,
+    마지막 매도일, Fishing 기준일 등)를 받는다. investor_flow(flow_hist) 커버리지가 since_date
+    보다 늦게 시작하면(그 종목이 나중에 편입돼 cron이 늦게 붙은 경우 등) since_date 이후 가장
+    이른 값으로 대체한다 — "그 이전엔 관측치가 없으니 있는 것 중 제일 앞선 값을 쓴다"는 Fishing
+    최초가와 같은 원칙. 데이터 자체가 없으면 None."""
+    if flow_hist is None or flow_hist.empty:
+        return None
+    g = flow_hist[flow_hist["종목명"] == name].sort_values("날짜")
+    if g.empty:
+        return None
+    on_or_after = g[g["날짜"] >= since_date]
+    base_row = on_or_after.iloc[0] if not on_or_after.empty else g.iloc[0]
+    cur_row = g.iloc[-1]
+    try:
+        return float(cur_row["외국인보유율"]) - float(base_row["외국인보유율"])
+    except (TypeError, ValueError):
+        return None
+
+
 # Volume/Foreigner 화면의 "기준"(누적=기준일 대비 / 전일=어제 대비) 라디오 → flags dict의 어느 키를 쓸지
 FLOW_BASIS_KEY = {
     "volume": {"누적": "vs평균pct", "전일": "vs어제pct"},
