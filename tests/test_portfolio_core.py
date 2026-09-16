@@ -1436,11 +1436,14 @@ def test_compute_fa_win_rate_counts_only_fa_as_win():
     assert r["win"] == 1
     assert r["win_rate"] == pytest.approx(20.0)
     assert r["avg_days"] == pytest.approx(5.0)
+    assert r["n_out"] == 3   # 전량청산 완료: A(FA)·B(MA)·D(MO, 부분매도 후 전량청산) — C·E는 아직 open
+    assert r["ma"] == 1      # B
 
 
 def test_compute_fa_win_rate_empty_transactions():
     empty = pd.DataFrame(columns=["날짜", "종목명", "구분", "수량", "단가", "실현손익"])
-    assert core.compute_fa_win_rate(empty) == {"win": 0, "total": 0, "win_rate": 0.0, "avg_days": None}
+    assert core.compute_fa_win_rate(empty) == {
+        "win": 0, "total": 0, "n_out": 0, "ma": 0, "win_rate": 0.0, "avg_days": None}
 
 
 def test_compute_index_vs_account_caps_me_to_index_coverage():

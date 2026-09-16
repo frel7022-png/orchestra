@@ -2198,14 +2198,21 @@ def compute_fa_win_rate(tx: pd.DataFrame) -> dict:
     승률로 본다(2026-09-16 사용자 정의) — 물을 타야 했든(MA), 나눠 팔았든(MO), 아직도 들고
     있든(HOLD, 물타기 중이든 단발 보유든 전부) **FA가 아니면 전부 실패로 센다.** "처음 판단이
     맞았으면 물 안 타고 한 번에 끝났을 것"이라는 전제 — 즉 이 승률은 손익이 아니라 **최초
-    진입 시점의 판단 정확도**를 재는 지표. 반환: {"win": FA 사이클 수, "total": 전체 사이클 수,
-    "win_rate": %, "avg_days": FA 사이클의 평균 보유일수(달력일, 없으면 None)}."""
+    진입 시점의 판단 정확도**를 재는 지표. compute_pnl_actions(§6-20)과 같은 _all_cycles/
+    _cycle_bucket을 쓰지만 holdings 없이 카운트만 뽑는 가벼운 버전 — "매일 앞에서 보는" 용도라
+    별도 함수로 둠(2026-09-16, "3박자로 다 보여달라"는 사용자 요청으로 total/n_out/ma 추가).
+    반환: {"win"(FA 수), "total"(전체 사이클 수, open 포함), "n_out"(전량청산 완료 수 =
+    FA+MA+MO_closed), "ma"(물타서 전량청산한 수), "win_rate": %, "avg_days": FA 사이클의
+    평균 보유일수(달력일, 없으면 None)}."""
+    empty = {"win": 0, "total": 0, "n_out": 0, "ma": 0, "win_rate": 0.0, "avg_days": None}
     cycles = _all_cycles(tx)
     if not cycles:
-        return {"win": 0, "total": 0, "win_rate": 0.0, "avg_days": None}
+        return empty
     for c in cycles:
         c["bucket"] = _cycle_bucket(c)
     fa = [c for c in cycles if c["bucket"] == "FA"]
+    ma = [c for c in cycles if c["bucket"] == "MA"]
+    n_out = sum(1 for c in cycles if c["closed"])
     total = len(cycles)
     win = len(fa)
     days = []
@@ -2217,7 +2224,7 @@ def compute_fa_win_rate(tx: pd.DataFrame) -> dict:
             except (ValueError, TypeError):
                 pass
     avg_days = (sum(days) / len(days)) if days else None
-    return {"win": win, "total": total,
+    return {"win": win, "total": total, "n_out": n_out, "ma": len(ma),
             "win_rate": (win / total * 100.0) if total else 0.0, "avg_days": avg_days}
 
 
