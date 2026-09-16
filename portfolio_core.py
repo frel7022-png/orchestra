@@ -2235,6 +2235,122 @@ def compute_fa_win_rate(tx: pd.DataFrame) -> dict:
             "win_rate": (win / total * 100.0) if total else 0.0, "avg_days": avg_days}
 
 
+def compute_watering_rows(tx: pd.DataFrame, df: pd.DataFrame) -> list[dict]:
+    """"Watering Detect"(포트폴리오 탭) 모집단 — 물타기 중(현재 사이클 매수 2회 이상)이고
+    마지막 매수가 대비 현재가가 -1% 이하로 더 빠진 종목. UI 패널과 Today's Alarm(§6-34)이
+    정확히 같은 모집단을 봐야 하므로 계산 로직을 여기 하나로 통일(2026-09-17, 원래
+    ui_portfolio_tab.py 안에 인라인으로만 있던 걸 Today's Alarm이 재사용하려고 추출).
+    반환 각 항목: 종목명, 최초매수일, pct_first_cur(최초진입가 대비 현재가%),
+    pct_first_avg(최초진입가 대비 평단가%), pct_last(마지막 매수가 대비 현재가%),
+    등락률(holdings의 전일 대비 등락률, %) — pct_last 오름차순 정렬."""
+    rows = []
+    for _, hrow in df.iterrows():
+        name = hrow["종목명"]
+        pts = get_holding_trade_points(tx, name)
+        buys = pts[pts["구분"] == "매수"]
+        if len(buys) < 2:
+            continue
+        first_buy_price = float(buys.iloc[0]["단가"])
+        last_buy_price = float(buys.iloc[-1]["단가"])
+        if last_buy_price <= 0 or first_buy_price <= 0:
+            continue
+        cur_price = float(hrow["현재가"])
+        avg_price = float(hrow["평단가"])
+        pct_last = (cur_price - last_buy_price) / last_buy_price * 100
+        if pct_last <= -1.0:
+            chg = pd.to_numeric(hrow.get("등락률"), errors="coerce")
+            rows.append({
+                "종목명": name,
+                "최초매수일": buys.iloc[0]["날짜"],
+                "pct_first_cur": (cur_price - first_buy_price) / first_buy_price * 100,
+                "pct_first_avg": (avg_price - first_buy_price) / first_buy_price * 100,
+                "pct_last": pct_last,
+                "등락률": float(chg) if pd.notna(chg) else None,
+            })
+    rows.sort(key=lambda r: r["pct_last"])
+    return rows
+
+
+def fishing_decline_population(fishing_prices: pd.DataFrame, threshold: float = -3.0) -> list[dict]:
+    """Fishing 관심종목 중 기준일(최초가 관측일) 대비 누적으로 threshold% 이하 빠진 종목만.
+    Quiet Hands "Undertow"(§6-29)와 Today's Alarm(§6-34)이 같은 모집단을 공유하려고 추출
+    (2026-09-17, 원래 ui_portfolio_tab.py Quiet Hands 블록 안에만 인라인으로 있었음).
+    반환 각 항목: 종목명, 기준일, pct(누적 등락률 %)."""
+    rows = []
+    if fishing_prices is None or fishing_prices.empty:
+        return rows
+    for _, r in fishing_prices.iterrows():
+        try:
+            origin, last = float(r["최초가"]), float(r["최근가"])
+        except (TypeError, ValueError):
+            continue
+        if not origin:
+            continue
+        pct_origin = (last - origin) / origin * 100
+        if pct_origin <= threshold:
+            rows.append({"종목명": r["종목명"], "기준일": r["기준일"], "pct": pct_origin})
+    return rows
+
+
+def compute_todays_alarm(tx: pd.DataFrame, df: pd.DataFrame, fishing_prices: pd.DataFrame | None,
+                          flow_hist: pd.DataFrame | None, price_hist_flow: pd.DataFrame | None) -> dict:
+    """"Today's Alarm"(§6-34, 2026-09-17) — "Setting"(§6-33)으로 이미 새로고침된 데이터만
+    갖고, 아침에 바빠서 패널을 하나하나 못 열어볼 때 먼저 봐야 할 것 세 가지를 추린다
+    (사용자 설계). 새 네트워크 호출 없음 — 전부 이미 세션에 있는 값의 재가공.
+    ① Watering Detect 모집단 중 전일 대비(holdings 등락률) -5% 이하로 급락한 것 —
+       없으면 표시 안 함(fallback 없음).
+    ② Quiet Hands "Undertow"(Fishing 누적 -3%↓) 모집단 중 외국인비중 **최근3일pp**
+       (compute_foreign_flags, 최근 3거래일간의 변화 — "갑자기 최근 폭발적으로"라는
+       사용자 표현에 맞춰 기준일 대비 누적이 아니라 최근 창 하나만 봄)가 +5%p 이상인 것.
+       하나도 없으면 그 모집단 중 최근3일pp가 가장 큰 1개를 "보여주기식"(사용자 표현)
+       으로 fallback 표시.
+    ③ Fishing 전일 하락 모집단(전일대비 -3%↓) 중 전일대비 -10% 이하로 폭락한 것 —
+       하나도 없으면 가장 크게 빠진 1개를 fallback 표시.
+    fallback 항목은 "진짜 경보가 아니라 참고용"이므로 `is_fallback`을 같이 반환해 UI가
+    회색으로 구분할 수 있게 한다(사용자 지시: "보여주기식으로 한 개 쓰되 그런건 회색글씨로").
+    반환: {"watering": [...], "quiet_hands": {"items": [...], "is_fallback": bool},
+    "fishing": {"items": [...], "is_fallback": bool}}."""
+    watering = [r for r in compute_watering_rows(tx, df)
+                if r.get("등락률") is not None and r["등락률"] <= -5.0]
+
+    quiet_hands = {"items": [], "is_fallback": False}
+    undertow_pop = fishing_decline_population(fishing_prices, threshold=-3.0)
+    if undertow_pop and flow_hist is not None and not flow_hist.empty:
+        fx_map = {f["종목명"]: f for f in compute_foreign_flags(flow_hist, price_hist_flow)}
+        cands = []
+        for item in undertow_pop:
+            fx = fx_map.get(item["종목명"])
+            recent = fx.get("최근3일pp") if fx else None
+            if recent is None:
+                continue
+            cands.append({"종목명": item["종목명"], "최근3일pp": float(recent)})
+        cands.sort(key=lambda c: -c["최근3일pp"])
+        flagged = [c for c in cands if c["최근3일pp"] >= 5.0]
+        if flagged:
+            quiet_hands["items"] = flagged
+        elif cands:
+            quiet_hands["items"] = cands[:1]
+            quiet_hands["is_fallback"] = True
+
+    fishing_alarm = {"items": [], "is_fallback": False}
+    if fishing_prices is not None and not fishing_prices.empty:
+        daily = []
+        for _, r in fishing_prices.iterrows():
+            chg = pd.to_numeric(r.get("전일대비"), errors="coerce")
+            if pd.isna(chg) or chg > -3.0:
+                continue
+            daily.append({"종목명": r["종목명"], "전일대비": float(chg)})
+        daily.sort(key=lambda d: d["전일대비"])
+        crashed = [d for d in daily if d["전일대비"] <= -10.0]
+        if crashed:
+            fishing_alarm["items"] = crashed
+        elif daily:
+            fishing_alarm["items"] = daily[:1]
+            fishing_alarm["is_fallback"] = True
+
+    return {"watering": watering, "quiet_hands": quiet_hands, "fishing": fishing_alarm}
+
+
 PRICE_BRACKET_LABELS = ["1만원 이하", "1~2만원", "2~3만원", "3~4만원", "4~5만원",
                         "5~6만원", "6~7만원", "7~8만원", "8~9만원", "9~10만원", "10만원 이상"]
 

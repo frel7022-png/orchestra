@@ -1895,3 +1895,59 @@ manual/                           # report/와 성격이 다름 — **살아있�
   로컬 `streamlit run app.py`에서 사람이 확인할 부분(자동 테스트로는 실시간 네이버/
   Supabase 조회를 매번 트리거하고 싶지 않아 여기서는 스킵).
 - **new1 전용** (meritz는 Fishing/Volume/Foreigner류 새로고침 패널 자체가 없음).
+
+### 6-34. "Today's Alarm" — 아침에 바쁠 때 뭘 먼저 봐야 할지 세 줄로 (2026-09-17, new1 전용)
+- **동기**: Setting(§6-33)이 "새로고침 한 번에 몰아서" 문제는 풀었지만, 그다음 "그래서 뭘
+  먼저 봐야 하나"는 여전히 사람이 패널을 하나하나 열어봐야 알 수 있었다. 사용자 요청: "아침에
+  바쁘니까, Setting을 한 번 누르면 Today's Take 바로 밑에 🔔Today's Alarm이 떠서, 오늘 내가
+  꼭 살펴봐야 할 것만 추려주면 좋겠다." 위치: Today's Take 내용 바로 밑, Claude's Read
+  (§6-22) 위.
+- **세 규칙(사용자 설계, 2026-09-16~17 대화로 확정)** — 전부 Setting이 이미 새로고침해둔
+  session_state 값만 재가공, **새 네트워크 호출 없음**:
+  1. **Watering Detect 급락**: 물타기 중인 종목 중 **전일 대비**(holdings의 "등락률" —
+     네이버 `fluctuationsRatio`, 이미 있는 값) -5% 이하로 급락한 것. **fallback 없음** —
+     하나도 없으면 그냥 표시 안 함.
+  2. **Quiet Hands "Undertow"(Fishing 누적 -3%↓ 모집단) 외인비중 급증**: "갑자기 **최근**
+     폭발적으로 늘었다"는 사용자 표현에 맞춰, Undertow가 원래 쓰는 "기준일 대비 누적"이
+     아니라 `compute_foreign_flags`의 **"최근3일pp"**(최근 3거래일간의 변화, §6-28에서
+     이미 계산해두던 값)를 씀 — 사용자가 직접 이 옵션(b)을 선택("최근3일pp 말하는 거고").
+     +5%p 이상이면 알람, 하나도 없으면 그 모집단 중 최근3일pp가 가장 큰 1개를
+     "보여주기식"(사용자 표현)으로 fallback.
+  3. **Fishing 전일 폭락**: 관심종목 전일 하락 모집단(전일대비 -3%↓, Fishing 스크리너와
+     같은 문턱) 중 전일대비 -10% 이하로 폭락한 것 — 하나도 없으면 가장 크게 빠진 1개로
+     fallback.
+  - **fallback 항목은 회색으로 구분**(사용자 지시: "보여주기식으로 한 개 쓰되 그런건
+    회색글씨로") — 진짜 경보(색 있음: Watering·Fishing은 파랑, Undertow는 빨강)와
+    "참고용으로 하나 보여주는 것"(회색)을 시각적으로 갈라놓는다.
+- **로직 복제 금지 원칙 — 기존 패널과 모집단을 공유**: Watering Detect·Quiet Hands
+  Undertow가 이미 인라인으로 계산하던 모집단 로직을 `portfolio_core.py`의 순수 함수로
+  추출해서 패널과 알람이 **정확히 같은 모집단**을 보게 함(하나만 고치고 다른 하나는 안
+  고치는 사고 방지):
+  - `compute_watering_rows(tx, df)` — Watering Detect 모집단(물타기 2회+ · 마지막 매수가
+    대비 -1%↓) 계산 + holdings의 "등락률"(전일 대비)도 같이 반환. Watering Detect UI는
+    이제 이 함수를 호출만 함.
+  - `fishing_decline_population(fishing_prices, threshold=-3.0)` — Fishing 누적 하락
+    모집단 계산. Quiet Hands "Undertow" UI도 이제 이 함수를 호출만 함.
+  - `compute_todays_alarm(tx, df, fishing_prices, flow_hist, price_hist_flow) -> dict` —
+    위 두 함수 + `compute_foreign_flags`를 조합해 세 규칙을 계산. 반환:
+    `{"watering": [...], "quiet_hands": {"items":[...], "is_fallback": bool},
+    "fishing": {"items":[...], "is_fallback": bool}}`.
+- **렌더링 순서 문제(§6-31과 같은 종류) 회피**: Today's Alarm은 요약카드(함수 맨 위쪽)에서
+  그려지는데, Watering Detect·Fishing·Quiet Hands 패널은 코드상 훨씬 아래에 있다 — 그
+  패널들이 채워둔 `st.session_state`(`fishing_prices`/`flow_hist`/`price_hist_flow`)를
+  직접 읽으면 되는 건 §6-31 선(先) 로드가 함수 최상단에서 이미 이 값들을 채워두기
+  때문(재사용, 새 배선 불필요). `compute_watering_rows`는 tx/df만 있으면 되는 순수 계산이라
+  이 문제 자체가 없음.
+- **§1-8 빈 줄 버그 회피**: `_todays_alarm_html()`은 셋 다 없으면 빈 문자열 반환 —
+  Claude's Read(`_claude_read_html`)처럼 별도 줄에 두면 위험하므로, Today's Take 블록의
+  마지막 `</div>` 바로 뒤에 같은 줄로 이어붙임(`</div>{todays_alarm_html}`) — 빈 문자열이어도
+  그 줄엔 `</div>`가 있어 절대 "빈 줄"이 안 됨.
+- **함수**(`portfolio_core.py`): `compute_watering_rows`, `fishing_decline_population`,
+  `compute_todays_alarm`. `ui_portfolio_tab.py`: `_todays_alarm_html(alarm, T)`.
+  회귀 테스트 6개: `test_compute_watering_rows_includes_daily_change_field`,
+  `test_compute_watering_rows_excludes_single_buy_stocks`,
+  `test_fishing_decline_population_filters_by_cumulative_threshold`,
+  `test_compute_todays_alarm_flags_real_signals_without_fallback`,
+  `test_compute_todays_alarm_falls_back_to_top_one_when_no_stock_meets_threshold`,
+  `test_compute_todays_alarm_empty_inputs_returns_no_alarms`.
+- **new1 전용** (meritz는 Fishing/Foreigner류 인프라 자체가 없음).

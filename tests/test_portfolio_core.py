@@ -1797,3 +1797,139 @@ def test_foreign_pct_change_since_returns_none_when_no_data():
     assert core.foreign_pct_change_since(pd.DataFrame(), "A", "2026-08-01") is None
     flow = pd.DataFrame([{"종목명": "B", "날짜": "2026-08-25", "외국인보유율": 12.0}])
     assert core.foreign_pct_change_since(flow, "A", "2026-08-01") is None
+
+
+# ------------------------------------------------------------------ #
+# Today's Alarm (§6-34, 2026-09-17)
+# ------------------------------------------------------------------ #
+def _holding_row(name, avg_px, cur_px, chg_pct):
+    return {"종목명": name, "종목코드": "000000", "섹터": "기타2", "수량": 10,
+            "평단가": avg_px, "현재가": cur_px, "등락률": chg_pct, "업데이트시각": ""}
+
+
+def test_compute_watering_rows_includes_daily_change_field():
+    # A·B 둘 다 물타기 중(매수 2회) + 마지막 매수가(9000) 대비 -1% 이상 더 빠짐(현재가 8800)
+    # — Watering Detect 모집단 조건은 같지만 "등락률"(전일 대비)은 서로 다름(A=-6.0, B=-2.0).
+    tx = pd.DataFrame([
+        _tx_row("a1", "2026-01-05", "A", "매수", 10, 10000),
+        _tx_row("a2", "2026-01-06", "A", "매수", 10, 9000),
+        _tx_row("b1", "2026-01-05", "B", "매수", 10, 10000),
+        _tx_row("b2", "2026-01-06", "B", "매수", 10, 9000),
+    ])
+    df = pd.DataFrame([_holding_row("A", 9500, 8800, -6.0), _holding_row("B", 9500, 8800, -2.0)])
+    rows = core.compute_watering_rows(tx, df)
+    by_name = {r["종목명"]: r for r in rows}
+    assert set(by_name) == {"A", "B"}
+    assert by_name["A"]["등락률"] == pytest.approx(-6.0)
+    assert by_name["B"]["등락률"] == pytest.approx(-2.0)
+    assert by_name["A"]["pct_last"] == pytest.approx((8800 - 9000) / 9000 * 100)
+
+
+def test_compute_watering_rows_excludes_single_buy_stocks():
+    # 매수 1번뿐이면(물타기 아님) 모집단에서 제외 — Watering Detect 정의 그대로.
+    tx = pd.DataFrame([_tx_row("a1", "2026-01-05", "A", "매수", 10, 10000)])
+    df = pd.DataFrame([_holding_row("A", 10000, 8000, -20.0)])
+    assert core.compute_watering_rows(tx, df) == []
+
+
+def test_fishing_decline_population_filters_by_cumulative_threshold():
+    fishing_prices = pd.DataFrame([
+        {"종목명": "C", "종목코드": "1", "최초가": 1000, "최근가": 940,
+         "최근조회일시": "", "전일대비": -1.0, "기준일": "2026-08-01"},   # -6% → 포함
+        {"종목명": "D", "종목코드": "2", "최초가": 1000, "최근가": 850,
+         "최근조회일시": "", "전일대비": -2.0, "기준일": "2026-08-01"},   # -15% → 포함
+        {"종목명": "E", "종목코드": "3", "최초가": 1000, "최근가": 990,
+         "최근조회일시": "", "전일대비": -0.5, "기준일": "2026-08-01"},   # -1% → 제외
+    ])
+    pop = core.fishing_decline_population(fishing_prices, threshold=-3.0)
+    assert {r["종목명"] for r in pop} == {"C", "D"}
+
+
+def _alarm_flow_df(rows):
+    """rows: [(종목명, 날짜, 외국인보유율)] → investor_flow 형태(compute_foreign_flags 입력)."""
+    return pd.DataFrame(
+        [{"종목코드": name, "종목명": name, "섹터": "기타2", "날짜": d,
+          "거래량": 100, "기관순매수": 0, "외국인순매수": 0, "외국인보유율": fp}
+         for name, d, fp in rows],
+        columns=["종목코드", "종목명", "섹터", "날짜", "거래량", "기관순매수", "외국인순매수", "외국인보유율"],
+    )
+
+
+def test_compute_todays_alarm_flags_real_signals_without_fallback():
+    # ① Watering: A(등락률 -6%)만 -5% 문턱 통과, B(-2%)는 통과 못 함 → watering엔 A만.
+    tx = pd.DataFrame([
+        _tx_row("a1", "2026-01-05", "A", "매수", 10, 10000),
+        _tx_row("a2", "2026-01-06", "A", "매수", 10, 9000),
+        _tx_row("b1", "2026-01-05", "B", "매수", 10, 10000),
+        _tx_row("b2", "2026-01-06", "B", "매수", 10, 9000),
+    ])
+    df = pd.DataFrame([_holding_row("A", 9500, 8800, -6.0), _holding_row("B", 9500, 8800, -2.0)])
+
+    # ② Quiet Hands(Undertow): C·D 둘 다 Fishing 누적 -3%↓ 모집단이지만, 최근3일pp는
+    # C만 +5%p 이상(진짜 급증) — D는 완만해서 fallback 대상도 아니고 목록에서도 빠진다.
+    fishing_prices = pd.DataFrame([
+        {"종목명": "C", "종목코드": "c", "최초가": 1000, "최근가": 940,
+         "최근조회일시": "", "전일대비": -1.0, "기준일": "2026-01-01"},
+        {"종목명": "D", "종목코드": "d", "최초가": 1000, "최근가": 900,
+         "최근조회일시": "", "전일대비": -0.5, "기준일": "2026-01-01"},
+    ])
+    flow_hist = _alarm_flow_df([
+        ("C", "2026-01-01", 10.0), ("C", "2026-01-02", 10.0),
+        ("C", "2026-01-03", 10.0), ("C", "2026-01-04", 16.0),   # 최근3일pp = +6.0
+        ("D", "2026-01-01", 10.0), ("D", "2026-01-02", 10.0),
+        ("D", "2026-01-03", 10.0), ("D", "2026-01-04", 10.5),   # 최근3일pp = +0.5
+    ])
+
+    # ③ Fishing 전일 폭락: E는 -11%(폭락, 포함), F는 -4%(하락은 하락이지만 폭락 아님 → 제외)
+    fishing_prices_daily = pd.DataFrame([
+        {"종목명": "E", "종목코드": "e", "최초가": 1000, "최근가": 900,
+         "최근조회일시": "", "전일대비": -11.0, "기준일": "2026-01-01"},
+        {"종목명": "F", "종목코드": "f", "최초가": 1000, "최근가": 950,
+         "최근조회일시": "", "전일대비": -4.0, "기준일": "2026-01-01"},
+    ])
+    fishing_all = pd.concat([fishing_prices, fishing_prices_daily], ignore_index=True)
+
+    alarm = core.compute_todays_alarm(tx, df, fishing_all, flow_hist, None)
+
+    assert [r["종목명"] for r in alarm["watering"]] == ["A"]
+    assert alarm["quiet_hands"]["is_fallback"] is False
+    assert [it["종목명"] for it in alarm["quiet_hands"]["items"]] == ["C"]
+    assert alarm["fishing"]["is_fallback"] is False
+    assert [it["종목명"] for it in alarm["fishing"]["items"]] == ["E"]
+
+
+def test_compute_todays_alarm_falls_back_to_top_one_when_no_stock_meets_threshold():
+    # 둘 다 문턱(②=+5%p, ③=-10%)을 못 넘으면 "보여주기식"으로 가장 강한 후보 1개만
+    # is_fallback=True로 반환 — 사용자 지시: "보여주기식으로 한 개 쓰되 그런건 회색글씨로".
+    fishing_prices = pd.DataFrame([
+        {"종목명": "C", "종목코드": "c", "최초가": 1000, "최근가": 940,
+         "최근조회일시": "", "전일대비": -2.0, "기준일": "2026-01-01"},
+        {"종목명": "D", "종목코드": "d", "최초가": 1000, "최근가": 900,
+         "최근조회일시": "", "전일대비": -4.0, "기준일": "2026-01-01"},
+    ])
+    flow_hist = _alarm_flow_df([
+        ("C", "2026-01-01", 10.0), ("C", "2026-01-02", 10.0),
+        ("C", "2026-01-03", 10.0), ("C", "2026-01-04", 12.0),   # 최근3일pp = +2.0 (5 미달)
+        ("D", "2026-01-01", 10.0), ("D", "2026-01-02", 10.0),
+        ("D", "2026-01-03", 10.0), ("D", "2026-01-04", 10.5),   # 최근3일pp = +0.5 (더 낮음)
+    ])
+    tx_empty = pd.DataFrame(columns=["날짜", "종목명", "구분", "수량", "단가", "실현손익"])
+    df_empty = pd.DataFrame(columns=["종목명", "종목코드", "섹터", "수량", "평단가", "현재가", "등락률", "업데이트시각"])
+
+    alarm = core.compute_todays_alarm(tx_empty, df_empty, fishing_prices, flow_hist, None)
+    assert alarm["quiet_hands"]["is_fallback"] is True
+    assert len(alarm["quiet_hands"]["items"]) == 1
+    assert alarm["quiet_hands"]["items"][0]["종목명"] == "C"   # +2.0 > +0.5
+
+    assert alarm["fishing"]["is_fallback"] is True
+    assert len(alarm["fishing"]["items"]) == 1
+    assert alarm["fishing"]["items"][0]["종목명"] == "D"   # -4.0이 -2.0보다 더 크게 빠짐
+
+
+def test_compute_todays_alarm_empty_inputs_returns_no_alarms():
+    tx_empty = pd.DataFrame(columns=["날짜", "종목명", "구분", "수량", "단가", "실현손익"])
+    df_empty = pd.DataFrame(columns=["종목명", "종목코드", "섹터", "수량", "평단가", "현재가", "등락률", "업데이트시각"])
+    alarm = core.compute_todays_alarm(tx_empty, df_empty, None, None, None)
+    assert alarm["watering"] == []
+    assert alarm["quiet_hands"] == {"items": [], "is_fallback": False}
+    assert alarm["fishing"] == {"items": [], "is_fallback": False}

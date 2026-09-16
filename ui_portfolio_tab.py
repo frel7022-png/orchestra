@@ -23,6 +23,7 @@ from portfolio_core import (
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
     load_claude_notes, seed_engine_series, compute_fa_win_rate, blended_benchmark_cum,
     save_ui_cache_df, load_ui_cache_df, save_ui_cache_json, load_ui_cache_json,
+    compute_watering_rows, fishing_decline_population, compute_todays_alarm,
 )
 
 _CLAUDE_ORANGE = "#D97757"   # Claude 클레이 오렌지 — "Claude's Read" 마크·라벨·채운 별
@@ -59,6 +60,43 @@ def _claude_read_html(T: dict) -> str:
         f"{str(cur['날짜'])[5:]}</span></summary>"
         f"<div style='font-size:12px;color:{T['text']};line-height:1.65;margin:8px 2px 4px'>"
         f"{_body(cur['코멘트'])}</div></details>"
+    )
+
+
+def _todays_alarm_html(alarm: dict, T: dict) -> str:
+    """"Today's Alarm"(§6-34) — Today's Take 바로 밑에 붙는, "Setting"(§6-33)을 누르면 같이
+    갱신되는 3줄 요약. 세 규칙 전부 해당 없으면 빈 문자열(카드 자체를 안 그림). fallback
+    항목("보여주기식"으로 1개만 낸 것)은 회색으로 — 진짜 경보와 구분(사용자 지시)."""
+    watering = alarm.get("watering") or []
+    qh = alarm.get("quiet_hands") or {}
+    fh = alarm.get("fishing") or {}
+    qh_items, qh_fallback = qh.get("items") or [], qh.get("is_fallback", False)
+    fh_items, fh_fallback = fh.get("items") or [], fh.get("is_fallback", False)
+
+    if not watering and not qh_items and not fh_items:
+        return ""
+
+    def _row(tag, name, val_html):
+        return (f'<div style="font-size:12px;margin-top:2px">'
+                f'<span style="color:{T["muted"]}">{tag}</span> {name} {val_html}</div>')
+
+    rows = []
+    for r in watering:
+        rows.append(_row("Watering", r["종목명"],
+                          f'<span style="color:{DOWN_COLOR}">{r["등락률"]:+.1f}%</span>'))
+    for it in qh_items:
+        c = T["muted"] if qh_fallback else UP_COLOR
+        rows.append(_row("Undertow", it["종목명"],
+                          f'<span style="color:{c}">{it["최근3일pp"]:+.1f}%p</span>'))
+    for it in fh_items:
+        c = T["muted"] if fh_fallback else DOWN_COLOR
+        rows.append(_row("Fishing", it["종목명"],
+                          f'<span style="color:{c}">{it["전일대비"]:+.1f}%</span>'))
+
+    return (
+        '<div style="margin-top:6px">'
+        f'<div style="font-size:13px;color:{T["text"]};font-weight:600;margin-bottom:2px">'
+        "\U0001F514 Today's Alarm</div>" + "".join(rows) + "</div>"
     )
 
 
@@ -579,6 +617,17 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         {_fa_html}</div>
     """
 
+    # ---- Today's Alarm(§6-34) — Setting(§6-33)으로 이미 새로고침된 세션 데이터만으로 계산,
+    # 새 네트워크 호출 없음. 개별 패널(Watering Detect/Fishing/Volume·Foreigner)보다 코드상
+    # 먼저 그려지므로 §6-31 선(先) 로드된 session_state 값을 직접 읽는다.
+    _alarm = compute_todays_alarm(
+        tx, df,
+        st.session_state.get("fishing_prices"),
+        st.session_state.get("flow_hist"),
+        st.session_state.get("price_hist_flow"),
+    )
+    todays_alarm_html = _todays_alarm_html(_alarm, T)
+
     # ---- 요약 카드: 평가손익+그리드 (A) → Seed Engine 토글(§6-27, Claude's Read식 작은 글씨) →
     #      Today's Take + Claude's Read (B). 세 조각을 한 container로 묶고 CSS로 틈을 없애 카드 하나처럼. ----
     with st.container(key="summary_card_wrap"):
@@ -685,7 +734,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 &nbsp;·&nbsp;W/O SH&nbsp;<b style="color:{T['text']}">{_tt_p(_bench_s)}</b></div>
             <div style="color:{T['muted']}"><b style="color:{_dc_m_c}">{_dc_m}</b>
                 &nbsp;·&nbsp;W/O SH&nbsp;<b style="color:{_dc_s_c}">{_dc_s}</b></div>
-        </div>
+        </div>{todays_alarm_html}
         {_claude_read_html(T)}
         {daily_trade_html}
     </div>
@@ -898,29 +947,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # (이 순서만 지키면 되고 캡션은 안 붙임 — 개인용. 흡수율/시드증가율 부가정보는 2026-09-16
     # 한 번 추가했다가 "저 세 지표만 봐도 대충 안다"는 사용자 판단으로 바로 제거함).
     with st.expander("Watering Detect", expanded=False):
-        watering_rows = []
-        for _, hrow in df.iterrows():
-            name = hrow["종목명"]
-            pts = get_holding_trade_points(tx, name)
-            buys = pts[pts["구분"] == "매수"]
-            if len(buys) < 2:
-                continue
-            first_buy_price = float(buys.iloc[0]["단가"])
-            last_buy_price = float(buys.iloc[-1]["단가"])
-            if last_buy_price <= 0 or first_buy_price <= 0:
-                continue
-            cur_price = float(hrow["현재가"])
-            avg_price = float(hrow["평단가"])
-            pct_last = (cur_price - last_buy_price) / last_buy_price * 100
-            if pct_last <= -1.0:
-                watering_rows.append({
-                    "종목명": name,
-                    "최초매수일": buys.iloc[0]["날짜"],
-                    "pct_first_cur": (cur_price - first_buy_price) / first_buy_price * 100,
-                    "pct_first_avg": (avg_price - first_buy_price) / first_buy_price * 100,
-                    "pct_last": pct_last,
-                })
-        watering_rows.sort(key=lambda r: r["pct_last"])
+        watering_rows = compute_watering_rows(tx, df)
         if not watering_rows:
             st.caption("마지막 물타기 지점보다 1% 이상 더 빠진 종목이 없습니다.")
         else:
@@ -960,18 +987,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             st.markdown(f"<div style='font-size:12px;color:{T['muted']};font-weight:600;margin:12px 0 2px'>Undertow</div>",
                         unsafe_allow_html=True)
             fishing_prices_fa = st.session_state.get("fishing_prices")
-            undertow_pop = []
-            if fishing_prices_fa is not None and not fishing_prices_fa.empty:
-                for _, r in fishing_prices_fa.iterrows():
-                    try:
-                        origin, last = float(r["최초가"]), float(r["최근가"])
-                    except (TypeError, ValueError):
-                        continue
-                    if not origin:
-                        continue
-                    pct_origin = (last - origin) / origin * 100
-                    if pct_origin <= -3.0:
-                        undertow_pop.append({"종목명": r["종목명"], "기준일": r["기준일"], "pct": pct_origin})
+            undertow_pop = fishing_decline_population(fishing_prices_fa, threshold=-3.0)
             if not undertow_pop:
                 st.caption("Fishing에서 새로고침을 먼저 눌러주세요(하락 3%↓ 종목이 없을 수도 있음).")
             else:
