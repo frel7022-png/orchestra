@@ -1914,7 +1914,7 @@ def refresh_all_prices(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
 
 def get_current_prices_for_names(names: list[str]) -> dict:
-    """종목명 리스트의 현재가 조회. 보유 여부와 무관 — 청산된 종목 추적용."""
+    """종목명 리스트의 현재가 조회. 보유 여부와 무관 — 매도된 종목 추적용."""
     code_cache = load_code_cache()
     name_to_code = {}
     newly_resolved = {}
@@ -1978,10 +1978,10 @@ def _current_cycle_transactions(tx: pd.DataFrame, name: str) -> pd.DataFrame:
 
 
 def get_holding_trade_summary_all_time(tx: pd.DataFrame, name: str) -> dict:
-    """그 종목의 전체 매매 이력(사이클 구분 없이, 과거에 완전히 청산했던 사이클까지 전부
+    """그 종목의 전체 매매 이력(사이클 구분 없이, 과거에 완전히 매도했던 사이클까지 전부
     포함한 누적) 매수/매도 건수·누적금액·실현손익 합계. 지금까지 이 종목으로 총 얼마
     벌고 잃었는지 트래킹하려는 목적(2026-08-24, 사용자 요청) — get_holding_trade_summary는
-    "현재 사이클"만 보여줘서 이전에 청산했던 사이클의 실현손익이 안 보이므로, 이 함수를
+    "현재 사이클"만 보여줘서 이전에 매도했던 사이클의 실현손익이 안 보이므로, 이 함수를
     별도로 둬서 "누적"과 "현재 사이클" 둘 다 화면에 같이 보여준다."""
     t = tx[tx["종목명"] == name].copy()
     t["수량"] = pd.to_numeric(t["수량"], errors="coerce").fillna(0)
@@ -2054,10 +2054,9 @@ def get_holding_avg_price_path(tx: pd.DataFrame, name: str) -> pd.DataFrame:
 # P&L Actions (§6-20) — 실현손익을 매매 스타일(FA/MO/MA)로 해부
 # ------------------------------------------------------------------ #
 def _all_cycles(tx: pd.DataFrame) -> list[dict]:
-    """모든 종목의 모든 사이클(진입 ~ 전량청산, 청산 안 됐으면 open)을 리스트로.
+    """모든 종목의 모든 사이클(진입 ~ 전량매도, 매도 안 됐으면 open)을 리스트로.
     사이클 dict: 종목, n_buy, n_sell, n_partial, first_buy_qty, first_buy_px, first_buy_date,
-    close_date(전량청산된 마지막 매도일, closed=False면 None), close_price(그 청산 매도의
-    단가, Statistics §6-32 최초/최후 가격 드리프트용), buy_amt(Σ매수 수량×단가),
+    close_date(전량매도된 마지막 매도일, closed=False면 None), buy_amt(Σ매수 수량×단가),
     sell_amt(Σ매도 수량×단가), realized(Σ실현손익), closed."""
     if tx is None or tx.empty:
         return []
@@ -2078,7 +2077,7 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
             if cur is None:
                 cur = {"종목": name, "n_buy": 0, "n_sell": 0, "n_partial": 0,
                        "first_buy_qty": 0.0, "first_buy_px": 0.0, "first_buy_date": None,
-                       "close_date": None, "close_price": None,
+                       "close_date": None,
                        "buy_amt": 0.0, "sell_amt": 0.0, "realized": 0.0, "closed": False}
             if r["구분"] == "매수":
                 if cur["n_buy"] == 0:
@@ -2095,7 +2094,6 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
                 if qty <= 1e-9:
                     cur["closed"] = True
                     cur["close_date"] = r["날짜"]
-                    cur["close_price"] = float(r["단가"])
                     out.append(cur)
                     cur, qty = None, 0.0
                 else:
@@ -2106,8 +2104,8 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
 
 
 def _cycle_bucket(c: dict) -> str:
-    """FA = 1매수·부분매도 없음·전량청산. MO = 부분매도 1회라도 있음(우선순위 최상).
-    MA = 2+매수·부분매도 없음·전량청산. HOLD = 매도 없이 보유만 (P&L 버킷 아님)."""
+    """FA = 1매수·부분매도 없음·전량매도. MO = 부분매도 1회라도 있음(우선순위 최상).
+    MA = 2+매수·부분매도 없음·전량매도. HOLD = 매도 없이 보유만 (P&L 버킷 아님)."""
     if c["n_partial"] > 0:
         return "MO"
     if not c["closed"]:
@@ -2207,8 +2205,8 @@ def compute_fa_win_rate(tx: pd.DataFrame) -> dict:
     진입 시점의 판단 정확도**를 재는 지표. compute_pnl_actions(§6-20)과 같은 _all_cycles/
     _cycle_bucket을 쓰지만 holdings 없이 카운트만 뽑는 가벼운 버전 — "매일 앞에서 보는" 용도라
     별도 함수로 둠(2026-09-16, "3박자로 다 보여달라"는 사용자 요청으로 total/n_out/ma 추가).
-    반환: {"win"(FA 수), "total"(전체 사이클 수, open 포함), "n_out"(전량청산 완료 수 =
-    win+ma+mo_closed), "ma"(물타서 전량청산한 수), "mo_closed"(나눠 팔아서 전량청산한 수 —
+    반환: {"win"(FA 수), "total"(전체 사이클 수, open 포함), "n_out"(전량매도 완료 수 =
+    win+ma+mo_closed), "ma"(물타서 전량매도한 수), "mo_closed"(나눠 팔아서 전량매도한 수 —
     n_out = win+ma+mo_closed로 검산됨, 2026-09-16 사용자가 "합이 안 맞는다"고 지적해서 추가),
     "win_rate": %, "avg_days": FA 사이클의 평균 보유일수(달력일, 없으면 None)}."""
     empty = {"win": 0, "total": 0, "n_out": 0, "ma": 0, "mo_closed": 0,
@@ -2242,17 +2240,17 @@ PRICE_BRACKET_LABELS = ["1만원 이하", "1~2만원", "2~3만원", "3~4만원",
 
 
 def price_bracket_distribution(tx: pd.DataFrame) -> pd.DataFrame:
-    """Statistics 탭(§6-32): 청산 완료된 사이클을 진입가(첫 매수 단가) 기준으로 가격대별로
+    """Statistics 탭(§6-32): 매도 완료된 사이클을 진입가(첫 매수 단가) 기준으로 가격대별로
     묶어 몇 사이클이 그 구간에서 있었는지 센다 — "이 계좌가 실제로 어떤 가격대 주식을 사고
     파는가"를 보는 가장 기초적인 서술 통계(2026-09-16, 리포트 §02 "Holdings 카드는 종목
     하나엔 강한데 전체를 훑는 통계가 없다" 지적에서 시작).
-    - **사이클 단위** — 종목이 아니라 "진입~청산 1회"를 1건으로 센다. 같은 종목이 1만원대에서도,
-      3만원대에서도 청산된 적이 있으면 각 구간에 1건씩 잡힌다(사용자 확정: "그간 몇 종목
+    - **사이클 단위** — 종목이 아니라 "진입~매도 1회"를 1건으로 센다. 같은 종목이 1만원대에서도,
+      3만원대에서도 매도된 적이 있으면 각 구간에 1건씩 잡힌다(사용자 확정: "그간 몇 종목
       왔다갔다 했나"는 사이클 카운트를 뜻함).
-    - **청산 완료(closed)된 사이클만** — 아직 보유 중인 건 손절 가능성이 열려있어 제외
+    - **매도 완료(closed)된 사이클만** — 아직 보유 중인 건 손절 가능성이 열려있어 제외
       (사용자 확정, FA 승률과 같은 원칙).
     - 물타기해도 진입가는 **첫 매수 단가**(first_buy_px) 하나로 고정 — "5번 물타서 2번만
-      팔았다"처럼 청산 요건을 못 채운 사이클은 애초에 여기 안 들어옴.
+      팔았다"처럼 매도 요건을 못 채운 사이클은 애초에 여기 안 들어옴.
     반환: DataFrame[구간(PRICE_BRACKET_LABELS 순서), 건수, 비율(%)]."""
     cycles = [c for c in _all_cycles(tx) if c["closed"]]
     counts = {label: 0 for label in PRICE_BRACKET_LABELS}
@@ -2274,156 +2272,49 @@ def price_bracket_distribution(tx: pd.DataFrame) -> pd.DataFrame:
     ])
 
 
-def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10, current_prices: dict | None = None,
+def top_traded_stocks(tx: pd.DataFrame, top_n: int | None = 10,
                        min_abs_realized_pct: float = 1.0) -> pd.DataFrame:
-    """Statistics 탭(§6-32): 청산 완료된 사이클이 가장 많은 종목 top_n개 — "가장 많이
-    들어갔다 나온 종목"과, 그 반복 매매가 "가격이 움직인 것보다 더 벌었는지"(효율성, 사용자
-    표현: "1만원 진입·2만원 매도를 5회 반복했다면 가격은 1만원만 움직였어도 5만원을 번
-    거다 — Up/Down이 실제로 먹히는지 체크하는 것")를 같이 보여준다.
-    - 종목명별로 청산된 사이클을 전부 묶어 n_cycles(청산 횟수) 계산, 내림차순 정렬 —
-      동률이면 최초 진입가(first_entry_price) 내림차순(사용자 확정: "가격순").
-    - first_entry_price/first_entry_date = 그 종목의 (시간순) 첫 번째 청산 사이클의
-      first_buy_px/first_buy_date — 같은 종목의 더 이른 사이클이 아직 안 닫혔다면 더 나중
-      사이클도 존재할 수 없으므로(다음 사이클은 이전 사이클이 전량청산돼야 시작됨) 여기서
-      "첫 번째 closed 사이클"은 항상 그 종목의 진짜 최초 진입과 같다.
-    - last_exit_price/last_exit_date = (시간순) 마지막 청산 사이클의 close_price/close_date —
-      참고용으로 계속 반환하지만, 아래 가격변화 계산에는 더 이상 안 쓴다.
-    - **기준가(ref_price)/기준가구분(ref_kind)** — "가격변화"의 종점 가격. `current_prices`
-      (종목명→현재가 dict)에 그 종목이 있으면 **현재가**를 쓰고("현재"), 없으면 최후매도가로
-      폴백한다("최후매도가", `current_prices=None`으로 부르면 전부 이 폴백). 2026-09-16
-      사용자 지적: "최후매도가 대신 현재가를 쓰는 게 낫겠다" — 마지막으로 판 시점에 멈춘
-      비교보다, "최초 진입 이후 지금까지" 가격이 실제로 어떻게 움직였는지와 비교해야
-      "반복매매가 지금 시점 기준으로도 단순 보유보다 나은지"를 제대로 잰다.
-    - price_diff/price_diff_pct = ref_price − first_entry_price (그 사이의 "순수 가격
-      이동"만 놓고 본 것 — 매매 횟수와 무관).
-    - cum_realized/cum_realized_pct = 그 종목의 청산된 사이클 전부의 실현손익 합 / 총매수액
-      합 대비 % — 이게 price_diff_pct보다 훨씬 크면(특히 같은 방향이 아니어도) 반복 매매가
-      단순 보유보다 더 벌었다는 뜻(=Up/Down 재진입 타이밍이 실제로 유효했다는 신호).
+    """Statistics 탭(§6-32): 매도 완료된 사이클이 가장 많은 종목 top_n개 — "가장 많이
+    들어갔다 나온 종목"이 실제로 얼마를 벌었는지를 순수 매매 기록만으로 집계한다.
+    **현재가는 안 쓴다**(2026-09-16 결론) — 한때 "최초진입가 대비 지금 가격"까지 비교하는
+    안(Selection Index)을 만들었는데, "현재가"가 매일 움직이는 값이라 오늘은 승이었던
+    종목이 내일은 패가 되는 등 판정 자체가 계속 흔들리는 근본적 문제가 있었고
+    (사용자 지적: "종목이 170개 넘다 보니 한동안 안 산 것도 있는데, 지금은 승리지만
+    시간이 흐르면 패배가 될 수도 있다"), 이미 Up/Down이 "판 뒤 가격이 어떻게 됐는지"를
+    전담하고 있어 여기서 또 현재가를 쓸 이유도 없다는 사용자 판단(2026-09-16)으로
+    Selection Index·평균 강도 비교 기능 전체를 걷어내고 이 함수만 남김.
+    - 종목명별로 매도 완료된 사이클을 전부 묶어 매도횟수 계산, 내림차순 정렬 — 동률이면
+      최초진입가 내림차순(사용자 확정 "가격순").
+    - 최초진입가/최초진입일 = 그 종목의 (시간순) 첫 번째 매도 완료 사이클의 first_buy_px/
+      first_buy_date — 같은 종목의 더 이른 사이클이 아직 안 끝났다면 다음 사이클 자체가
+      시작 못 하므로, "첫 번째 완료 사이클"은 항상 그 종목의 진짜 최초 진입과 같다.
+    - 누적실현손익/누적실현손익률 = 그 종목의 매도 완료 사이클 전부의 실현손익 합 /
+      총매수액 합 대비 %("평균 손익률"에 해당).
     - **`min_abs_realized_pct`(기본 1.0%p) 미만인 종목은 아예 뺀다**(2026-09-16 사용자 지시:
       "월덱스·에코플라스틱·필옵틱스처럼 처음에 계좌 종목 정리하려고 [산 지 하루 이틀 만에
       다시 판] 위아래로 0.대% 나온 것들은 제외" — 실측: 월덱스 −0.71%, 에코플라스틱
       +0.30%, 필옵틱스 +0.64%, 전부 진짜 매매 판단이 아니라 초기 계좌 정리성 거래로 보여
-      1%p 미만은 통계에서 아예 제외). Selection Index도 이 함수 위에 얹어 계산하므로
-      자동으로 같이 빠짐.
-    반환: DataFrame[종목명, 청산횟수, 최초진입가, 최초진입일, 최후매도가, 최후매도일,
-    기준가, 기준가구분, 가격변화, 가격변화율, 누적실현손익, 누적실현손익률]."""
+      1%p 미만은 통계에서 아예 제외).
+    반환: DataFrame[종목명, 매도횟수, 최초진입가, 최초진입일, 누적실현손익, 누적실현손익률]."""
     cycles = [c for c in _all_cycles(tx) if c["closed"]]
     by_name: dict[str, list[dict]] = {}
     for c in cycles:
         by_name.setdefault(c["종목"], []).append(c)
-    current_prices = current_prices or {}
     rows = []
     for name, cs in by_name.items():
         cs = sorted(cs, key=lambda c: (str(c["first_buy_date"]), str(c["close_date"])))
-        first, last = cs[0], cs[-1]
+        first = cs[0]
         buy_total = sum(c["buy_amt"] for c in cs)
         realized_total = sum(c["realized"] for c in cs)
-        cur_px = current_prices.get(name)
-        ref_price = float(cur_px) if cur_px is not None else float(last["close_price"])
-        ref_kind = "현재" if cur_px is not None else "최후매도가"
-        price_diff = ref_price - float(first["first_buy_px"])
         rows.append({
-            "종목명": name, "청산횟수": len(cs),
+            "종목명": name, "매도횟수": len(cs),
             "최초진입가": float(first["first_buy_px"]), "최초진입일": first["first_buy_date"],
-            "최후매도가": float(last["close_price"]), "최후매도일": last["close_date"],
-            "기준가": ref_price, "기준가구분": ref_kind,
-            "가격변화": price_diff,
-            "가격변화율": (price_diff / first["first_buy_px"] * 100.0) if first["first_buy_px"] else 0.0,
             "누적실현손익": realized_total,
             "누적실현손익률": (realized_total / buy_total * 100.0) if buy_total else 0.0,
         })
     rows = [r for r in rows if abs(r["누적실현손익률"]) >= min_abs_realized_pct]
-    rows.sort(key=lambda r: (-r["청산횟수"], -r["최초진입가"]))
+    rows.sort(key=lambda r: (-r["매도횟수"], -r["최초진입가"]))
     return pd.DataFrame(rows[:top_n])
-
-
-def selection_index(tx: pd.DataFrame, current_prices: dict | None = None,
-                     tie_band_pct: float = 1.0, extreme_gap_pct: float = 20.0) -> dict:
-    """Statistics 탭(§6-32) — "Selection Index": 청산한 종목 하나하나가 사후적으로 옳은
-    선택이었나(=팔고 나온 뒤 가격이 어떻게 됐든, 내가 실제로 챙긴 몫이 그 종목을 계속
-    들고 있었을 때보다 나았나)를 승/패로 매겨 집계한다. P&L Actions·FA 승률이 "얼마
-    벌었나/한 방에 끝냈나"를 보는 거라면, 이건 "그 결정 자체가 사후에 옳았나"를 보는
-    완전히 다른 축이다(2026-09-16).
-    - **종목당 판정 하나**(사이클 하나하나가 아님, 사용자 확정 — "사이클을 세면 나온 시점이
-      다 달라서 데이터가 흔들린다"). `top_traded_stocks`가 이미 종목별로 묶어주는
-      `누적실현손익률`(내가 실제로 챙긴 몫)과 `가격변화율`(최초진입가 대비 지금 가격 —
-      "계속 들고 있었으면"에 해당)을 그대로 재사용 — 새 사이클 스캔 없음.
-    - **판정 = 갭(누적실현손익률 − 가격변화율) 기준, 벤치마크 개입 없음**(사용자 확정,
-      2026-09-16: "어차피 내가 어떤 종목을 고르든 그 종목과의 싸움이지 여기서 지표가
-      끼어드는 건 오히려 데이터 오염" — 처음엔 혼합지수로 갭 허용폭을 조정하는 안을
-      제안했으나, 벤치를 양쪽에서 빼면 어차피 수학적으로 상쇄돼 갭이 그대로 나온다는 걸
-      확인하고 폐기). 갭이 `+tie_band_pct`보다 크면 **승**(실제로 챙긴 게 그냥 들고 있는
-      것보다 나음), `-tie_band_pct`보다 작으면 **패**(그냥 들고 있는 게 나음),
-      **그 사이(|갭| ≤ tie_band_pct)는 승패 집계에서 아예 제외**(사용자 확정 2026-09-16:
-      "1% 이하는 승부에서 제외, 비김으로도 안 침 — 큰 의미 없으니"). 기본
-      `tie_band_pct=1.0`(%p) — 조정 가능한 상수로 뺌.
-    - **집계는 승−패 카운트 차이(Selection Index)로, 갭 크기를 평균 내지 않는다**(사용자
-      설계 — "코스맥스처럼 갭이 30%p 넘게 벌어지는 극단치 하나 때문에 평균이 흐려지는 걸
-      막으려는 것", §6-17의 "일별 비율 평균 대신 Σ/Σ" 같은 철학). `wins - losses`가 0이면
-      "선택 자체가 순수하게는 하나도 안 움직인 것"(사용자 표현).
-    - **시장 상황(혼합지수 등)은 이 지표에 안 섞는다** — 하락장이라 승률 내기 어려운
-      건 사실이지만, 그건 이 숫자를 읽는 사람이 참고할 맥락이지 지수 자체에 넣을 보정이
-      아니라는 게 사용자 판단(2026-09-16). "지수 하락률로 종목 등락 비율(breadth)을
-      역산해서 가중치로 곱하자"는 안도 검토했으나 폐기 — 지수 수익률(시총/가격가중 평균)
-      만으로는 실제 등락 종목 비율을 통계적으로 알 수 없어(대형주 소수가 왜곡 가능)
-      가짜 정밀도가 된다는 문제 제기(세션)에 사용자가 동의, Fishing 데이터로 진짜 breadth를
-      구하는 안도 "피싱 자체가 내가 고른 종목이라 의미없다"고 기각(2026-09-16) — 지금은
-      승률과 시장 상황을 각각 사실로 나란히 보여주고 하나로 안 뭉치는 것으로 결론.
-
-    **평균 강도 비교(2026-09-16 당일 추가)** — 승/패 카운트(Selection Index)는 "이겼나
-    졌나"만 보고 얼마나 크게 이기고 졌는지는 안 본다. 그래서 "실현손익 본 종목들이 평균
-    몇 % 벌었는데, 그 종목들 자체는 평균 몇 %밖에 안 움직였다"를 별도로 낸다 — 단
-    `tie_band_pct`(근소, ≤1%p) 종목과 `extreme_gap_pct`(극단, >20%p, 기본값) 종목은
-    **양쪽 다 평균에서 뺀다**(사용자 지시: "20% 이상 앞서가거나 뒤처지는 극단적인 경우와
-    ±1%의 격차 정도는 빼고" — 극단치 하나가 평균을 왜곡하는 걸 Selection Index 카운트
-    설계 때와 같은 이유로 여기서도 막음). 승/패 카운트 자체는 극단치를 포함한 채 그대로 —
-    이 트리밍은 오직 평균 계산에만 적용된다.
-    - `avg_realized_pct`/`avg_price_change_pct` = 트리밍 후 남은 종목들의 `누적실현손익률`/
-      `가격변화율` 산술평균(각각 독립적으로 평균 — 종목별 갭을 평균 내는 게 아니라, "내가
-      챙긴 평균 %"와 "종목 자체가 움직인 평균 %"를 따로 내서 나란히 비교하는 것).
-    - `n_avg` = 이 평균에 쓰인 종목 수, `extreme_count` = `extreme_gap_pct` 초과로 평균에서
-      빠진 종목 수(승패 카운트에는 여전히 포함됨).
-    반환: {"rows": [...top_traded_stocks 컬럼 + 갭·판정...], "wins", "losses", "excluded",
-    "decided"(=wins+losses), "win_rate"(wins/decided%, decided=0이면 0), "index"(wins-losses),
-    "avg_realized_pct", "avg_price_change_pct"(트리밍 후 평균, 대상 없으면 None), "n_avg",
-    "extreme_count"}."""
-    top = top_traded_stocks(tx, top_n=None, current_prices=current_prices)
-    if top.empty:
-        return {"rows": [], "wins": 0, "losses": 0, "excluded": 0, "decided": 0,
-                "win_rate": 0.0, "index": 0, "avg_realized_pct": None,
-                "avg_price_change_pct": None, "n_avg": 0, "extreme_count": 0}
-    rows = []
-    wins = losses = excluded = 0
-    for _, r in top.iterrows():
-        gap = float(r["누적실현손익률"]) - float(r["가격변화율"])
-        if gap > tie_band_pct:
-            verdict = "승"
-            wins += 1
-        elif gap < -tie_band_pct:
-            verdict = "패"
-            losses += 1
-        else:
-            verdict = "제외"
-            excluded += 1
-        row = r.to_dict()
-        row["갭"] = gap
-        row["판정"] = verdict
-        rows.append(row)
-    decided = wins + losses
-
-    avg_rows = [r for r in rows if r["판정"] in ("승", "패") and abs(r["갭"]) <= extreme_gap_pct]
-    extreme_count = sum(1 for r in rows if r["판정"] in ("승", "패") and abs(r["갭"]) > extreme_gap_pct)
-    n_avg = len(avg_rows)
-    avg_realized_pct = (sum(r["누적실현손익률"] for r in avg_rows) / n_avg) if n_avg else None
-    avg_price_change_pct = (sum(r["가격변화율"] for r in avg_rows) / n_avg) if n_avg else None
-
-    return {
-        "rows": rows, "wins": wins, "losses": losses, "excluded": excluded,
-        "decided": decided, "win_rate": (wins / decided * 100.0) if decided else 0.0,
-        "index": wins - losses,
-        "avg_realized_pct": avg_realized_pct, "avg_price_change_pct": avg_price_change_pct,
-        "n_avg": n_avg, "extreme_count": extreme_count,
-    }
 
 
 # ------------------------------------------------------------------ #
@@ -2479,14 +2370,14 @@ def _bench_cum_on(bench_cum: dict | None, d: str) -> float:
 
 
 def virtual_realized_cum_by_close_date(tx: pd.DataFrame, bench_cum: dict | None) -> dict:
-    """청산된(전량매도 완료) 사이클마다 "그 매수금액이 실제 보유기간(최초매수일~청산일) 동안
-    실현손익 대신 벤치(bench_cum)만큼만 벌었다면"을 계산해, 청산일 기준 누적한 dict(날짜→
+    """매도된(전량매도 완료) 사이클마다 "그 매수금액이 실제 보유기간(최초매수일~매도일) 동안
+    실현손익 대신 벤치(bench_cum)만큼만 벌었다면"을 계산해, 매도일 기준 누적한 dict(날짜→
     누적 가상실현손익)를 반환한다 — Pit Stop No Refill의 "실제 투입한 돈만" 반사실(2026-09-16,
     §6-27). 사이클 단위로 잡는 이유(사용자 지적): 안 굴린 현금은 실제로도 가상으로도 시장에
     노출된 적이 없어야 "예수금 대 예수금" 비교가 맞고, 미실현 손익은 예수금에 안 닿아야 한다 —
     그래서 벤치 반사실도 "실제로 팔아서 현금화한(=실현된) 사이클"에만, 그 사이클이 실제로
     투입했던 금액(buy_amt)과 보유기간에만 적용한다. 아직 안 팔린(열린) 사이클은 제외(실제
-    실현손익과 동일한 기준). 사이클 내부의 부분매도 타이밍까지는 안 쪼개고 청산일에 그 사이클의
+    실현손익과 동일한 기준). 사이클 내부의 부분매도 타이밍까지는 안 쪼개고 매도일에 그 사이클의
     가상손익 전체를 한 번에 반영(§6-20 pl_first_pct와 같은 수준의 근사)."""
     if tx is None or tx.empty or not bench_cum:
         return {}
@@ -2518,7 +2409,7 @@ def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float
     `_cash_by_date`와 같은 재생 루프(§1-1)라 예수금이 rebuild_portfolio_*와 안 어긋난다.
 
     무연료예수금(No Refill, 2026-09-16 개정) = 예수금 − 그날까지 누적 실현손익 + 그날까지
-    누적된 "벤치 기준 가상실현손익"(`virtual_realized_cum_by_close_date`, 청산된 사이클마다
+    누적된 "벤치 기준 가상실현손익"(`virtual_realized_cum_by_close_date`, 매도된 사이클마다
     실제 투입금액만큼만 벤치 수익률 적용). "실현손익 대신, 실제로 팔아서 현금화했던 그 돈이
     벤치(보통 삼성·하이닉스 제외 혼합지수)를 따라갔다면 남았을 예수금"이라는 뜻.
     **초기자본 전체가 아니라 사이클별 실제 투입 금액만 반사실 기준으로 삼는다**(2026-09-16

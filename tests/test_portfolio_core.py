@@ -196,7 +196,7 @@ def test_get_holding_trade_summary_current_cycle_only():
 
 
 def test_get_holding_trade_summary_all_time_includes_closed_cycles():
-    """누적 요약(2026-08-24 신설)은 현재 사이클과 달리 과거에 청산된 1차 사이클의
+    """누적 요약(2026-08-24 신설)은 현재 사이클과 달리 과거에 매도된 1차 사이클의
     매수/매도/실현손익까지 전부 포함해야 한다 — "이 종목으로 지금까지 총 얼마
     벌고 잃었나"를 트래킹하려는 목적이므로."""
     summary = core.get_holding_trade_summary_all_time(_two_cycle_tx(), "A")
@@ -1357,8 +1357,8 @@ def test_seed_engine_series_tracks_cash_and_cost(monkeypatch):
 
 
 def test_virtual_realized_cum_by_close_date_scales_to_actual_buy_amount(monkeypatch):
-    """2026-09-16 최종안: 벤치 반사실은 초기자본 전체가 아니라 "청산된 사이클이 실제로 투입한
-    금액(buy_amt)"에만, 그 사이클의 보유기간(최초매수일~청산일)만큼만 적용한다 — 안 굴린 현금은
+    """2026-09-16 최종안: 벤치 반사실은 초기자본 전체가 아니라 "매도된 사이클이 실제로 투입한
+    금액(buy_amt)"에만, 그 사이클의 보유기간(최초매수일~매도일)만큼만 적용한다 — 안 굴린 현금은
     실제로도 가상으로도 시장 노출이 없어야 "예수금 대 예수금" 비교가 맞다는 사용자 지적."""
     tx = pd.DataFrame([
         {"id": "1", "날짜": "2026-01-05", "종목명": "A", "구분": "매수", "수량": 10, "단가": 1000, "실현손익": "", "메모": "", "정산반영": True},
@@ -1423,20 +1423,20 @@ def test_blended_benchmark_cum_empty_returns_empty_dict():
 # compute_pnl_actions (§6-20) — 실현손익을 FA/MO/MA 매매 스타일로 해부
 # ------------------------------------------------------------------ #
 def test_pnl_actions_buckets_and_watering():
-    """FA = 1매수·부분매도 없음·전량청산, MA = 2+매수·부분매도 없음·전량청산,
-    MO = 부분매도 1회라도 있으면(우선순위 최상, 청산 여부 무관). Watering 상세도 검증."""
+    """FA = 1매수·부분매도 없음·전량매도, MA = 2+매수·부분매도 없음·전량매도,
+    MO = 부분매도 1회라도 있으면(우선순위 최상, 매도 여부 무관). Watering 상세도 검증."""
     tx = pd.DataFrame([
         # A: FA (buy once, sell all)
         _tx_row("a1", "2026-01-05", "A", "매수", 10, 100),
         _tx_row("a2", "2026-01-10", "A", "매도", 10, 110, 실현손익=100),
-        # B: MA (물타기 2매수 → 한 방에 전량청산, 부분매도 없음)
+        # B: MA (물타기 2매수 → 한 방에 전량매도, 부분매도 없음)
         _tx_row("b1", "2026-01-05", "B", "매수", 10, 100),
         _tx_row("b2", "2026-01-06", "B", "매수", 10, 80),
         _tx_row("b3", "2026-01-12", "B", "매도", 20, 95, 실현손익=200),
         # C: MO (부분매도 후 아직 보유 중)
         _tx_row("c1", "2026-01-05", "C", "매수", 10, 100),
         _tx_row("c2", "2026-01-11", "C", "매도", 4, 120, 실현손익=50),
-        # D: MO (부분매도 후 전량청산 — 그래도 MO)
+        # D: MO (부분매도 후 전량매도 — 그래도 MO)
         _tx_row("d1", "2026-01-05", "D", "매수", 10, 100),
         _tx_row("d2", "2026-01-09", "D", "매도", 5, 110, 실현손익=30),
         _tx_row("d3", "2026-01-13", "D", "매도", 5, 115, 실현손익=40),
@@ -1459,7 +1459,7 @@ def test_pnl_actions_buckets_and_watering():
     assert r["baskets"]["MA"]["amt_total"] == pytest.approx(1800)        # 1000 + 800
     assert r["baskets"]["MO"]["realized"] == pytest.approx(120)          # C 50 + D 70
     assert r["baskets"]["MO"]["n_cycle"] == 2
-    assert (r["baskets"]["MO"]["closed"], r["baskets"]["MO"]["open"]) == (1, 1)  # D 청산, C 진행
+    assert (r["baskets"]["MO"]["closed"], r["baskets"]["MO"]["open"]) == (1, 1)  # D 매도, C 진행
     st = r["status"]
     assert st["n_total"] == 5
     assert st["FA"] == (1, 5) and st["MA"] == (1, 5) and st["MO"] == (2, 5)
@@ -1476,7 +1476,7 @@ def test_pnl_actions_buckets_and_watering():
 
 
 def test_compute_fa_win_rate_counts_only_fa_as_win():
-    """2026-09-16 사용자 정의: 승률 = FA(한 번 사서 한 번에 전량청산) / 전체 사이클.
+    """2026-09-16 사용자 정의: 승률 = FA(한 번 사서 한 번에 전량매도) / 전체 사이클.
     물타서 나온 것(MA)·부분매도(MO)·아직 보유 중(HOLD)은 전부 실패로 센다. 위
     test_pnl_actions_buckets_and_watering과 같은 tx로 A=FA·B=MA·C/D=MO·E=HOLD 5사이클
     구성 — 승리는 A 하나뿐(1/5=20%), 평균 보유일수는 A의 1/5~1/10 = 5일."""
@@ -1499,7 +1499,7 @@ def test_compute_fa_win_rate_counts_only_fa_as_win():
     assert r["win"] == 1
     assert r["win_rate"] == pytest.approx(20.0)
     assert r["avg_days"] == pytest.approx(5.0)
-    assert r["n_out"] == 3   # 전량청산 완료: A(FA)·B(MA)·D(MO, 부분매도 후 전량청산) — C·E는 아직 open
+    assert r["n_out"] == 3   # 전량매도 완료: A(FA)·B(MA)·D(MO, 부분매도 후 전량매도) — C·E는 아직 open
     assert r["ma"] == 1      # B
     assert r["mo_closed"] == 1  # D
     assert r["win"] + r["ma"] + r["mo_closed"] == r["n_out"]  # 검산: 1+1+1=3
@@ -1549,7 +1549,7 @@ def test_price_bracket_distribution_excludes_open_cycles():
 
 
 def test_top_traded_stocks_ranks_by_cycle_count_then_price():
-    # A: 2회 청산(각 1만원대), B: 1회 청산(5만원) — A가 횟수 많아서 1위.
+    # A: 2회 매도(각 1만원대), B: 1회 매도(5만원) — A가 횟수 많아서 1위.
     tx = pd.DataFrame(
         _cycle_tx("A", 10000, 12000, "2026-01-01", "2026-01-02")
         + _cycle_tx("A", 11000, 13000, "2026-01-03", "2026-01-04")
@@ -1558,11 +1558,8 @@ def test_top_traded_stocks_ranks_by_cycle_count_then_price():
     top = core.top_traded_stocks(tx, top_n=10)
     assert list(top["종목명"]) == ["A", "B"]
     a = top.iloc[0]
-    assert a["청산횟수"] == 2
+    assert a["매도횟수"] == 2
     assert a["최초진입가"] == pytest.approx(10000.0)
-    assert a["최후매도가"] == pytest.approx(13000.0)
-    assert a["가격변화"] == pytest.approx(3000.0)
-    assert a["가격변화율"] == pytest.approx(30.0)
     # 실현손익: (12000-10000)*10 + (13000-11000)*10 = 40,000
     assert a["누적실현손익"] == pytest.approx(40000.0)
     # 매수총액: 10000*10 + 11000*10 = 210,000
@@ -1575,7 +1572,7 @@ def test_top_traded_stocks_tie_breaks_by_higher_first_entry_price():
         + _cycle_tx("Pricey", 90000, 91000, "2026-01-01", "2026-01-02")
     )
     top = core.top_traded_stocks(tx, top_n=10)
-    assert list(top["종목명"]) == ["Pricey", "Cheap"]  # 둘 다 1회 청산 → 가격 높은 쪽 우선
+    assert list(top["종목명"]) == ["Pricey", "Cheap"]  # 둘 다 1회 매도 → 가격 높은 쪽 우선
 
 
 def test_top_traded_stocks_excludes_open_cycles_and_respects_top_n():
@@ -1588,23 +1585,6 @@ def test_top_traded_stocks_excludes_open_cycles_and_respects_top_n():
     top = core.top_traded_stocks(tx, top_n=2)
     assert len(top) == 2
     assert "D" not in set(top["종목명"])
-
-
-def test_top_traded_stocks_uses_current_price_over_last_exit_when_available():
-    """2026-09-16 사용자 지적: "최후매도가 대신 현재가를 쓰는 게 낫겠다" — current_prices에
-    그 종목이 있으면 가격변화 계산의 종점이 현재가로 바뀌고, 없으면 최후매도가로 폴백."""
-    tx = pd.DataFrame(
-        _cycle_tx("A", 10000, 12000, "2026-01-01", "2026-01-02")  # 최후매도가 12,000
-        + _cycle_tx("B", 20000, 22000, "2026-01-01", "2026-01-02")
-    )
-    top = core.top_traded_stocks(tx, top_n=10, current_prices={"A": 15000.0})
-    a = top[top["종목명"] == "A"].iloc[0]
-    assert a["기준가"] == pytest.approx(15000.0)
-    assert a["기준가구분"] == "현재"
-    assert a["가격변화"] == pytest.approx(5000.0)  # 15,000 - 10,000
-    b = top[top["종목명"] == "B"].iloc[0]
-    assert b["기준가"] == pytest.approx(22000.0)  # 현재가 없음 -> 최후매도가 폴백
-    assert b["기준가구분"] == "최후매도가"
 
 
 def test_top_traded_stocks_excludes_tiny_realized_pct_cleanup_trades():
@@ -1620,90 +1600,6 @@ def test_top_traded_stocks_excludes_tiny_realized_pct_cleanup_trades():
     # 임계값을 낮추면(0.1) 다시 포함됨 — 상수가 실제로 쓰이는지 확인
     top_low = core.top_traded_stocks(tx, top_n=None, min_abs_realized_pct=0.1)
     assert set(top_low["종목명"]) == {"정리성거래", "진짜거래"}
-
-
-# ------------------------------------------------------------------ #
-# selection_index (§6-32): 승/패 카운트 기반 "선택 지수"
-# ------------------------------------------------------------------ #
-def test_selection_index_win_when_realized_beats_price_change():
-    # A: 최초 10000 -> 현재 10000(변화 0%), 실현손익률 +10% (10*1000*10%=1000, buy=10000) -> 갭 +10 -> 승
-    tx = pd.DataFrame(_cycle_tx("A", 10000, 11000, "2026-01-01", "2026-01-02"))
-    r = core.selection_index(tx, current_prices={"A": 10000.0})
-    assert r["wins"] == 1 and r["losses"] == 0 and r["excluded"] == 0
-    assert r["index"] == 1
-    assert r["rows"][0]["판정"] == "승"
-
-
-def test_selection_index_loss_when_price_change_beats_realized():
-    # 가격은 10000->20000(+100%), 실현손익률은 (11000-10000)*10/100000=10% -> 갭 -90 -> 패
-    tx = pd.DataFrame(_cycle_tx("A", 10000, 11000, "2026-01-01", "2026-01-02"))
-    r = core.selection_index(tx, current_prices={"A": 20000.0})
-    assert r["losses"] == 1 and r["wins"] == 0
-    assert r["index"] == -1
-
-
-def test_selection_index_excludes_small_gap_from_decided_count():
-    # 가격변화 0%, 실현손익률 10% -> 갭 10, tie_band를 크게(20) 주면 제외 처리돼야 함
-    tx = pd.DataFrame(_cycle_tx("A", 10000, 11000, "2026-01-01", "2026-01-02"))
-    r = core.selection_index(tx, current_prices={"A": 10000.0}, tie_band_pct=20.0)
-    assert r["excluded"] == 1
-    assert r["wins"] == 0 and r["losses"] == 0
-    assert r["decided"] == 0
-    assert r["win_rate"] == 0.0
-    assert r["rows"][0]["판정"] == "제외"
-
-
-def test_selection_index_win_rate_uses_decided_only_not_excluded():
-    rows = (
-        _cycle_tx("Win", 10000, 20000, "2026-01-01", "2026-01-02")     # 큰 승
-        + _cycle_tx("Lose", 10000, 10100, "2026-01-01", "2026-01-02")  # 큰 패(현재가로 확인)
-        + _cycle_tx("Flat", 10000, 10300, "2026-01-01", "2026-01-02")  # 실현 3%, 가격변화 2.5% -> 갭 0.5 -> 제외
-    )
-    tx = pd.DataFrame(rows)
-    current_prices = {"Win": 10000.0, "Lose": 50000.0, "Flat": 10250.0}
-    r = core.selection_index(tx, current_prices=current_prices, tie_band_pct=1.0)
-    assert r["excluded"] == 1  # Flat: 갭이 tie_band 안이라 제외(실현 3%라 min_abs_realized_pct 사전 필터엔 안 걸림)
-    assert r["decided"] == 2
-    assert r["wins"] == 1 and r["losses"] == 1
-    assert r["win_rate"] == pytest.approx(50.0)
-    assert r["index"] == 0
-
-
-def test_selection_index_empty_transactions():
-    empty = pd.DataFrame(columns=["날짜", "종목명", "구분", "수량", "단가", "실현손익"])
-    assert core.selection_index(empty) == {
-        "rows": [], "wins": 0, "losses": 0, "excluded": 0, "decided": 0,
-        "win_rate": 0.0, "index": 0, "avg_realized_pct": None,
-        "avg_price_change_pct": None, "n_avg": 0, "extreme_count": 0}
-
-
-def test_selection_index_avg_trims_trivial_and_extreme_gaps():
-    """2026-09-16 사용자 지시: "20% 이상 앞서가거나 뒤처지는 극단적인 경우와 ±1%의 격차
-    정도는 빼고" 나머지만 평균 — 승패 카운트는 극단치를 그대로 포함하되(Selection Index는
-    안 바뀜), 평균 계산에서만 뺀다."""
-    rows = (
-        _cycle_tx("Mid", 10000, 10500, "2026-01-01", "2026-01-02")     # 실현 5%, 가격변화 0% -> 갭 5(평균 포함)
-        + _cycle_tx("Trivial", 10000, 10300, "2026-01-01", "2026-01-02")  # 실현 3%, 가격변화 3.5% -> 갭 -0.5 -> 제외(근소)
-        + _cycle_tx("Extreme", 10000, 12000, "2026-01-01", "2026-01-02")  # 실현 20%, 현재가는 아래서 30000으로 지정(가격변화 200%) -> 갭 -180
-    )
-    tx = pd.DataFrame(rows)
-    current_prices = {"Mid": 10000.0, "Trivial": 10350.0, "Extreme": 30000.0}
-    # Extreme: 가격변화율 = (30000-10000)/10000*100 = 200%, 실현손익률 20% -> 갭 = 20-200 = -180 (극단 패)
-    r = core.selection_index(tx, current_prices=current_prices, tie_band_pct=1.0, extreme_gap_pct=20.0)
-    assert r["wins"] == 1 and r["losses"] == 1  # Mid=승, Extreme=패(둘 다 카운트엔 포함)
-    assert r["excluded"] == 1  # Trivial
-    assert r["extreme_count"] == 1  # Extreme만 평균에서 추가로 빠짐
-    assert r["n_avg"] == 1  # Mid만 평균에 남음
-    assert r["avg_realized_pct"] == pytest.approx(5.0)
-    assert r["avg_price_change_pct"] == pytest.approx(0.0)
-
-
-def test_selection_index_avg_none_when_nothing_qualifies():
-    tx = pd.DataFrame(_cycle_tx("Trivial", 10000, 10050, "2026-01-01", "2026-01-02"))
-    r = core.selection_index(tx, current_prices={"Trivial": 10050.0})
-    assert r["n_avg"] == 0
-    assert r["avg_realized_pct"] is None
-    assert r["avg_price_change_pct"] is None
 
 
 def test_compute_index_vs_account_caps_me_to_index_coverage():

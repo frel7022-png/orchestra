@@ -494,4 +494,4 @@ with tab_tx:
     render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, T)
 
 with tab_stats:
-    render_statistics_tab(tx, holdings, T)
+    render_statistics_tab(tx, T)

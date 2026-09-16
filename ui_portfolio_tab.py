@@ -793,7 +793,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             )
         return "".join(parts)
 
-    # ---- Up/Down: 청산 종목 추적 ----
+    # ---- Up/Down: 매도 종목 추적 ----
     with st.expander("Up/Down", expanded=False):
         updown_mode = st.radio("모드", ["DOWN", "UP"], horizontal=True,
                                 label_visibility="collapsed", key="updown_mode")
@@ -802,7 +802,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             closed = get_closed_out_last_sells(holdings, tx)
             results = []
             if not closed.empty:
-                with st.spinner("청산 종목 현재가 조회 중..."):
+                with st.spinner("매도 종목 현재가 조회 중..."):
                     prices = get_current_prices_for_names(closed["종목명"].tolist())
                 for _, row in closed.iterrows():
                     cp = prices.get(row["종목명"])
@@ -822,7 +822,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         updown_checked_at = st.session_state.get("updown_checked_at")
 
         if updown_results is None:
-            st.caption("새로고침을 누르면 청산(완전 매도)된 종목의 현재가를 마지막 매도가와 비교합니다.")
+            st.caption("새로고침을 누르면 완전매도된 종목의 현재가를 마지막 매도가와 비교합니다.")
         else:
             if updown_checked_at:
                 st.caption(f"마지막 조회: {updown_checked_at}")
@@ -847,7 +847,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 st.markdown(rows_html, unsafe_allow_html=True)
 
     # ---- Watering Detect: 물타기 중인 종목이 "마지막으로 물탄 지점"보다 더 빠졌는지 감지
-    # (2026-09-16, meritz도 동일하게 있음). Up/Down이 "청산 후" 변화를 보듯, 이건 "보유 중"
+    # (2026-09-16, meritz도 동일하게 있음). Up/Down이 "매도 후" 변화를 보듯, 이건 "보유 중"
     # 물타기 종목이 마지막 매수가 대비 -1% 이상 더 밀렸는지를 본다 — 다음 물타기 판단 참고용.
     # 이미 로드된 holdings/tx로만 계산해 네이버 재조회가 필요 없다(새로고침 버튼 없음, 종목카드와
     # 동일하게 매 렌더링마다 최신 현재가 기준으로 계산). 줄당 숫자 3개, 순서 고정(왼→오):
@@ -949,7 +949,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             else:
                 encore_rows = _fa_rank(flow_hist_fa, encore_pop, "매도일", "pct")
                 if not encore_rows:
-                    st.caption("청산한 종목의 외인비중 변화 데이터가 없습니다.")
+                    st.caption("매도한 종목의 외인비중 변화 데이터가 없습니다.")
                 else:
                     st.markdown(_fa_rows_html(encore_rows), unsafe_allow_html=True)
 
@@ -1029,7 +1029,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     prev_ranks = get_watchlist_prev_day_ranks(
                         hist_df, fishing_basis, fishing_dir, FISHING_THRESHOLD, today_kst_str())
 
-                    # Up/Down(청산 종목 추적)에도 걸린 종목은 Fishing에서 종목명을 파랑으로
+                    # Up/Down(매도 종목 추적)에도 걸린 종목은 Fishing에서 종목명을 파랑으로
                     # (2026-09-10 사용자 요청). Up/Down 새로고침을 눌러 결과가 있을 때만.
                     _ud = st.session_state.get("updown_results") or []
                     _ud_names = {r["종목명"] for r in _ud
