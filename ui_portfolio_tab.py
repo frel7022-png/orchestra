@@ -771,7 +771,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 물타기 종목이 마지막 매수가 대비 -1% 이상 더 밀렸는지를 본다 — 다음 물타기 판단 참고용.
     # 이미 로드된 holdings/tx로만 계산해 네이버 재조회가 필요 없다(새로고침 버튼 없음, 종목카드와
     # 동일하게 매 렌더링마다 최신 현재가 기준으로 계산). 줄당 숫자 3개, 순서 고정(왼→오):
-    # 최초진입가 대비 현재가% · 최초진입가 대비 내 평단가% · 마지막 매수가 대비 현재가%
+    # 최초진입가 대비 현재가% · 최초진입가 대비 내 평단가%(괄호 안 빨간 글씨로 흡수율%/시드
+    # 증가율%, §6-20 P&L Actions와 같은 정의 — 흡수율=평단기준 손익률−최초가기준 손익률,
+    # 시드증가율=(평단가×현재수량)÷(최초매수수량×최초가)−1) · 마지막 매수가 대비 현재가%
     # (이 순서만 지키면 되고 캡션은 안 붙임 — 개인용).
     with st.expander("Watering Detect", expanded=False):
         watering_rows = []
@@ -782,17 +784,25 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             if len(buys) < 2:
                 continue
             first_buy_price = float(buys.iloc[0]["단가"])
+            first_buy_qty = float(buys.iloc[0]["수량"])
             last_buy_price = float(buys.iloc[-1]["단가"])
-            if last_buy_price <= 0 or first_buy_price <= 0:
+            if last_buy_price <= 0 or first_buy_price <= 0 or first_buy_qty <= 0:
                 continue
             cur_price = float(hrow["현재가"])
             avg_price = float(hrow["평단가"])
+            cur_qty = float(hrow["수량"])
             pct_last = (cur_price - last_buy_price) / last_buy_price * 100
             if pct_last <= -1.0:
+                pl_first_pct = (cur_price - first_buy_price) / first_buy_price * 100
+                pl_avg_pct = (cur_price - avg_price) / avg_price * 100
+                seed_first = first_buy_qty * first_buy_price
+                seed_now = cur_qty * avg_price
                 watering_rows.append({
                     "종목명": name,
-                    "pct_first_cur": (cur_price - first_buy_price) / first_buy_price * 100,
+                    "pct_first_cur": pl_first_pct,
                     "pct_first_avg": (avg_price - first_buy_price) / first_buy_price * 100,
+                    "absorbed": pl_avg_pct - pl_first_pct,
+                    "seed_inc": (seed_now / seed_first - 1) * 100,
                     "pct_last": pct_last,
                 })
         watering_rows.sort(key=lambda r: r["pct_last"])
@@ -803,9 +813,14 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 c = UP_COLOR if v >= 0 else DOWN_COLOR
                 return f'<span class="pct" style="color:{c}">{"+" if v >= 0 else ""}{v:.1f}%</span>'
 
+            def _wd_mid(r):
+                extra = (f'<span style="font-size:10.5px;color:{UP_COLOR};margin-left:2px">'
+                         f'({r["absorbed"]:.0f}%흡수/시드{r["seed_inc"]:.0f}%증가)</span>')
+                return _wd_span(r["pct_first_avg"]) + extra
+
             rows_html = "".join(
                 f'<div class="updown-row"><span class="name">{r["종목명"]}</span>'
-                f'{_wd_span(r["pct_first_cur"])}{_wd_span(r["pct_first_avg"])}{_wd_span(r["pct_last"])}</div>'
+                f'{_wd_span(r["pct_first_cur"])}{_wd_mid(r)}{_wd_span(r["pct_last"])}</div>'
                 for r in watering_rows
             )
             st.markdown(rows_html, unsafe_allow_html=True)
