@@ -18,6 +18,7 @@ app.py(웹 화면)와 ingest_daily.py(일일 매매일지 반영 스크립트)�
 import ast
 import difflib
 import io
+import json
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -44,6 +45,9 @@ WATCHLIST_FILE = HERE / "watchlist.csv"  # "Fishing" 관심종목 리스트 (보
 LINK_WATCH_LOG_FILE = HERE / "link_watch_log.csv"  # "Link" 감시목록 — 다이버전스 플래그된 종목의 기준 스냅샷(2026-09-11)
 CHECKPOINT_HOLDINGS_FILE = HERE / "checkpoint_holdings.csv"  # rebuild_portfolio_incremental 참고
 CHECKPOINT_STATE_FILE = HERE / "checkpoint_state.csv"
+UI_CACHE_DIR = HERE / "ui_cache"  # Up/Down·Fishing·Volume/Foreigner/Link 새로고침 결과의 세션-간
+                                  # 로컬 캐시(§6-31) — git엔 안 올림(.gitignore), Streamlit 세션이
+                                  # 리셋돼도(탭 새로고침 등) 마지막 새로고침 결과를 그대로 보여주는 용도.
 
 HOLD_COLUMNS = ["종목명", "종목코드", "섹터", "수량", "평단가", "현재가", "등락률", "업데이트시각"]
 TX_COLUMNS = ["id", "날짜", "종목명", "구분", "수량", "단가", "실현손익", "메모", "정산반영"]
@@ -3073,3 +3077,52 @@ def import_daily_trades(parsed: pd.DataFrame, tx: pd.DataFrame, trade_date: str)
         tx = pd.concat([tx, pd.DataFrame(new_rows)], ignore_index=True)
 
     return tx, len(new_rows), replaced_count
+
+
+# ---- UI 새로고침 결과 로컬 캐시 (§6-31, 2026-09-16 도입) ----
+# Up/Down·Fishing·Volume/Foreigner/Link/Quiet Hands는 전부 수동 "새로고침" 버튼을 눌러야만
+# st.session_state에 결과가 채워지는데, 이 session_state는 브라우저 세션이 새로 열릴 때마다
+# (앱 재배포뿐 아니라 그냥 탭 새로고침·재접속만으로도) 통째로 리셋된다 — 그래서 앱을 나갔다
+# 들어올 때마다 모든 패널을 다시 새로고침해야 하는 불편이 있었음(2026-09-16 사용자 지적).
+# 해결: 새로고침 버튼을 누를 때 그 결과를 로컬 파일에도 같이 저장해두고, 세션이 새로
+# 시작됐을 때 session_state에 값이 없으면 "네트워크 조회 없이" 이 파일에서 먼저 채운다 —
+# 새 네트워크 요청은 여전히 사용자가 버튼을 눌러야만 나간다(부하 늘리지 않음). Streamlit
+# Cloud 로컬 디스크는 앱 재배포 시에만 초기화되고(§1-5) 세션 리셋만으로는 안 지워지므로,
+# 굳이 git에 커밋할 필요 없는 순수 로컬 캐시 — todaytrans/·temporary/와 같은 성격.
+def save_ui_cache_df(name: str, df: pd.DataFrame) -> None:
+    try:
+        UI_CACHE_DIR.mkdir(exist_ok=True)
+        df.to_csv(UI_CACHE_DIR / f"{name}.csv", index=False)
+    except OSError:
+        pass
+
+
+def load_ui_cache_df(name: str) -> pd.DataFrame | None:
+    path = UI_CACHE_DIR / f"{name}.csv"
+    if not path.exists():
+        return None
+    try:
+        # §1-6: 종목코드 컬럼이 있으면 앞자리 0이 안 날아가게 항상 str로 고정.
+        return pd.read_csv(path, dtype={"종목코드": str})
+    except (OSError, pd.errors.EmptyDataError):
+        return None
+
+
+def save_ui_cache_json(name: str, obj) -> None:
+    try:
+        UI_CACHE_DIR.mkdir(exist_ok=True)
+        with open(UI_CACHE_DIR / f"{name}.json", "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+    except OSError:
+        pass
+
+
+def load_ui_cache_json(name: str):
+    path = UI_CACHE_DIR / f"{name}.json"
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None

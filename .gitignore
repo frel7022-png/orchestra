@@ -3,4 +3,5 @@ __pycache__/
 todaytrans/
 temporary/
 files/
+ui_cache/
 .streamlit/secrets.toml

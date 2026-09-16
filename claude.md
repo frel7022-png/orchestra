@@ -1654,3 +1654,35 @@ manual/                           # report/와 성격이 다름 — **살아있�
   볼 수치는 아니다"로 판단(장이 좋아졌을 때 이 숫자가 오르는지가 진짜 벤치마크가 될 것).
 - 회귀 테스트 2개(`test_compute_fa_win_rate_*`).
 - **new1 전용** (meritz도 Up/Down·물타기 개념은 있지만 이 지표는 아직 요청 안 받음).
+
+### 6-31. 새로고침 결과 로컬 캐시 — 세션 리셋돼도 마지막 값 유지 (2026-09-16)
+- **동기**: Up/Down·Fishing·Volume/Foreigner/Link/Quiet Hands는 전부 수동 "새로고침" 버튼을
+  눌러야만 `st.session_state`가 채워지는 구조인데, 이 session_state는 **앱 재배포뿐 아니라
+  그냥 브라우저 탭을 새로고침하거나 앱을 나갔다 다시 들어오기만 해도 통째로 리셋**된다.
+  그래서 지금까지는 앱을 열 때마다 이 패널들을 전부 다시 새로고침해야 했음(2026-09-16 사용자
+  지적 — "새로고침이 부하 갈까봐 일부러 자동 실행을 안 시켰는데, 그것 때문에 앱을 나갔다
+  들어오면 매번 다시 눌러야 한다").
+- **해결**: 새로고침 버튼을 누를 때 결과를 로컬 파일(`ui_cache/`, `.gitignore` 처리 —
+  todaytrans/·temporary/와 같은 성격의 순수 로컬 캐시, git에 안 올림)에도 같이 저장해두고,
+  `render_portfolio_tab()` 맨 앞에서 session_state에 해당 키가 없으면(=세션이 새로 시작됨)
+  **네트워크 조회 없이** 이 파일에서 먼저 채운다. 이러면:
+  - 앱을 나갔다 들어와도 마지막 새로고침 시점 값이 바로 보임(Fishing/Up-Down은 이미 그
+    결과 안에 "마지막 조회" 타임스탬프가 들어있어 그대로 같이 복원됨).
+  - **새 네트워크 요청은 전혀 안 늘어남** — 사용자가 새로고침 버튼을 눌러야만 실제 조회가
+    나간다(애초에 자동 새로고침을 안 넣은 이유인 "부하" 우려와 무관).
+  - Streamlit Cloud의 로컬 디스크는 **앱 재배포 시에만** 초기화되고(§1-5) 세션 리셋만으로는
+    안 지워지므로, 이 캐시는 재배포 전까지는 계속 살아남는다 — git 커밋 불필요.
+- **적용 대상 6개 키**: `flow_hist`/`market_hist`/`price_hist_flow`(Volume·Foreigner·Link·
+  Quiet Hands의 Convoy/Undertow가 공유), `live_quotes`(Link의 실시간가), `fishing_prices`/
+  `fishing_hist`(Fishing·Bench·Quiet Hands의 Undertow), `updown_results`(Up/Down·Quiet Hands의
+  Encore). **`holding_foreign_map`(Holdings 카드의 외국인 보유율 배지)은 대상 아님** — 이미
+  session_state 없으면 자동으로(버튼 없이) DB 조회하는 구조라 이 문제 자체가 없음.
+- **함수**(`portfolio_core.py`): `save_ui_cache_df`/`load_ui_cache_df`(CSV, `dtype={"종목코드":
+  str}` 고정 — §1-6 앞자리 0 유실 방지) + `save_ui_cache_json`/`load_ui_cache_json`(dict/list).
+  둘 다 저장 실패는 조용히 무시(`except OSError: pass`) — 캐시 실패가 앱 동작을 막으면 안 됨.
+  `UI_CACHE_DIR = HERE / "ui_cache"`.
+  `ui_portfolio_tab.render_portfolio_tab()` 맨 앞에서 6개 키를 한 번에 선(先) 로드 — Quiet
+  Hands가 Fishing/Volume보다 코드상 먼저 렌더되므로, 개별 섹션 안이 아니라 함수 최상단에서
+  한 번만 로드해야 순서 문제가 없다(처음엔 각 섹션 안에 개별로 넣었다가 Quiet Hands가 아직
+  못 채워진 session_state를 읽는 문제를 발견해 함수 최상단으로 옮김).
+- **new1 전용** (meritz는 Fishing/Foreigner류 새로고침 패널 자체가 없음).

@@ -22,6 +22,7 @@ from portfolio_core import (
     load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
     load_claude_notes, seed_engine_series, compute_fa_win_rate,
+    save_ui_cache_df, load_ui_cache_df, save_ui_cache_json, load_ui_cache_json,
 )
 
 _CLAUDE_ORANGE = "#D97757"   # Claude 클레이 오렌지 — "Claude's Read" 마크·라벨·채운 별
@@ -354,6 +355,28 @@ def _render_link_panel(ph, fh, live_quotes, refresh_fn, T):
 
 
 def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets, unrealized_loss, T):
+    # ---- §6-31: 새로고침 결과 로컬 캐시 선(先) 로드 ----
+    # Up/Down·Fishing·Volume/Foreigner/Link/Quiet Hands는 전부 수동 새로고침 버튼으로만
+    # session_state가 채워지는데, 브라우저 세션이 새로 열리면(탭 새로고침 등) 그 값이
+    # 통째로 리셋된다. 함수 맨 앞에서 한 번에 로컬 캐시(ui_cache/)로 미리 채워둬서,
+    # Quiet Hands처럼 Fishing/Volume보다 먼저 렌더되는 패널도 첫 화면부터 마지막 새로고침
+    # 결과를 볼 수 있게 한다 — 새 네트워크 요청은 전혀 안 나감(사용자가 새로고침을 눌러야만
+    # 다시 조회됨).
+    for _k in ("flow_hist", "market_hist", "price_hist_flow", "fishing_prices", "fishing_hist"):
+        if _k not in st.session_state:
+            _c = load_ui_cache_df(_k)
+            if _c is not None:
+                st.session_state[_k] = _c
+    if "live_quotes" not in st.session_state:
+        _c = load_ui_cache_json("live_quotes")
+        if _c is not None:
+            st.session_state["live_quotes"] = _c
+    if "updown_results" not in st.session_state:
+        _c = load_ui_cache_json("updown")
+        if _c:
+            st.session_state["updown_results"] = _c.get("results")
+            st.session_state["updown_checked_at"] = _c.get("checked_at")
+
     total_cost = df["매입금액"].sum()
     stock_profit = stock_valuation - total_cost
     stock_profit_pct = (stock_profit / total_cost * 100) if total_cost else 0
@@ -783,6 +806,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     })
             st.session_state["updown_results"] = results
             st.session_state["updown_checked_at"] = now_kst_str()
+            save_ui_cache_json("updown", {"results": results, "checked_at": st.session_state["updown_checked_at"]})
             st.rerun()
 
         updown_results = st.session_state.get("updown_results")
@@ -939,6 +963,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     hist_df = load_watchlist_history_db(sb_url, sb_key)
                 st.session_state["fishing_prices"] = prices_df
                 st.session_state["fishing_hist"] = hist_df
+                save_ui_cache_df("fishing_prices", prices_df)
+                save_ui_cache_df("fishing_hist", hist_df)
                 for err in quote_errors:
                     st.warning(err)
                 st.rerun()
@@ -1107,6 +1133,11 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         _quotes, _ = fetch_quotes(_codes) if _codes else ({}, [])
         st.session_state["live_quotes"] = {c: q["price"] for c, q in _quotes.items()
                                             if q and q.get("price") is not None}
+        # §6-31: 세션이 리셋돼도 마지막 새로고침 결과가 바로 보이게 로컬에도 같이 저장.
+        save_ui_cache_df("flow_hist", st.session_state["flow_hist"])
+        save_ui_cache_df("market_hist", st.session_state["market_hist"])
+        save_ui_cache_df("price_hist_flow", _ph)
+        save_ui_cache_json("live_quotes", st.session_state["live_quotes"])
 
     with st.expander("Volume", expanded=False):
         if st.button("새로고침", key="volume_refresh", use_container_width=True):
