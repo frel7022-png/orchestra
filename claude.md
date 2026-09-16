@@ -1585,7 +1585,10 @@ manual/                           # report/와 성격이 다름 — **살아있�
     첫 주간 리포트는 그 다음 금요일부터.
 - **new1 전용** (포프와 마찬가지로 153+ 관심종목/Supabase 파이프라인에 묶임).
 
-### 6-29. "Foreign Arrows" — 하락+외인유입 다이버전스를 내가 이미 관여 중인 종목으로 좁히기 (2026-09-16, new1 전용)
+### 6-29. "Quiet Hands" — 하락+외인유입 다이버전스를 내가 이미 관여 중인 종목으로 좁히기 (2026-09-16, new1 전용)
+- 이름 변천: `Foreign Arrows` → **`Quiet Hands`**(2026-09-16 당일, 9/11 리포트 제목
+  "조용한 손, 시끄러운 주가"에서 따옴 — 표면(주가)은 시끄럽게 빠지는데 그 밑에서 외국인이
+  조용히 사 모으는 손이라는 뜻, 사용자가 채택).
 - **동기**: Link(§6-28)가 178개 관심종목 전체에서 "엉뚱한 놈"을 찾는 거라면, 이건 그 신호를
   **내가 이미 물타는 중이거나, 판 지 얼마 안 됐거나, Fishing에서 하락으로 걸린** — 즉 이미
   관심을 두고 있는 종목으로 좁혀서 "떨어지는데 외국인은 사는" 다이버전스를 보는 것. Link보다
@@ -1596,9 +1599,11 @@ manual/                           # report/와 성격이 다름 — **살아있�
     매수) + 마지막 매수가 대비 -1% 이하인 종목들. 기준일 = **그 종목 현재 사이클 최초 매수일**.
   - **Undertow** = Fishing 하락 모집단 — 관심종목 중 기준일 대비 -3% 이하로 빠진 것들.
     기준일 = Fishing이 이미 쓰는 그 종목의 **가격추적 기준일**(price_history 최초 관측일).
-  - **Encore** = Up/Down 모집단(Up/Down expander 안에 위치, 별도 패널 아님) — 완전 청산한
-    종목 중 매도가 대비 -2% 이하(§4의 Up/Down DOWN 문턱과 동일)로 더 빠진 것들. 기준일 =
-    **그 종목의 마지막 매도일**. DOWN/UP 토글 상태와 무관하게 항상 DOWN 모집단만 씀.
+  - **Encore** = Up/Down 모집단(처음엔 Up/Down expander 안에 뒀다가, "세 구획을 한곳에
+    모아달라"는 요청으로 2026-09-16 당일 Quiet Hands 안으로 이동 — `st.session_state`의
+    `updown_results`를 그대로 읽어 재사용, 별도 새로고침 없음) — 완전 청산한 종목 중 매도가
+    대비 -2% 이하(§4의 Up/Down DOWN 문턱과 동일)로 더 빠진 것들. 기준일 = **그 종목의 마지막
+    매도일**. DOWN/UP 토글 상태와 무관하게 항상 DOWN 모집단만 씀.
 - **핵심 함수**: `portfolio_core.foreign_pct_change_since(flow_hist, name, since_date)` —
   종목명 하나의 외국인보유율이 since_date(각 구획마다 다른 임의의 날짜) 대비 지금까지 몇 %p
   움직였는지. `compute_foreign_flags`의 "기준일pp"와 계산은 같지만 기준일이 price_history
@@ -1612,12 +1617,12 @@ manual/                           # report/와 성격이 다름 — **살아있�
   Encore처럼 모집단이 작을 때 흔함) 문턱을 무시하고 **외인비중 상승 큰 순으로 상위 5개**를
   대체 표시(2026-09-16 사용자 지시). 정렬은 항상 외인비중 변화(%p) 내림차순.
   줄 형식: `종목명  가격변화%  외인비중변화%p` — 라벨 없이 숫자만(Watering Detect와 같은 원칙).
-- **데이터 소스**: `flow_hist`(investor_flow)·`fishing_prices`는 전부 Foreigner/Fishing이
-  이미 채워둔 `st.session_state` 값을 그대로 재사용 — Foreign Arrows 자체는 새로고침 버튼도,
-  새 DB 호출도 없다(§6-28 "공유 새로고침" 원칙 그대로 계승). 둘 다 비어있으면 "먼저 새로고침을
-  눌러달라"는 캡션만 표시.
-- **UI 위치**: Watering Detect 바로 밑에 "Foreign Arrows" expander(Convoy+Undertow 두 구획),
-  Encore는 Up/Down expander 안 맨 밑에 조건부로 표시(모집단+데이터 있을 때만).
+- **데이터 소스**: `flow_hist`(investor_flow)·`fishing_prices`·`updown_results`는 전부
+  Foreigner/Fishing/Up-Down이 이미 채워둔 `st.session_state` 값을 그대로 재사용 — Quiet
+  Hands 자체는 새로고침 버튼도, 새 DB 호출도 없다(§6-28 "공유 새로고침" 원칙 그대로 계승).
+  비어있으면 각 구획마다 "먼저 새로고침을 눌러달라"는 캡션만 표시.
+- **UI 위치**: Watering Detect 바로 밑 "Quiet Hands" expander 하나 안에 Convoy·Undertow·
+  Encore 세 구획이 전부 들어있다(위→아래 순서).
 - 회귀 테스트 3개(`test_foreign_pct_change_since_*`) — 정확한 날짜 매치, 늦은 커버리지 폴백,
   데이터 없을 때 None 반환.
 - **new1 전용** (meritz엔 Foreigner/investor_flow 인프라 자체가 없음).
