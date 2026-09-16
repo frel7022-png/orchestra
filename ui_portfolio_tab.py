@@ -468,17 +468,18 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 진입 판단이 "한 번 사서 한 번에 다 파는"(FA)로 끝났는지. 물타서 나왔든(MA), 나눠
     # 팔았든(MO), 아직도 들고 있든(HOLD) 전부 실패로 센다 — 손익이 아니라 "최초 판단의
     # 정확도"를 재는 지표. compute_fa_win_rate() 참고.
-    # 1번째 박자: 총 진입(open 포함 전체 사이클)/총 아웃(전량청산 완료). 2번째: 1회 진입
-    # 1회 나온 것(FA)/물타서 나온 것(MA)/나눠 팔아서 나온 것(MO_closed) — 이 셋의 합이
-    # 총아웃과 정확히 일치(2026-09-16 사용자가 "합이 안 맞는다"고 지적해서 나눔도 추가해
-    # 검산되게 함). 평균일수는 FA 기준 부가정보로 이어붙임.
+    # 1번째 박자: Total = 총아웃/총진입(open 포함) 비율. 2번째: §6-20 P&L Actions와 같은
+    # 버킷 이름 그대로(FA/MA/MO) — FA=1회 진입 1회 나온 것(승률), MA=물타서 나온 것,
+    # MO=나눠 팔아서 나온 것(MO_closed). 셋의 합이 총아웃과 정확히 일치(2026-09-16 사용자가
+    # "합이 안 맞는다"고 지적해서 MO도 추가해 검산되게 함). 평균일수는 FA 기준 부가정보.
     _fa = compute_fa_win_rate(tx)
     _fa_days = f" · 평균 {_fa['avg_days']:.0f}일" if _fa["avg_days"] is not None else ""
+    _fa_out_pct = (_fa["n_out"] / _fa["total"] * 100.0) if _fa["total"] else 0.0
     _fa_html = (
         f'<div style="font-size:12px;color:{T["text"]};font-weight:600;margin-top:4px">'
-        f'총진입 {_fa["total"]} · 총아웃 {_fa["n_out"]}</div>'
+        f'Total {_fa["n_out"]}/{_fa["total"]} ({_fa_out_pct:.0f}%)</div>'
         f'<div style="font-size:12px;color:{T["text"]};font-weight:600;margin-top:1px">'
-        f'1회 {_fa["win"]}({_fa["win_rate"]:.0f}%) · 물타 {_fa["ma"]} · 나눔 {_fa["mo_closed"]}{_fa_days}</div>'
+        f'FA {_fa["win"]}({_fa["win_rate"]:.0f}%) · MA {_fa["ma"]} · MO {_fa["mo_closed"]}{_fa_days}</div>'
         if _fa["total"] else ""
     )
 
