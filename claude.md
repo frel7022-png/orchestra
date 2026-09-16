@@ -1793,6 +1793,28 @@ manual/                           # report/와 성격이 다름 — **살아있�
 - **함수 추가**(`portfolio_core.py`): `_all_cycles`에 `close_price` 필드 신설(그 사이클을
   닫은 매도의 단가). `PRICE_BRACKET_LABELS`, `price_bracket_distribution(tx)`,
   `top_traded_stocks(tx, top_n=10)`.
+- **가격변화 계산을 최후매도가 대신 현재가 기준으로 (2026-09-16 당일, 사용자 지적: "최후매도가
+  대신 현재가를 쓰는 게 낫겠다")**: 처음엔 최후매도가 옆에 현재가를 "병기"만 했는데, 곧바로
+  "가격변화(순수 가격 이동) 계산 자체의 종점을 최후매도가가 아니라 현재가로 바꾸자"로 정정 —
+  "최초 진입 이후 지금까지" 가격이 실제로 얼마나 움직였는지와 누적실현손익을 비교해야
+  "반복매매가 지금 시점 기준으로도 단순 보유보다 나은지"를 제대로 잰다는 취지.
+  `top_traded_stocks(tx, top_n=10, current_prices=None)`에 `current_prices`(종목명→현재가)
+  인자 추가 — 있으면 **기준가**(가격변화의 종점) = 현재가·**기준가구분**="현재", 없으면
+  최후매도가로 폴백·기준가구분="최후매도가"(`current_prices=None`이면 전부 이 폴백이라
+  기존 회귀 테스트는 그대로 통과). `최후매도가`/`최후매도일` 컬럼 자체는 계속 반환 —
+  현재가를 실제로 쓴 행에서는 "마지막 매도가 얼마였는지"를 보조 정보로 한 줄 더 보여줌
+  (폴백일 땐 기준가 자체가 최후매도가라 중복이라 안 붙임).
+  - **Statistics 탭 자체는 새 네트워크 요청을 전혀 안 낸다(§6-31과 같은 원칙)** —
+    `ui_statistics_tab._current_price_map(holdings)`가 ① 지금 보유 중이면 `holdings`의
+    현재가(메인 "시세 새로고침"으로 이미 최신), ② 아니면 Up/Down이 이미 캐싱해둔
+    `st.session_state["updown_results"]`(§6-31 로컬 캐시라 세션 리셋 후에도 남아있음)의
+    현재가를 순서대로 재사용해서 `top_traded_stocks`에 넘긴다. 둘 다 없는 종목만 최후매도가
+    폴백으로 남음. `render_statistics_tab(tx, holdings, T)`로 시그니처 변경(`app.py` 호출부도
+    같이 수정).
+  - 회귀 테스트 `test_top_traded_stocks_uses_current_price_over_last_exit_when_available`.
+- **섹션 설명 캡션 전부 제거 (2026-09-16 당일, 사용자 지시)**: Price Brackets/Top Traded
+  헤더 밑에 붙였던 설명 문단·"총 N건" 요약·"현재가 없으면 Up/Down에서 새로고침" 안내까지
+  전부 제거함 — [[feedback_no_ui_explainer_captions]] 원칙 그대로(개인용, 설명 캡션 불필요).
 - 회귀 테스트 6개: `test_price_bracket_distribution_buckets_by_first_buy_price`(구간 경계값
   포함), `test_price_bracket_distribution_excludes_open_cycles`,
   `test_top_traded_stocks_ranks_by_cycle_count_then_price`,

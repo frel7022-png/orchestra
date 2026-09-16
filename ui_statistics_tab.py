@@ -13,10 +13,25 @@ from constants import UP_COLOR, DOWN_COLOR
 from portfolio_core import price_bracket_distribution, top_traded_stocks
 
 
-def render_statistics_tab(tx, T):
+def _current_price_map(holdings: pd.DataFrame) -> dict:
+    """종목명→현재가. 지금 보유 중이면 holdings의 현재가(이미 메인 "시세 새로고침"으로
+    최신) 그대로 쓰고, 보유 중이 아니면 Up/Down이 이미 캐싱해둔 `st.session_state
+    ["updown_results"]`(§6-31 로컬 캐시로 세션 리셋 후에도 남아있음)의 현재가를 재사용한다 —
+    Statistics 탭 자체는 새 네트워크 요청을 전혀 안 낸다(2026-09-16, §6-31과 같은 원칙)."""
+    price_map = {}
+    if holdings is not None and not holdings.empty:
+        h = holdings.copy()
+        h["현재가"] = pd.to_numeric(h["현재가"], errors="coerce")
+        price_map.update({row["종목명"]: row["현재가"] for _, row in h.iterrows()
+                           if pd.notna(row["현재가"])})
+    for r in (st.session_state.get("updown_results") or []):
+        if r["종목명"] not in price_map and r.get("현재가") is not None:
+            price_map[r["종목명"]] = r["현재가"]
+    return price_map
+
+
+def render_statistics_tab(tx, holdings, T):
     st.markdown("##### Price Brackets")
-    st.caption("청산 완료된 사이클을 진입가(첫 매수 단가) 기준으로 가격대별로 묶은 것 — "
-               "이 계좌가 실제로 어떤 가격대 주식을 사고파는지 보는 기초 통계.")
     dist = price_bracket_distribution(tx)
     total_cycles = int(dist["건수"].sum())
     if total_cycles == 0:
@@ -37,14 +52,10 @@ def render_statistics_tab(tx, T):
                 '</div>'
             )
         st.markdown(f'<div class="sector-bar-list">{"".join(rows_html)}</div>', unsafe_allow_html=True)
-        st.caption(f"총 {total_cycles}건(청산 완료 사이클 기준)")
 
     st.markdown("##### Top Traded")
-    st.caption("청산 완료된 사이클이 가장 많은 종목 10개 — 최초 진입가 대비 마지막 매도가의 "
-               "순수 가격 변화와, 반복 매매로 실제 벌어들인 누적 실현손익을 나란히 비교한다. "
-               "가격 변화보다 실현손익률이 훨씬 크면 반복 매매(물타기 후 재진입 등)가 "
-               "단순 보유보다 더 벌었다는 뜻.")
-    top = top_traded_stocks(tx, top_n=10)
+    price_map = _current_price_map(holdings)
+    top = top_traded_stocks(tx, top_n=10, current_prices=price_map)
     if top.empty:
         st.caption("청산 완료된 사이클이 아직 없어요.")
         return
@@ -61,6 +72,14 @@ def render_statistics_tab(tx, T):
 
     cards = []
     for _, r in top.iterrows():
+        ref_label = "현재" if r["기준가구분"] == "현재" else str(r["최후매도일"])
+        # 현재가를 실제로 쓴 경우에만 "마지막 매도가 이거였다"를 보조 정보로 한 줄 더 —
+        # 폴백(현재가 없음)일 땐 기준가 자체가 최후매도가라 중복이라 안 붙임.
+        last_sell_note = (
+            f'<div style="font-size:11px;color:{T["muted2"]};margin-top:1px">'
+            f'마지막 매도 {r["최후매도가"]:,.0f}원({r["최후매도일"]})</div>'
+            if r["기준가구분"] == "현재" else ""
+        )
         cards.append(
             f'<div style="padding:8px 0;border-bottom:1px solid {T["border"]}">'
             '<div style="display:flex;justify-content:space-between;align-items:baseline">'
@@ -68,9 +87,9 @@ def render_statistics_tab(tx, T):
             f'<span style="font-size:11px;color:{T["muted"]}">{int(r["청산횟수"])}회 청산</span>'
             '</div>'
             f'<div style="font-size:11.5px;color:{T["muted"]};margin-top:2px">'
-            f'{r["최초진입가"]:,.0f}원({r["최초진입일"]}) → {r["최후매도가"]:,.0f}원({r["최후매도일"]}) '
-            f'({_signed_pct(r["가격변화율"])})'
-            '</div>'
+            f'{r["최초진입가"]:,.0f}원({r["최초진입일"]}) → {r["기준가"]:,.0f}원({ref_label}) '
+            f'({_signed_pct(r["가격변화율"])})</div>'
+            f'{last_sell_note}'
             f'<div style="font-size:12px;margin-top:2px">'
             f'누적실현손익 {_signed(r["누적실현손익"], "원")} ({_signed_pct(r["누적실현손익률"])})'
             '</div></div>'

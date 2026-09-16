@@ -2274,7 +2274,7 @@ def price_bracket_distribution(tx: pd.DataFrame) -> pd.DataFrame:
     ])
 
 
-def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
+def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10, current_prices: dict | None = None) -> pd.DataFrame:
     """Statistics 탭(§6-32): 청산 완료된 사이클이 가장 많은 종목 top_n개 — "가장 많이
     들어갔다 나온 종목"과, 그 반복 매매가 "가격이 움직인 것보다 더 벌었는지"(효율성, 사용자
     표현: "1만원 진입·2만원 매도를 5회 반복했다면 가격은 1만원만 움직였어도 5만원을 번
@@ -2285,29 +2285,41 @@ def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
       first_buy_px/first_buy_date — 같은 종목의 더 이른 사이클이 아직 안 닫혔다면 더 나중
       사이클도 존재할 수 없으므로(다음 사이클은 이전 사이클이 전량청산돼야 시작됨) 여기서
       "첫 번째 closed 사이클"은 항상 그 종목의 진짜 최초 진입과 같다.
-    - last_exit_price/last_exit_date = (시간순) 마지막 청산 사이클의 close_price/close_date.
-    - price_diff/price_diff_pct = last_exit_price − first_entry_price (그 사이의 "순수 가격
+    - last_exit_price/last_exit_date = (시간순) 마지막 청산 사이클의 close_price/close_date —
+      참고용으로 계속 반환하지만, 아래 가격변화 계산에는 더 이상 안 쓴다.
+    - **기준가(ref_price)/기준가구분(ref_kind)** — "가격변화"의 종점 가격. `current_prices`
+      (종목명→현재가 dict)에 그 종목이 있으면 **현재가**를 쓰고("현재"), 없으면 최후매도가로
+      폴백한다("최후매도가", `current_prices=None`으로 부르면 전부 이 폴백). 2026-09-16
+      사용자 지적: "최후매도가 대신 현재가를 쓰는 게 낫겠다" — 마지막으로 판 시점에 멈춘
+      비교보다, "최초 진입 이후 지금까지" 가격이 실제로 어떻게 움직였는지와 비교해야
+      "반복매매가 지금 시점 기준으로도 단순 보유보다 나은지"를 제대로 잰다.
+    - price_diff/price_diff_pct = ref_price − first_entry_price (그 사이의 "순수 가격
       이동"만 놓고 본 것 — 매매 횟수와 무관).
     - cum_realized/cum_realized_pct = 그 종목의 청산된 사이클 전부의 실현손익 합 / 총매수액
       합 대비 % — 이게 price_diff_pct보다 훨씬 크면(특히 같은 방향이 아니어도) 반복 매매가
       단순 보유보다 더 벌었다는 뜻(=Up/Down 재진입 타이밍이 실제로 유효했다는 신호).
     반환: DataFrame[종목명, 청산횟수, 최초진입가, 최초진입일, 최후매도가, 최후매도일,
-    가격변화, 가격변화율, 누적실현손익, 누적실현손익률]."""
+    기준가, 기준가구분, 가격변화, 가격변화율, 누적실현손익, 누적실현손익률]."""
     cycles = [c for c in _all_cycles(tx) if c["closed"]]
     by_name: dict[str, list[dict]] = {}
     for c in cycles:
         by_name.setdefault(c["종목"], []).append(c)
+    current_prices = current_prices or {}
     rows = []
     for name, cs in by_name.items():
         cs = sorted(cs, key=lambda c: (str(c["first_buy_date"]), str(c["close_date"])))
         first, last = cs[0], cs[-1]
         buy_total = sum(c["buy_amt"] for c in cs)
         realized_total = sum(c["realized"] for c in cs)
-        price_diff = float(last["close_price"]) - float(first["first_buy_px"])
+        cur_px = current_prices.get(name)
+        ref_price = float(cur_px) if cur_px is not None else float(last["close_price"])
+        ref_kind = "현재" if cur_px is not None else "최후매도가"
+        price_diff = ref_price - float(first["first_buy_px"])
         rows.append({
             "종목명": name, "청산횟수": len(cs),
             "최초진입가": float(first["first_buy_px"]), "최초진입일": first["first_buy_date"],
             "최후매도가": float(last["close_price"]), "최후매도일": last["close_date"],
+            "기준가": ref_price, "기준가구분": ref_kind,
             "가격변화": price_diff,
             "가격변화율": (price_diff / first["first_buy_px"] * 100.0) if first["first_buy_px"] else 0.0,
             "누적실현손익": realized_total,

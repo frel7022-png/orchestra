@@ -1590,6 +1590,23 @@ def test_top_traded_stocks_excludes_open_cycles_and_respects_top_n():
     assert "D" not in set(top["종목명"])
 
 
+def test_top_traded_stocks_uses_current_price_over_last_exit_when_available():
+    """2026-09-16 사용자 지적: "최후매도가 대신 현재가를 쓰는 게 낫겠다" — current_prices에
+    그 종목이 있으면 가격변화 계산의 종점이 현재가로 바뀌고, 없으면 최후매도가로 폴백."""
+    tx = pd.DataFrame(
+        _cycle_tx("A", 10000, 12000, "2026-01-01", "2026-01-02")  # 최후매도가 12,000
+        + _cycle_tx("B", 20000, 22000, "2026-01-01", "2026-01-02")
+    )
+    top = core.top_traded_stocks(tx, top_n=10, current_prices={"A": 15000.0})
+    a = top[top["종목명"] == "A"].iloc[0]
+    assert a["기준가"] == pytest.approx(15000.0)
+    assert a["기준가구분"] == "현재"
+    assert a["가격변화"] == pytest.approx(5000.0)  # 15,000 - 10,000
+    b = top[top["종목명"] == "B"].iloc[0]
+    assert b["기준가"] == pytest.approx(22000.0)  # 현재가 없음 -> 최후매도가 폴백
+    assert b["기준가구분"] == "최후매도가"
+
+
 def test_compute_index_vs_account_caps_me_to_index_coverage():
     """index_hist가 asset_hist보다 뒤처지면(매매일지 반영으로 asset엔 오늘 행이 생겼는데
     index_history엔 아직 없음) 그 앞선 asset 행의 벤치당일이 0으로 계산돼 "혼합지수 당일
