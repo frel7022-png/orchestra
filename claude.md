@@ -1750,7 +1750,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
   즉 정의(함수 docstring) → 로직(계산) → 결과(숫자)라는, 논문 Results 섹션과 같은 순서로
   쌓아가는 걸 원칙으로 함.
 - **탭 구성**: `app.py`의 `st.tabs(["Portfolio", "Analysis", "Statistics"])` — 세 번째 탭,
-  `ui_statistics_tab.render_statistics_tab(tx, T)`. 새 파일 `ui_statistics_tab.py`
+  `ui_statistics_tab.render_statistics_tab(tx, holdings, T)`. 새 파일 `ui_statistics_tab.py`
   (`ui_portfolio_tab.py`/`ui_transactions_tab.py`와 같은 분리 규칙).
 - **공통 원칙 — "사이클" 단위, 매도 완료된 것만**: 두 기능 다 `_all_cycles`(§6-20)의
   `closed=True`인 사이클(FA/MA/MO_closed)만 대상으로 한다. **아직 보유 중인(open) 사이클은
@@ -1770,6 +1770,26 @@ manual/                           # report/와 성격이 다름 — **살아있�
   - **2026-09-16 실측**: 매도 완료 121건 — 2~3만원(24건, 20%)·10만원 이상(24건, 20%)·1만원
     이하(21건, 17%)·3~4만원(17건, 14%) 순으로 저가~중저가 구간에 몰려있고, 5~9만원대는
     합쳐도 13건(11%)뿐 — 애매한 중고가 구간은 거의 안 건드림.
+- **①-보조. 지금 계좌 분포(파랑, 같은 날 추가)**: `portfolio_core.
+  holdings_price_bracket_distribution(holdings)` — 위 빨간 막대 바로 밑에 같은 11구간으로
+  **지금 보유 중인 종목**의 분포를 파란 막대로 나란히 보여준다. 사용자 지적: "Price
+  Brackets는 내가 어떤 가격대 종목을 사는지 성향을 보고 한쪽으로 안 쏠리게 하려고
+  만든 건데, 기존 건 사이클이 나온(=매도 완료된) 것만 하는 거잖아 — 지금 계좌 분포도
+  같이 보여주자." 즉 빨강=그동안의 매매 성향(과거), 파랑=지금 실제 보유 분포(현재)를
+  같은 축으로 비교.
+  - **평단가 기준(현재가 아님)** — 현재가로 나누면 시세가 바뀔 때마다 종목이 구간을
+    옮겨다녀서 "지금 분포"라는 의미가 매일 흔들린다(바로 앞서 폐기한 Selection Index와
+    같은 부류의 문제). 평단가는 "그 가격에 사서 지금 들고 있다"는 고정된 사실이라
+    안정적이고, 위 빨간 막대(진입가 기준)와도 같은 축(진입가/평단가)으로 비교됨.
+  - `_price_bracket_label(px)`로 구간 판정 로직을 `price_bracket_distribution`과 공유
+    (한 곳에만 정의, 복제 없음).
+  - 설명 캡션 없이 색만으로 구분(사용자 지시 "그냥 밑에 파란색으로" — 개인용, 텍스트
+    라벨 불필요 원칙 그대로).
+  - **2026-09-16 실측**: 83개 보유종목 — 1만원 이하(23개, 28%)·1~3만원(각 14개, 17%씩)이
+    큰 비중, 10만원 이상은 6개(7%)뿐 — 매도 완료 이력(20%)보다 지금 계좌엔 고가 종목
+    비중이 훨씬 낮음(고가 종목은 상대적으로 더 자주/빨리 매도해온 경향).
+  - 회귀 테스트 `test_holdings_price_bracket_distribution_uses_avg_cost_not_current_price`,
+    `test_holdings_price_bracket_distribution_empty_holdings`.
 - **② Top Traded — 최다 매도 종목 (순수 매매 기록만, 현재가 안 씀)**:
   `portfolio_core.top_traded_stocks(tx, top_n=None, min_abs_realized_pct=1.0)` — 종목명별로
   매도 완료 사이클을 묶어 **매도횟수** 내림차순(동률이면 **최초진입가** 내림차순, 사용자

@@ -2239,11 +2239,26 @@ PRICE_BRACKET_LABELS = ["1만원 이하", "1~2만원", "2~3만원", "3~4만원",
                         "5~6만원", "6~7만원", "7~8만원", "8~9만원", "9~10만원", "10만원 이상"]
 
 
+def _price_bracket_label(px: float) -> str:
+    """가격 하나를 PRICE_BRACKET_LABELS 구간 이름으로. price_bracket_distribution과
+    holdings_price_bracket_distribution이 같은 11구간 정의를 공유하려고 뺀 공통 로직."""
+    if px <= 10_000:
+        return "1만원 이하"
+    if px > 100_000:
+        return "10만원 이상"
+    idx = int((px - 1) // 10_000)  # 10,001~20,000 -> 1 -> PRICE_BRACKET_LABELS[1] = "1~2만원"
+    return PRICE_BRACKET_LABELS[min(idx, 9)]
+
+
 def price_bracket_distribution(tx: pd.DataFrame) -> pd.DataFrame:
     """Statistics 탭(§6-32): 매도 완료된 사이클을 진입가(첫 매수 단가) 기준으로 가격대별로
-    묶어 몇 사이클이 그 구간에서 있었는지 센다 — "이 계좌가 실제로 어떤 가격대 주식을 사고
-    파는가"를 보는 가장 기초적인 서술 통계(2026-09-16, 리포트 §02 "Holdings 카드는 종목
-    하나엔 강한데 전체를 훑는 통계가 없다" 지적에서 시작).
+    묶어 몇 사이클이 그 구간에서 있었는지 센다 — "이 계좌가 그동안 실제로 어떤 가격대
+    주식을 사고 파는 성향이었나"를 보는 기초 서술 통계(2026-09-16, 리포트 §02 "Holdings
+    카드는 종목 하나엔 강한데 전체를 훑는 통계가 없다" 지적에서 시작). **과거 매매 성향만
+    보여준다 — 지금 보유 중인 종목의 실제 분포는 `holdings_price_bracket_distribution` 참고**
+    (2026-09-16, 사용자 지적: "너무 한쪽으로 몰리지 않길 위해 만든 건데 이건 사이클이
+    나온 것만 하는 거잖아" — 그래서 아래 함수를 새로 만들어 "지금 계좌 분포"를 같은
+    구간으로 나란히 보여주게 함. 이 함수 자체는 그대로 유지).
     - **사이클 단위** — 종목이 아니라 "진입~매도 1회"를 1건으로 센다. 같은 종목이 1만원대에서도,
       3만원대에서도 매도된 적이 있으면 각 구간에 1건씩 잡힌다(사용자 확정: "그간 몇 종목
       왔다갔다 했나"는 사이클 카운트를 뜻함).
@@ -2255,15 +2270,30 @@ def price_bracket_distribution(tx: pd.DataFrame) -> pd.DataFrame:
     cycles = [c for c in _all_cycles(tx) if c["closed"]]
     counts = {label: 0 for label in PRICE_BRACKET_LABELS}
     for c in cycles:
-        px = float(c["first_buy_px"])
-        if px <= 10_000:
-            label = "1만원 이하"
-        elif px > 100_000:
-            label = "10만원 이상"
-        else:
-            idx = int((px - 1) // 10_000)  # 10,001~20,000 -> 1 -> PRICE_BRACKET_LABELS[1] = "1~2만원"
-            label = PRICE_BRACKET_LABELS[min(idx, 9)]
-        counts[label] += 1
+        counts[_price_bracket_label(float(c["first_buy_px"]))] += 1
+    total = sum(counts.values())
+    return pd.DataFrame([
+        {"구간": label, "건수": counts[label],
+         "비율": (counts[label] / total * 100.0) if total else 0.0}
+        for label in PRICE_BRACKET_LABELS
+    ])
+
+
+def holdings_price_bracket_distribution(holdings: pd.DataFrame) -> pd.DataFrame:
+    """Statistics 탭(§6-32) — "지금 계좌"는 가격대별로 어떻게 분포돼 있나(사용자 지시,
+    2026-09-16: "밑에 파란색으로 현재 계좌에는 어떻게 분포가 되어 있는지 나타내자").
+    `price_bracket_distribution`(과거 매도 완료 사이클, 빨강)과 같은 11구간을 공유해서
+    "그동안의 성향"과 "지금의 실제 분포"를 나란히 비교할 수 있게 한다.
+    **평단가 기준(현재가 아님)** — 현재가로 나누면 시세가 바뀔 때마다 종목이 구간을
+    옮겨다녀서 "지금 분포"라는 의미가 매일 흔들린다(Selection Index를 폐기했던 것과 같은
+    부류의 문제, 위 참고). 평단가는 "그 가격에 사서 지금 들고 있다"는 고정된 사실이라
+    안정적이고, 빨간 막대(진입가 기준)와도 같은 축으로 비교된다.
+    반환: DataFrame[구간(PRICE_BRACKET_LABELS 순서), 건수, 비율(%)]."""
+    counts = {label: 0 for label in PRICE_BRACKET_LABELS}
+    if holdings is not None and not holdings.empty:
+        for px in pd.to_numeric(holdings["평단가"], errors="coerce"):
+            if pd.notna(px):
+                counts[_price_bracket_label(float(px))] += 1
     total = sum(counts.values())
     return pd.DataFrame([
         {"구간": label, "건수": counts[label],

@@ -16,12 +16,14 @@ Portfolio 탭이 "지금 서 있는 자리"(현재 보유·물타기), Analysis 
 import streamlit as st
 
 from constants import UP_COLOR, DOWN_COLOR
-from portfolio_core import price_bracket_distribution, top_traded_stocks
+from portfolio_core import (
+    price_bracket_distribution, holdings_price_bracket_distribution, top_traded_stocks,
+)
 
 _TOP_TRADED_PAGE_SIZE = 20
 
 
-def _render_bracket_bars(dist, T: dict) -> None:
+def _render_bracket_bars(dist, T: dict, color: str) -> None:
     max_pct = max(dist["비율"].max(), 1.0)
     rows_html = []
     for _, r in dist.iterrows():
@@ -30,7 +32,7 @@ def _render_bracket_bars(dist, T: dict) -> None:
             '<div class="sector-bar-row">'
             f'<div class="sector-bar-label">{r["구간"]}</div>'
             '<div class="sector-bar-track">'
-            f'<div class="sector-bar-fill" style="background:{UP_COLOR};width:{width_pct}%"></div>'
+            f'<div class="sector-bar-fill" style="background:{color};width:{width_pct}%"></div>'
             '</div>'
             f'<div class="sector-bar-pct"><span class="cur">{int(r["건수"])}건</span>'
             f'<span class="delta" style="color:{T["muted"]}">({r["비율"]:.0f}%)</span></div>'
@@ -65,13 +67,19 @@ def _render_top_traded_cards(rows, T: dict) -> None:
     st.markdown("".join(cards), unsafe_allow_html=True)
 
 
-def render_statistics_tab(tx, T):
+def render_statistics_tab(tx, holdings, T):
     st.markdown("##### Price Brackets")
     dist = price_bracket_distribution(tx)
     if int(dist["건수"].sum()) == 0:
         st.caption("매도 완료된 사이클이 아직 없어요.")
     else:
-        _render_bracket_bars(dist, T)
+        _render_bracket_bars(dist, T, UP_COLOR)
+
+    # 지금 계좌 분포(평단가 기준, 파랑) — 위 빨간 막대(그동안의 매매 성향)와 같은 구간으로
+    # "지금 한쪽으로 쏠려있지 않은지"를 나란히 비교(2026-09-16 사용자 지시).
+    holdings_dist = holdings_price_bracket_distribution(holdings)
+    if int(holdings_dist["건수"].sum()) > 0:
+        _render_bracket_bars(holdings_dist, T, DOWN_COLOR)
 
     with st.expander("Top Traded", expanded=False):
         top = top_traded_stocks(tx, top_n=None)

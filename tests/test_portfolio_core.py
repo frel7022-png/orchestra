@@ -1548,6 +1548,28 @@ def test_price_bracket_distribution_excludes_open_cycles():
     assert dist["건수"].sum() == 0
 
 
+def test_holdings_price_bracket_distribution_uses_avg_cost_not_current_price():
+    """2026-09-16 사용자 지시: 지금 계좌 분포는 평단가 기준(현재가 아님) — 현재가로 하면
+    시세 변동마다 구간이 흔들려 "지금 분포"라는 의미가 흐려짐(Selection Index와 같은 문제)."""
+    holdings = pd.DataFrame([
+        {"종목명": "A", "종목코드": "000001", "섹터": "기타2", "수량": 10,
+         "평단가": 9500, "현재가": 25000, "등락률": 0.0, "업데이트시각": ""},
+        {"종목명": "B", "종목코드": "000002", "섹터": "기타2", "수량": 5,
+         "평단가": 150000, "현재가": 9000, "등락률": 0.0, "업데이트시각": ""},
+    ])
+    dist = core.holdings_price_bracket_distribution(holdings)
+    got = dict(zip(dist["구간"], dist["건수"]))
+    assert got["1만원 이하"] == 1   # A: 평단가 9,500원 기준(현재가 25,000원이었으면 2~3만원대였을 것)
+    assert got["10만원 이상"] == 1  # B: 평단가 150,000원 기준
+    assert dist["건수"].sum() == 2
+
+
+def test_holdings_price_bracket_distribution_empty_holdings():
+    empty = pd.DataFrame(columns=["종목명", "종목코드", "섹터", "수량", "평단가", "현재가", "등락률", "업데이트시각"])
+    dist = core.holdings_price_bracket_distribution(empty)
+    assert dist["건수"].sum() == 0
+
+
 def test_top_traded_stocks_ranks_by_cycle_count_then_price():
     # A: 2회 매도(각 1만원대), B: 1회 매도(5만원) — A가 횟수 많아서 1위.
     tx = pd.DataFrame(
