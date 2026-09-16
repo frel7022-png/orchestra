@@ -1,0 +1,303 @@
+<title>정교한 방패</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:780px; margin:0 auto; padding:56px 24px 96px}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:14px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.5rem; line-height:1.18; letter-spacing:-.01em; margin:0 0 18px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:22px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-size:1.02rem; font-weight:700; letter-spacing:.01em; margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent); font-weight:500}
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent); border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow)}
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+  .flag{background:var(--warn-wash); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:22px 0; font-size:13.5px}
+  .flag .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--warn); margin-bottom:8px}
+  .flag ol{margin:6px 0 0; padding-left:20px}
+  .flag li{margin:8px 0}
+
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:13.5px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:8px 11px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12px; letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  td .sub{display:block; font-size:11px; color:var(--ink-faint)}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; box-shadow:var(--shadow)}
+  .stat .k{font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; margin-top:3px}
+  .stat .c{font-size:12px; color:var(--ink-soft); margin-top:2px}
+
+  .chart-card{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:18px 18px 14px; margin:22px 0; box-shadow:var(--shadow)}
+  figure{margin:0}
+  figcaption{font-size:12px; color:var(--ink-faint); text-align:left; padding-top:10px}
+
+  .bar-row{display:flex; align-items:center; gap:10px; margin:10px 0}
+  .bar-label{width:96px; font-size:12.5px; color:var(--ink-soft); flex-shrink:0}
+  .bar-track{flex:1; height:20px; background:var(--rule-soft); border-radius:5px; overflow:hidden; position:relative}
+  .bar-fill{height:100%; border-radius:5px 0 0 5px}
+  .bar-val{width:64px; text-align:right; font-family:"IBM Plex Mono",monospace; font-size:12.5px; flex-shrink:0}
+
+  .tier{border-left:3px solid var(--rule); padding:2px 0 2px 16px; margin:16px 0}
+  .tier.pass{border-color:var(--accent)}
+  .tier.grey{border-color:var(--warn)}
+  .tier .tl{font-weight:600; font-size:13px; margin-bottom:2px}
+  .tier .bd{font-size:13px; color:var(--ink-soft)}
+
+  code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--rule-soft); padding:.1em .35em; border-radius:4px}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+    .bar-label{width:72px}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table,.stat,.flag,.chart-card{box-shadow:none}
+    h2{break-after:avoid} table,.verdict,.stat-grid,.flag,.chart-card{break-inside:avoid}
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">종합 점검 · new1(Orchestra) 전체 구성 · 2026-09-16</div>
+  <h1>정교한 방패</h1>
+  <p class="dek">배당·외인비중·세후 실현액까지 얹은 종목 카드, 벤치마크만 다섯 종류(코스피·혼합·
+  ex-반도체·SH바스켓·VIP펀드), 물타기→청산→외인수급까지 세 겹으로 겹쳐 보는 관찰 체인.
+  기능 목록만 놓고 보면 계좌 하나짜리 개인 앱이라 하기 민망하다. 그런데 이 정교함이 실제로
+  "어디로" 쏠려 있는지 오늘 데이터로 뜯어보면, 이 앱이 정말 잘하는 일과 아직 손을 안 댄 일이
+  꽤 선명하게 갈린다.</p>
+  <div class="meta">
+    <span>기준일 2026-09-16</span>
+    <span>보유 81종목 · 총자산 약 996만원</span>
+    <span>관측기간 8/14~ (약 22거래일)</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <p class="lead">한 줄 요약: 이 앱이 정밀하게 잘 재는 것은 "얼마나 안 잃는지"이고, 아직 잘 못 재는
+  것(그리고 구조적으로 잘 못 하는 것)은 "얼마나 버는지"다.</p>
+  <p>하락 캡처(DC) 0.118 — 벤치가 1 빠질 때 계좌는 0.118만 빠진다. 방어율(ERA)은 10일 중 10일,
+  100%. 반대로 상승 캡처(UC)는 0.059, 참여율(PCT)은 12일 중 1일, 8%. 이건 하락장이라 어쩔 수
+  없이 나온 숫자가 아니라 — 뒤에서 보겠지만 <strong>Pit Stop·Watering이 설계된 방식 자체가
+  만들어내는 구조적 비대칭</strong>이다.</p>
+</div>
+
+<h2><span class="n">01</span> 방패는 완벽에 가깝고, 창은 거의 없다</h2>
+<p>거래 기록 탭의 DC/UC 캡처는 이 앱에서 가장 계량화가 잘 된 지표다. 오늘 기준 실측값을 그대로
+옮기면 이렇다 — 하락일 10일·상승일 12일·even 0일, 총 22거래일 관측:</p>
+
+<div class="chart-card">
+  <div class="bar-row">
+    <div class="bar-label">DC (계좌)</div>
+    <div class="bar-track"><div class="bar-fill" style="width:11.8%;background:var(--loss)"></div></div>
+    <div class="bar-val">0.118</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">UC (계좌)</div>
+    <div class="bar-track"><div class="bar-fill" style="width:5.9%;background:var(--gain)"></div></div>
+    <div class="bar-val">0.059</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">DC (내 주식)</div>
+    <div class="bar-track"><div class="bar-fill" style="width:22.6%;background:var(--loss)"></div></div>
+    <div class="bar-val">0.226</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">UC (내 주식)</div>
+    <div class="bar-track"><div class="bar-fill" style="width:14.0%;background:var(--gain)"></div></div>
+    <div class="bar-val">0.140</div>
+  </div>
+  <figcaption>막대 길이는 "벤치가 1 움직일 때 내가 몇 움직였나"의 절댓값(=캡처 비율). 짧을수록
+  하락(DC)은 잘 막은 것, UC는 못 올라탄 것.</figcaption>
+</div>
+
+<table>
+<thead><tr><th></th><th>DC</th><th>ERA(방어율)</th><th>UC</th><th>PCT(참여율)</th></tr></thead>
+<tbody>
+<tr><td>내 계좌 (예수금 포함)</td><td>0.118</td><td>10/10 (100%)</td><td>0.059</td><td>1/12 (8%)</td></tr>
+<tr><td>내 주식 (Rs, 예수금 제외)</td><td>0.226</td><td>9/10 (90%)</td><td>0.140</td><td>2/12 (17%)</td></tr>
+</tbody>
+</table>
+
+<p>예수금을 뺀 "내 주식"만 봐도 하락일엔 벤치의 22.6%만 빠지는데 상승일엔 14%밖에 못 올라탄다 —
+즉 <strong>종목 선택 자체가 이미 비대칭</strong>이고, 예수금 29%(291만/996만원)를 더 얹으면
+그 비대칭이 계좌 단위에서 한 번 더 증폭된다(DC 0.118, UC 0.059로 더 벌어짐). 이건 저부채·필수재
+위주 종목군의 낮은 베타가 1차 원인이고, Pit Stop의 운용 방식(하락일엔 집중 매수, 상승일엔 소액
+분할 익절)이 2차로 그 비대칭을 더 굳힌다 — 상승일에 물량을 붙잡고 더 태우는 매매가 아니라
+조금씩 파는 매매를 반복하는 구조라서, 장이 살아나도 UC가 저절로 크게 오르진 않을 가능성이 높다.
+<strong>즉 "방어형 계좌"라는 게 그냥 표어가 아니라, 캡처 지표로 정확히 증명되는 실제 설계 결과다.</strong></p>
+
+<h2><span class="n">02</span> Holdings 카드 — 종목 하나엔 강하고, 81개를 훑기엔 무겁다</h2>
+<p>종목 카드 한 장에 실리는 정보를 세어보면: 등락률 배지, 섹터 태그, 배당수익률(색상 구간 4단계),
+외국인 보유율, 비중, 평단가/현재가, 물타기 회복 하이라이트, 이익 종목이면 최초진입일+보유일수
+배지와 세후 실현액까지 — 한 카드가 사실상 8가지 독립적인 판단을 동시에 보여주고 있다.
+종목 하나를 열어서 "이거 어떻게 됐지"를 볼 땐 이보다 잘 만든 UI가 드물다.</p>
+<p>문제는 지금 이 카드가 81장 반복된다는 것. 정렬은 한 번에 한 축(비중/섹터/현재가/평가금액/손익)
+만 가능하고, 필터는 없다. 카드 하나의 정보 밀도가 높을수록 "종목 하나 딥다이브"엔 유리하지만
+"81개 중 오늘 뭐가 이상한가"를 스캔하는 용도로는 오히려 불리해진다 — 그 스캔 용도를 실제로
+떠맡고 있는 건 카드가 아니라 그 위의 Up/Down·Fishing·Quiet Hands 같은 별도 스크리너들이다.
+즉 <strong>Holdings 카드는 "이미 관심 가는 종목을 자세히 보는" 화면이지 "관심 가는 종목을 찾는"
+화면이 아닌데, 구조상 이 둘의 경계가 겉으로는 잘 안 보인다.</strong></p>
+
+<div class="callout">
+  <div class="h">기타2가 가장 큰 섹터다</div>
+  <p style="margin:0">81개 보유종목의 섹터 분포에서 1위는 <strong>기타2 17개(21%)</strong>다 —
+  27개 카테고리(§6-24) 중 하나가 아니라 "153개 관심종목 밖이라 분류를 안 한" 잔여 버킷이 통째로
+  최대 섹터가 됐다는 뜻. 식품(10)·의료기기(7)·바이오(6)가 그 다음인데, 섹터 도넛/막대 그래프를
+  볼 때마다 화면의 5분의 1은 "무엇에 투자했는지"가 아니라 "아직 안 정한 것"을 보고 있는 셈이다.
+  섹터 비중 관리라는 기능 자체의 실효성이 정확히 그만큼 깎여 있다.</p>
+</div>
+
+<h2><span class="n">03</span> 관찰 체인 — 재료는 3중인데 요리는 아직</h2>
+<p>Fishing(관심종목 전체 스크리닝) → Watering Detect(물타는 중인 종목만) → Up/Down(청산 후 재검증)
+→ Quiet Hands(이 셋을 외인수급과 교차)로 이어지는 체인은 전부 <code>compute_foreign_flags</code>
+/ <code>foreign_pct_change_since</code> 하나를 공유해서 계산한다 — "화면마다 숫자가 다르게 보이는"
+흔한 실수를 설계 단계에서부터 막아둔 건 실제로 드문 꼼꼼함이다.</p>
+<p>그런데 이 체인이 지금 하는 일은 전부 <em>후보를 좁히는 것</em>까지다. Link의 4분면 분류,
+Quiet Hands의 Convoy/Undertow/Encore, 그리고 그 다음 단계로 예정된 CFG(Up/Down+Fishing+Link+
+볼륨을 합쳐 상위 3픽을 매기는 엔진) — 세 단계 중 앞의 둘은 완성돼서 매일 데이터를 쌓고 있고,
+마지막 통합 단계만 미착수 상태로 남아있다. 재료 손질은 세 겹으로 끝났는데 정작 "그래서 뭘 사라는
+거냐"로 응답하는 마지막 한 겹이 아직 없다 — 지금 상태로는 이 체인의 산출물이 <strong>사람이
+매일 눈으로 다시 종합해야 하는 원자료</strong>에 가깝다.</p>
+
+<table>
+<thead><tr><th>버킷</th><th>사이클 수</th><th>실현손익 비중</th><th>사이클당 평균 손익률</th></tr></thead>
+<tbody>
+<tr><td>FA (한 번 사서 한 번에 전량청산)</td><td>80</td><td>59.0%</td><td>4.80%</td></tr>
+<tr><td>MO (한 번이라도 나눠 팔았음)</td><td>40 (30건 청산)</td><td>36.2%</td><td>3.66%</td></tr>
+<tr><td>MA (물타서 전량청산)</td><td>11</td><td>4.7%</td><td>2.51%</td></tr>
+</tbody>
+</table>
+<p>FA 승률은 80/202(39.6%)로 익히 알려진 수치지만, 사이클당 평균 손익률까지 나란히 놓고 보면
+다른 그림이 하나 더 보인다 — <strong>나눠 팔기(MO)가 결국 전체 실현손익의 36%를 만들어내고
+있으면서도, 건당 효율(3.66%)은 한 방에 끝난 FA(4.80%)보다 낮다.</strong> 나눠 팔기가 나쁘다는
+뜻이 아니라, 지금 FA 승률이라는 단일 지표만 매일 앞세우면 "분할매도 자체가 이 계좌에서 실제로
+얼마나 기여하는지"는 화면 어디에도 요약돼 있지 않다는 뜻이다.</p>
+
+<h2><span class="n">04</span> 벤치마크 다섯 개 — 각자 옳고, 합쳐지지 않는다</h2>
+<p>코스피, 혼합지수(코스피+코스닥 가중), 코스피 ex-반도체(SamHynix extracted), 반도체 3종목
+바스켓(Sour Grapes), VIP 가치투자펀드 — 지금 이 앱이 동시에 유지하는 벤치는 다섯 개다. 각각을
+만든 이유는 전부 타당하다(§6-19/§6-26/§6-21에 그 근거가 남아있다). 문제는 다섯 벤치가 같은 날
+서로 다른 결론을 낼 수 있다는 걸 오늘 숫자로 그대로 보여준다는 것.</p>
+
+<table>
+<thead><tr><th>벤치</th><th>누적(8/14~)</th></tr></thead>
+<tbody>
+<tr><td>코스피</td><td class="loss">-3.87%</td></tr>
+<tr><td>코스닥</td><td class="loss">-6.06%</td></tr>
+<tr><td>VIP 가치투자펀드</td><td class="loss">-2.86%</td></tr>
+<tr><td>내 주식 (Rs)</td><td class="loss">-2.49%</td></tr>
+<tr><td>내 계좌</td><td class="loss">-1.56%</td></tr>
+</tbody>
+</table>
+<p>코스피를 기준으로 하면 이 계좌는 시장을 2.3%p 이기고 있는 셈이고, VIP 펀드를 기준으로 하면
+1.3%p 이기는 중이고, Sour Grapes(반도체 바스켓)를 기준으로 하면 완전히 다른 얘기가 된다 —
+최근 반도체가 코스피를 떠받치는 국면이라 SH 바스켓 자체는 이 다섯 중 유일하게 플러스일 가능성이
+높다. <strong>다섯 벤치를 동시에 두는 건 정직한 설계지만, "이번 주 성과 발표에 어떤 벤치를
+쓸지"에 대한 규칙이 코드 어디에도 없다</strong> — 매주 리포트를 쓸 때마다 그날 유리한 벤치를
+고르기 쉬운 구조라는 뜻이고, 이건 벤치 자체의 문제가 아니라 "다섯 개 중 진짜 기준이 뭔지"를
+한 번 정해서 문서에 박아두지 않은 것의 문제다.</p>
+
+<h2><span class="n">05</span> meritz — 두 번째 계좌인가, 같은 책의 축소판인가</h2>
+<p>VIP vs Orchestra vs Orchestration 3-way 비교 패널은 두 계좌의 성과를 나란히 보여준다.
+그런데 그 표에는 안 나오는 사실이 하나 있다 — <strong>meritz(Orchestration) 보유 43종목 중
+42종목(98%)이 new1(Orchestra)에도 그대로 들어있다.</strong> meritz만의 고유 종목은 단 1개뿐.</p>
+
+<div class="stat-grid">
+  <div class="stat"><div class="k">종목 구성 겹침</div><div class="v">42 / 43</div><div class="c">meritz 보유의 98%가 new1과 동일</div></div>
+  <div class="stat"><div class="k">9/15 누적 성과차</div><div class="v gain">+0.61%p</div><div class="c">Orchestration -0.61% vs Orchestra -1.22%</div></div>
+</div>
+
+<p>이건 "헷지"라는 표현을 다시 생각하게 만드는 숫자다. 종목 선택이 98% 같다면, 두 계좌가 지금
+0.61%p만큼 다르게 움직이는 이유는 <strong>어떤 종목을 담았는지가 아니라 언제·얼마나 담았는지</strong>
+(진입 타이밍, 비중 배분, 예수금 비율)에서만 나올 수 있다. 즉 meritz는 "다른 아이디어에 배팅하는
+두 번째 포지션"이 아니라 <strong>"같은 아이디어를 다른 속도로 집행하는 두 번째 실행 트랙"</strong>
+에 가깝다 — 이 구분은 사소하지 않다. 진짜 종목 다각화 헷지라면 한쪽이 크게 틀려도 다른 쪽이
+버텨줄 여지가 있지만, 지금 구조에서는 두 계좌를 같이 잘못 판단하면(같은 종목군이 같이 흔들리면)
+같이 흔들린다 — 위험 분산이 아니라 실행 리스크 분산에 가깝다.</p>
+
+<h2><span class="n">06</span> "작은 시스템"이라 부를 수 있는가</h2>
+<p>규모만 보면 그렇다. <code>portfolio_core.py</code> 3,128줄에 함수 118개, UI 레이어
+(<code>app.py</code> + <code>ui_portfolio_tab.py</code> + <code>ui_transactions_tab.py</code>)
+합쳐 2,862줄, 회귀 테스트 1,624줄(90개 케이스). 여기에 GitHub Actions cron(일 1회 자동 수급
+적재), Supabase 3개 테이블, 크로스레포 동기화 채널(Supabase account_snapshot)까지 갖췄다 —
+개인 스프레드시트나 "포트폴리오 조회 앱" 수준을 넘어서는, 실제로 최소 3개의 서로 다른 배포 단위
+(new1 앱·meritz 앱·GitHub Actions cron)가 하나의 데이터 모델을 공유하는 작은 분산 시스템이다.</p>
+<p>다만 "자동화 시스템"이라 부르기엔 사람이 직접 접착하는 연결부가 여전히 많다 — VIP 펀드
+기준가는 매일 채팅으로 받아 수기 입력, <code>sync_both_accounts.py</code>는 세션이 수동 실행,
+새 종목의 섹터는 153개 표에 없으면 결국 사람이 정해줘야 하고, git commit/push 자체도 전부
+세션이 손으로 한다. 정확한 표현은 "시스템"보다는 <strong>"사람 하나(+세션)를 접착제로 쓰는
+잘 도구화된 워크플로우"</strong>에 가깝다 — 나쁘다는 뜻이 아니라, 이게 무너지지 않는 이유가
+"자동화가 잘 돼서"가 아니라 "매일 누군가 챙기기 때문"이라는 걸 정확히 인식하고 있어야 한다는
+뜻이다. 그 누군가가 하루 빠지면 어디가 먼저 어긋나는지는 이미 이 문서의 §01 CLAUDE.md에
+반복해서 기록돼 있다(히스토리 lock-step 어긋남, 미분류 종목 방치 등) — 전부 "사람이 그날
+안 챙긴" 경우에 나온 문제였다는 공통점이 있다.</p>
+
+<div class="verdict">
+  <p class="lead">종합하면: 이 앱은 "얼마나 다양한 각도로 관찰하는가"에서는 개인 프로젝트 평균을
+  훨씬 웃돌고, "그 관찰을 어떻게 하나의 결론으로 묶는가"에서는 아직 설계 전 단계다.</p>
+  <p>DC/UC가 증명하듯 방어는 이미 수치로 검증된 강점이고, 참여 부족도 우연이 아니라 설계의
+  결과라는 걸 이제 데이터로 알고 있다. 벤치 다섯 개·관찰 체인 세 겹·계좌 두 개라는 재료는
+  이미 충분히 쌓였다 — 다음 단계는 새 지표를 하나 더 만드는 것보다, 지금 있는 것들 중
+  <strong>어느 것이 "진짜 기준"인지</strong>를 하나씩 정해서 그때그때 고르지 않게 만드는
+  쪽에 있을 것 같다.</p>
+</div>
+
+<footer>
+  <p>작성: 세션(Claude) · 2026-09-16 데이터 기준(포트폴리오/거래 기록 실측치). 개인 참고용,
+  매매 판단 근거 아님.</p>
+</footer>
+</div>
