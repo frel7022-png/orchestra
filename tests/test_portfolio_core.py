@@ -1607,6 +1607,60 @@ def test_top_traded_stocks_uses_current_price_over_last_exit_when_available():
     assert b["기준가구분"] == "최후매도가"
 
 
+# ------------------------------------------------------------------ #
+# selection_index (§6-32): 승/패 카운트 기반 "선택 지수"
+# ------------------------------------------------------------------ #
+def test_selection_index_win_when_realized_beats_price_change():
+    # A: 최초 10000 -> 현재 10000(변화 0%), 실현손익률 +10% (10*1000*10%=1000, buy=10000) -> 갭 +10 -> 승
+    tx = pd.DataFrame(_cycle_tx("A", 10000, 11000, "2026-01-01", "2026-01-02"))
+    r = core.selection_index(tx, current_prices={"A": 10000.0})
+    assert r["wins"] == 1 and r["losses"] == 0 and r["excluded"] == 0
+    assert r["index"] == 1
+    assert r["rows"][0]["판정"] == "승"
+
+
+def test_selection_index_loss_when_price_change_beats_realized():
+    # 가격은 10000->20000(+100%), 실현손익률은 (11000-10000)*10/100000=10% -> 갭 -90 -> 패
+    tx = pd.DataFrame(_cycle_tx("A", 10000, 11000, "2026-01-01", "2026-01-02"))
+    r = core.selection_index(tx, current_prices={"A": 20000.0})
+    assert r["losses"] == 1 and r["wins"] == 0
+    assert r["index"] == -1
+
+
+def test_selection_index_excludes_small_gap_from_decided_count():
+    # 가격변화 0%, 실현손익률 10% -> 갭 10, tie_band를 크게(20) 주면 제외 처리돼야 함
+    tx = pd.DataFrame(_cycle_tx("A", 10000, 11000, "2026-01-01", "2026-01-02"))
+    r = core.selection_index(tx, current_prices={"A": 10000.0}, tie_band_pct=20.0)
+    assert r["excluded"] == 1
+    assert r["wins"] == 0 and r["losses"] == 0
+    assert r["decided"] == 0
+    assert r["win_rate"] == 0.0
+    assert r["rows"][0]["판정"] == "제외"
+
+
+def test_selection_index_win_rate_uses_decided_only_not_excluded():
+    rows = (
+        _cycle_tx("Win", 10000, 20000, "2026-01-01", "2026-01-02")     # 큰 승
+        + _cycle_tx("Lose", 10000, 10100, "2026-01-01", "2026-01-02")  # 큰 패(현재가로 확인)
+        + _cycle_tx("Flat", 10000, 10050, "2026-01-01", "2026-01-02")  # 갭 작음 -> 제외
+    )
+    tx = pd.DataFrame(rows)
+    current_prices = {"Win": 10000.0, "Lose": 50000.0, "Flat": 10050.0}
+    r = core.selection_index(tx, current_prices=current_prices, tie_band_pct=1.0)
+    assert r["excluded"] == 1  # Flat: 가격변화 0.5%, 실현손익률 0.5% -> 갭 0 -> 제외
+    assert r["decided"] == 2
+    assert r["wins"] == 1 and r["losses"] == 1
+    assert r["win_rate"] == pytest.approx(50.0)
+    assert r["index"] == 0
+
+
+def test_selection_index_empty_transactions():
+    empty = pd.DataFrame(columns=["날짜", "종목명", "구분", "수량", "단가", "실현손익"])
+    assert core.selection_index(empty) == {
+        "rows": [], "wins": 0, "losses": 0, "excluded": 0, "decided": 0,
+        "win_rate": 0.0, "index": 0}
+
+
 def test_compute_index_vs_account_caps_me_to_index_coverage():
     """index_hist가 asset_hist보다 뒤처지면(매매일지 반영으로 asset엔 오늘 행이 생겼는데
     index_history엔 아직 없음) 그 앞선 asset 행의 벤치당일이 0으로 계산돼 "혼합지수 당일

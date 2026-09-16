@@ -2329,6 +2329,69 @@ def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10, current_prices: dict | 
     return pd.DataFrame(rows[:top_n])
 
 
+def selection_index(tx: pd.DataFrame, current_prices: dict | None = None,
+                     tie_band_pct: float = 1.0) -> dict:
+    """Statistics 탭(§6-32) — "Selection Index": 청산한 종목 하나하나가 사후적으로 옳은
+    선택이었나(=팔고 나온 뒤 가격이 어떻게 됐든, 내가 실제로 챙긴 몫이 그 종목을 계속
+    들고 있었을 때보다 나았나)를 승/패로 매겨 집계한다. P&L Actions·FA 승률이 "얼마
+    벌었나/한 방에 끝냈나"를 보는 거라면, 이건 "그 결정 자체가 사후에 옳았나"를 보는
+    완전히 다른 축이다(2026-09-16).
+    - **종목당 판정 하나**(사이클 하나하나가 아님, 사용자 확정 — "사이클을 세면 나온 시점이
+      다 달라서 데이터가 흔들린다"). `top_traded_stocks`가 이미 종목별로 묶어주는
+      `누적실현손익률`(내가 실제로 챙긴 몫)과 `가격변화율`(최초진입가 대비 지금 가격 —
+      "계속 들고 있었으면"에 해당)을 그대로 재사용 — 새 사이클 스캔 없음.
+    - **판정 = 갭(누적실현손익률 − 가격변화율) 기준, 벤치마크 개입 없음**(사용자 확정,
+      2026-09-16: "어차피 내가 어떤 종목을 고르든 그 종목과의 싸움이지 여기서 지표가
+      끼어드는 건 오히려 데이터 오염" — 처음엔 혼합지수로 갭 허용폭을 조정하는 안을
+      제안했으나, 벤치를 양쪽에서 빼면 어차피 수학적으로 상쇄돼 갭이 그대로 나온다는 걸
+      확인하고 폐기). 갭이 `+tie_band_pct`보다 크면 **승**(실제로 챙긴 게 그냥 들고 있는
+      것보다 나음), `-tie_band_pct`보다 작으면 **패**(그냥 들고 있는 게 나음),
+      **그 사이(|갭| ≤ tie_band_pct)는 승패 집계에서 아예 제외**(사용자 확정 2026-09-16:
+      "1% 이하는 승부에서 제외, 비김으로도 안 침 — 큰 의미 없으니"). 기본
+      `tie_band_pct=1.0`(%p) — 조정 가능한 상수로 뺌.
+    - **집계는 승−패 카운트 차이(Selection Index)로, 갭 크기를 평균 내지 않는다**(사용자
+      설계 — "코스맥스처럼 갭이 30%p 넘게 벌어지는 극단치 하나 때문에 평균이 흐려지는 걸
+      막으려는 것", §6-17의 "일별 비율 평균 대신 Σ/Σ" 같은 철학). `wins - losses`가 0이면
+      "선택 자체가 순수하게는 하나도 안 움직인 것"(사용자 표현).
+    - **시장 상황(혼합지수 등)은 이 지표에 안 섞는다** — 하락장이라 승률 내기 어려운
+      건 사실이지만, 그건 이 숫자를 읽는 사람이 참고할 맥락이지 지수 자체에 넣을 보정이
+      아니라는 게 사용자 판단(2026-09-16). "지수 하락률로 종목 등락 비율(breadth)을
+      역산해서 가중치로 곱하자"는 안도 검토했으나 폐기 — 지수 수익률(시총/가격가중 평균)
+      만으로는 실제 등락 종목 비율을 통계적으로 알 수 없어(대형주 소수가 왜곡 가능)
+      가짜 정밀도가 된다는 문제 제기(세션)에 사용자가 동의, Fishing 데이터로 진짜 breadth를
+      구하는 안도 "피싱 자체가 내가 고른 종목이라 의미없다"고 기각(2026-09-16) — 지금은
+      승률과 시장 상황을 각각 사실로 나란히 보여주고 하나로 안 뭉치는 것으로 결론.
+    반환: {"rows": [...top_traded_stocks 컬럼 + 갭·판정...], "wins", "losses", "excluded",
+    "decided"(=wins+losses), "win_rate"(wins/decided%, decided=0이면 0), "index"(wins-losses)}."""
+    top = top_traded_stocks(tx, top_n=None, current_prices=current_prices)
+    if top.empty:
+        return {"rows": [], "wins": 0, "losses": 0, "excluded": 0, "decided": 0,
+                "win_rate": 0.0, "index": 0}
+    rows = []
+    wins = losses = excluded = 0
+    for _, r in top.iterrows():
+        gap = float(r["누적실현손익률"]) - float(r["가격변화율"])
+        if gap > tie_band_pct:
+            verdict = "승"
+            wins += 1
+        elif gap < -tie_band_pct:
+            verdict = "패"
+            losses += 1
+        else:
+            verdict = "제외"
+            excluded += 1
+        row = r.to_dict()
+        row["갭"] = gap
+        row["판정"] = verdict
+        rows.append(row)
+    decided = wins + losses
+    return {
+        "rows": rows, "wins": wins, "losses": losses, "excluded": excluded,
+        "decided": decided, "win_rate": (wins / decided * 100.0) if decided else 0.0,
+        "index": wins - losses,
+    }
+
+
 # ------------------------------------------------------------------ #
 # 지수 대비 계좌 (§6-17)
 # ------------------------------------------------------------------ #

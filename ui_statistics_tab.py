@@ -11,9 +11,11 @@ import streamlit as st
 
 from constants import UP_COLOR, DOWN_COLOR
 from portfolio_core import (
-    price_bracket_distribution, top_traded_stocks, get_current_prices_for_names,
+    price_bracket_distribution, top_traded_stocks, selection_index, get_current_prices_for_names,
     today_kst_str, now_kst_str, save_ui_cache_json, load_ui_cache_json,
 )
+
+_VERDICT_COLOR = {"승": UP_COLOR, "패": DOWN_COLOR}  # "제외"는 회색(T["muted2"])
 
 
 def _current_price_map(holdings: pd.DataFrame) -> dict:
@@ -51,10 +53,12 @@ def _refresh_top_traded(tx, holdings) -> None:
     missing = [n for n in names if n not in price_map]
     if missing:
         price_map.update(get_current_prices_for_names(missing))
-    top = top_traded_stocks(tx, top_n=None, current_prices=price_map)
+    sel = selection_index(tx, current_prices=price_map)
     st.session_state["top_traded_cache"] = {
         "as_of_date": today, "checked_at": now_kst_str(),
-        "rows": top.to_dict("records"),
+        "rows": sel["rows"], "wins": sel["wins"], "losses": sel["losses"],
+        "excluded": sel["excluded"], "decided": sel["decided"],
+        "win_rate": sel["win_rate"], "index": sel["index"],
     }
     save_ui_cache_json("top_traded", st.session_state["top_traded_cache"])
 
@@ -96,11 +100,17 @@ def _render_top_traded_cards(rows: list[dict], T: dict) -> None:
             f'마지막 매도 {r["최후매도가"]:,.0f}원({r["최후매도일"]})</div>'
             if r["기준가구분"] == "현재" else ""
         )
+        verdict = r.get("판정")
+        verdict_html = (
+            f'<span style="font-size:11px;font-weight:700;margin-right:6px;'
+            f'color:{_VERDICT_COLOR.get(verdict, T["muted2"])}">{verdict}</span>'
+            if verdict else ""
+        )
         cards.append(
             f'<div style="padding:8px 0;border-bottom:1px solid {T["border"]}">'
             '<div style="display:flex;justify-content:space-between;align-items:baseline">'
             f'<span style="font-weight:600;font-size:13px">{r["종목명"]}</span>'
-            f'<span style="font-size:11px;color:{T["muted"]}">{int(r["청산횟수"])}회 청산</span>'
+            f'<span style="font-size:11px;color:{T["muted"]}">{verdict_html}{int(r["청산횟수"])}회 청산</span>'
             '</div>'
             f'<div style="font-size:11.5px;color:{T["muted"]};margin-top:2px">'
             f'{r["최초진입가"]:,.0f}원({r["최초진입일"]}) → {r["기준가"]:,.0f}원({ref_label}) '
@@ -138,4 +148,15 @@ def render_statistics_tab(tx, holdings, T):
             st.caption("새로고침을 누르면 청산 완료된 사이클을 전부 종목별로 모아 보여줍니다.")
         else:
             st.caption(f"{cache['as_of_date']} 기준 고정 · 마지막 조회 {cache['checked_at']}")
+            idx = cache["index"]
+            idx_color = UP_COLOR if idx > 0 else (DOWN_COLOR if idx < 0 else T["muted"])
+            idx_sign = "+" if idx > 0 else ""
+            st.markdown(
+                f'<div style="font-size:12.5px;color:{T["text"]};font-weight:600;margin-bottom:6px">'
+                f'Selection Index <span style="color:{idx_color}">{idx_sign}{idx}</span>'
+                f'<span style="font-weight:400;color:{T["muted"]}">'
+                f' (승 {cache["wins"]} · 패 {cache["losses"]} · 제외 {cache["excluded"]}, '
+                f'승률 {cache["win_rate"]:.0f}%)</span></div>',
+                unsafe_allow_html=True,
+            )
             _render_top_traded_cards(cache["rows"], T)

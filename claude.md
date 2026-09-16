@@ -1857,7 +1857,47 @@ manual/                           # report/와 성격이 다름 — **살아있�
   Playwright로 (Streamlit 세션의 느린 실시간 시세 새로고침을 피하려고) `st.markdown`을
   스텁으로 캡처해 만든 독립 HTML로 모바일 폭(390px) 확인 — `.sector-bar-*` 막대와 Top
   Traded 카드 모두 정상 렌더 확인함.
-- **아직 안 한 것 (다음에 이어서)**: "완성하자, 해보고 고치면서"(사용자) — 이 두 기능이
-  1차분. FA 승률·P&L Actions처럼 이미 있는 결과 지표들을 이 탭으로 옮기거나 참조할지,
-  meritz에도 이식할지는 아직 미정.
+- **Selection Index — "그 결정 자체가 사후에 옳았나" (2026-09-16 당일, 사용자 설계)**:
+  P&L Actions·FA 승률이 "얼마 벌었나/한 방에 끝냈나"를 본다면, 이건 "청산이라는 결정 자체가
+  사후적으로 옳았나"를 보는 별개의 축 — `portfolio_core.selection_index(tx,
+  current_prices=None, tie_band_pct=1.0)`. `top_traded_stocks`(전종목, top_n=None)가 이미
+  가진 `누적실현손익률`(내가 실제로 챙긴 몫)과 `가격변화율`(최초진입가 대비 지금 가격 —
+  "계속 들고 있었으면")을 그대로 재사용해 새 사이클 스캔 없이 계산.
+  - **판정은 종목당 하나**(사이클 하나하나가 아님 — 사용자 확정: "사이클을 세면 나온 시점이
+    다 달라서 데이터가 흔들린다"). 갭(=`누적실현손익률 − 가격변화율`)이 `+tie_band_pct`
+    (기본 1.0%p)보다 크면 **승**(실제로 챙긴 게 계속 들고 있는 것보다 나음), `−tie_band_pct`
+    보다 작으면 **패**, **그 사이는 승패 집계에서 완전히 제외**(비김으로도 안 침 — 사용자
+    확정: "1% 이하는 큰 의미 없으니 승부에서 빼자").
+  - **벤치마크(혼합지수)는 개별 판정에 안 섞는다** — 처음엔 "혼합지수로 갭 허용폭을
+    조정하자"는 안을 논의했는데, 벤치를 양쪽(실현/가격변화)에서 똑같이 빼면 수학적으로
+    상쇄돼 갭이 그대로 나온다는 걸 확인(세션이 검증)했고, 사용자도 "어차피 내가 어떤
+    종목을 고르든 그 종목과의 싸움이지 여기서 지표가 끼어드는 건 데이터 오염"이라며
+    최종 기각. "지수 하락률로 종목 등락 비율(breadth)을 역산해서 가중치로 곱하자"는
+    후속안도 검토했으나 — 지수 수익률(시총/가격가중 평균)만으로는 실제 등락 종목 비율을
+    통계적으로 알 수 없다(대형주 소수가 왜곡 가능)는 문제 제기에 사용자가 동의, "Fishing
+    데이터로 진짜 breadth를 구하자"는 대안도 "피싱 자체가 내가 고른 종목이라 의미없다"고
+    기각(2026-09-16) — **결론: 시장 상황은 이 지표에 안 섞고, 승률과 시장 상황(혼합지수
+    등락)을 각각 사실로 나란히 보여주는 것으로 정리**(§6-17 "하락 방어·상승 참여를
+    스칼라 하나로 안 뭉친다"는 원칙과 같은 결).
+  - **집계는 승−패 카운트 차이(Selection Index), 갭 크기를 평균 내지 않음** — 코스맥스
+    (+45% 오르는 동안 1회밖에 못 먹은 사례, 갭이 30%p 넘게 벌어짐) 같은 극단치 하나가
+    평균을 흔드는 걸 막으려는 것(§6-17 "Σ/Σ, 일별 비율 평균 안 씀"과 같은 철학).
+    `wins − losses == 0`이면 "선택 자체가 순수하게는 하나도 안 움직인 것"(사용자 표현).
+  - 반환: `{"rows": [...top_traded_stocks 컬럼 + 갭·판정...], "wins", "losses", "excluded",
+    "decided"(=wins+losses), "win_rate"(wins/decided%), "index"(wins−losses)}`.
+  - **UI**: Top Traded expander 맨 위에 `Selection Index ±N (승 A · 패 B · 제외 C, 승률 D%)`
+    한 줄 + 카드마다 종목명 옆에 승/패 배지(제외는 배지 안 뜸). `_refresh_top_traded()`가
+    `top_traded_stocks` 대신 `selection_index`를 호출해 캐시에 같이 저장 — 새 새로고침·
+    네트워크 호출 추가 없음(하루 1회 고정 메커니즘 그대로 재사용).
+  - 2026-09-16 실측(holdings 현재가만 반영한 부분 표본): 41개 종목이 승패 결정됨(24승
+    17패), 제외 32개, 승률 58.5%, Selection Index +7.
+  - 회귀 테스트 5개: `test_selection_index_win_when_realized_beats_price_change`,
+    `test_selection_index_loss_when_price_change_beats_realized`,
+    `test_selection_index_excludes_small_gap_from_decided_count`,
+    `test_selection_index_win_rate_uses_decided_only_not_excluded`,
+    `test_selection_index_empty_transactions`.
+- **아직 안 한 것 (다음에 이어서)**: "완성하자, 해보고 고치면서"(사용자) — FA 승률·
+  P&L Actions처럼 이미 있는 결과 지표들을 이 탭으로 옮기거나 참조할지, meritz에도
+  이식할지는 아직 미정. Selection Index의 `tie_band_pct` 기본값(1.0%p)도 실사용하며
+  조정될 수 있음.
 - **new1 전용**.
