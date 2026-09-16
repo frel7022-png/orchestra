@@ -714,9 +714,10 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     else:
                         st.info("시세 새로고침 또는 거래 기록을 하면 그날의 섹터 비중이 저장되어 추이가 쌓입니다.")
 
-    # ---- Foreign Arrows 공용 헬퍼(Up/Down의 Encore, 아래 Foreign Arrows의 Convoy/Undertow가
-    # 전부 재사용) — population(각 dict에 종목명·since_key 날짜·pct_key 가격%) 받아서 그
-    # 날짜 이후 외인비중 변화(%p)로 정렬, 3%p 이상만(없으면 상위 5개로 대체). ----
+    # ---- Quiet Hands 공용 헬퍼(아래 Quiet Hands의 Convoy/Undertow/Encore가 전부 재사용)
+    # — population(각 dict에 종목명·since_key 날짜·pct_key 가격%) 받아서 그 날짜 이후
+    # 외인비중 변화(%p)로 정렬, 3%p 이상만(없으면 상위 5개로 대체). Up/Down 렌더링보다 먼저
+    # 정의해둬야 Up/Down 안에서도 필요해질 때 바로 쓸 수 있음(지금은 Quiet Hands에서만 씀). ----
     def _fa_rank(flow_hist_fa, population, since_key, pct_key):
         scored = []
         for item in population:
@@ -792,21 +793,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 )
                 st.markdown(rows_html, unsafe_allow_html=True)
 
-            # Encore(2026-09-16, 포리너 프로젝트) — 매도 이후 외국인비중이 늘고 있는지. DOWN/UP
-            # 토글과 무관하게 항상 "매도 후 하락"(down_threshold) 모집단만 본다 — 이 패널 전체가
-            # "떨어지는데 외국인은 사는" 신호만 보는 거라 UP 모집단은 안 씀.
-            encore_pop = [r for r in updown_results if r["pct"] <= -down_threshold]
-            flow_hist_encore = st.session_state.get("flow_hist")
-            if encore_pop and flow_hist_encore is not None and not flow_hist_encore.empty:
-                encore_rows = _fa_rank(
-                    flow_hist_encore,
-                    [{"종목명": r["종목명"], "매도일": r["매도일"], "pct": r["pct"]} for r in encore_pop],
-                    "매도일", "pct")
-                if encore_rows:
-                    st.markdown(f"<div style='font-size:12px;color:{T['muted']};font-weight:600;margin:12px 0 2px'>Encore</div>",
-                                unsafe_allow_html=True)
-                    st.markdown(_fa_rows_html(encore_rows), unsafe_allow_html=True)
-
     # ---- Watering Detect: 물타기 중인 종목이 "마지막으로 물탄 지점"보다 더 빠졌는지 감지
     # (2026-09-16, meritz도 동일하게 있음). Up/Down이 "청산 후" 변화를 보듯, 이건 "보유 중"
     # 물타기 종목이 마지막 매수가 대비 -1% 이상 더 밀렸는지를 본다 — 다음 물타기 판단 참고용.
@@ -853,15 +839,16 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             )
             st.markdown(rows_html, unsafe_allow_html=True)
 
-    # ---- Foreign Arrows (포리너 프로젝트 확장, 2026-09-16, new1 전용) — "떨어지는데 외국인은
-    # 사는" 다이버전스(§6-28 Link와 같은 신호)를 내가 이미 관여 중인 두 모집단에 좁혀서 본다.
+    # ---- Quiet Hands (포리너 프로젝트 확장, 2026-09-16, new1 전용) — "떨어지는데 외국인은
+    # 사는" 다이버전스(§6-28 Link와 같은 신호)를 내가 이미 관여 중인 세 모집단에 좁혀서 본다.
     # 셋 다 하락(DOWN) 기준만 본다 — 상승 중인 종목에 외국인이 느는 건 이 패널의 관심사가 아님.
-    # Convoy = Watering Detect 모집단(최초진입일 기준 외인비중 변화), Undertow = Fishing 하락
-    # -3%↓ 모집단(기준일 기준). Up/Down 쪽(Encore)은 그 expander 안에 따로 붙임(위 _fa_rank/
-    # _fa_rows_html 공용 헬퍼 재사용). 기준일 데이터가 investor_flow 커버리지보다 이르면
-    # foreign_pct_change_since가 알아서 가장 이른 값으로 대체한다. 3%p 이상만 보여주되, 하나도
-    # 없으면 문턱을 무시하고 외인비중 상승 큰 순 상위 5개로 대체 표시.
-    with st.expander("Foreign Arrows", expanded=False):
+    # Convoy = Watering Detect 모집단(최초진입일 기준), Undertow = Fishing 하락 -3%↓ 모집단
+    # (기준일 기준), Encore = Up/Down 매도후하락 -2%↓ 모집단(마지막 매도일 기준, 2026-09-16
+    # Up/Down 안에 있던 걸 여기로 이동 — 세 구획을 한곳에 모아달라는 사용자 요청). 기준일
+    # 데이터가 investor_flow 커버리지보다 이르면 foreign_pct_change_since가 알아서 가장 이른
+    # 값으로 대체한다. 3%p 이상만 보여주되, 하나도 없으면 문턱을 무시하고 외인비중 상승 큰 순
+    # 상위 5개로 대체 표시.
+    with st.expander("Quiet Hands", expanded=False):
         flow_hist_fa = st.session_state.get("flow_hist")
         if flow_hist_fa is None or flow_hist_fa.empty:
             st.caption("Foreigner에서 새로고침을 먼저 눌러주세요.")
@@ -897,6 +884,21 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     st.caption("하락 중인 관심종목의 외인비중 변화 데이터가 없습니다.")
                 else:
                     st.markdown(_fa_rows_html(undertow_rows), unsafe_allow_html=True)
+
+            st.markdown(f"<div style='font-size:12px;color:{T['muted']};font-weight:600;margin:12px 0 2px'>Encore</div>",
+                        unsafe_allow_html=True)
+            updown_results_fa = st.session_state.get("updown_results")
+            encore_pop = ([{"종목명": r["종목명"], "매도일": r["매도일"], "pct": r["pct"]}
+                           for r in updown_results_fa if r["pct"] <= -2.0]
+                          if updown_results_fa else [])
+            if not encore_pop:
+                st.caption("Up/Down에서 새로고침을 먼저 눌러주세요(매도 후 -2%↓ 종목이 없을 수도 있음).")
+            else:
+                encore_rows = _fa_rank(flow_hist_fa, encore_pop, "매도일", "pct")
+                if not encore_rows:
+                    st.caption("청산한 종목의 외인비중 변화 데이터가 없습니다.")
+                else:
+                    st.markdown(_fa_rows_html(encore_rows), unsafe_allow_html=True)
 
     # ---- Fishing: 관심종목 리스트 (보유/거래와 무관, 순수 관찰용) ----
     # 최초가(처음 관측된 시점의 전일 종가, 영구 보존)/전일대비(네이버가 주는 정식 전일 종가
