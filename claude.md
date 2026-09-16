@@ -1426,23 +1426,49 @@ manual/                           # report/와 성격이 다름 — **살아있�
   (C) `.summary-box.sc-bot`(Today's Take + Claude's Read + 일일거래). app.py CSS로 세 조각의
   틈(`gap:0`, 요소 margin:0)과 sc-top/sc-bot의 위아래 라운딩·테두리를 없애 **카드 하나처럼** 이어붙임.
   토글은 Claude's Read식 13px 회색 글씨(chevron도 회색으로), 눌러야 펼침.
-- **함수**: `portfolio_core.seed_engine_series(tx, initial, fee_rate, asset_hist=None)` — `_cash_by_date`와
-  같은 재생 루프(§1-1)로 날짜별 (총매입=Σ수량×평단가, 예수금, **무연료예수금**=예수금−그날까지
-  누적실현, 총자산, 예수금비중%)을 만든다. 거래 있었던 날짜만. asset_hist에 없는 날 총자산은
-  `예수금+원가`로 근사.
+- **함수**: `portfolio_core.seed_engine_series(tx, initial, fee_rate, asset_hist=None, bench_cum=None)` —
+  `_cash_by_date`와 같은 재생 루프(§1-1)로 날짜별 (총매입=Σ수량×평단가, 예수금, **무연료예수금**,
+  총자산, 예수금비중%)을 만든다. 거래 있었던 날짜만. asset_hist에 없는 날 총자산은 `예수금+원가`로 근사.
+- **No Refill 재정의 (2026-09-16)**: 원래 정의(예수금−누적실현손익, "매도할 때마다 항상 본전에
+  팔았다면"이라는 반사실)는 Refill과 정의상 실현손익만큼만 차이 나는 항등식이라 정보값이
+  약하다는 지적(2026-09-16 리포트 `report/2026-09-16_정교한_방패.html` §01) — **"실현손익 대신
+  초기자본 전체를 처음부터 벤치(삼성·하이닉스 제외 혼합지수)에 넣어뒀으면 남았을 예수금"**으로
+  교체: `No Refill(t) = 예수금(t) − 누적실현손익(t) + 초기자본×벤치누적수익률(t)`.
+  - **"실제 투입한 원가만" 비교 안 함**: 처음엔 사이클별로 "그 매수금액만 벤치에 넣었으면"이라는
+    보수적 근사(청산 사이클의 buy_amt × 그 구간 벤치수익률)를 제안했는데, 사용자가 "그렇게
+    보수적일 필요 없다 — 보통 사람이면 초기자본을 다 넣었을 것이고, 지금 750만원만 굴리고
+    250만원 현금으로 남긴 것도 전략의 일부"라고 정정 — **초기자본(1000만원) 전체**를 매일
+    반사실 기준으로 삼는다. 현금을 얼마나 아꼈는지/적게 굴렸는지가 전부 Surplus 차이로
+    그대로 드러나게 하려는 의도.
+  - `portfolio_core.blended_benchmark_cum(index_cum, kospi_weight)` 신설 — `compute_index_vs_account`
+    반환의 `index`(날짜별 코스피/코스닥 누적수익률)를 `kospi_weight`로 가중합쳐 날짜→혼합
+    누적수익률 dict로. `compute_index_vs_account` 내부 `_bench_on`과 정확히 같은 가중합 공식이라
+    "혼합지수" 정의가 앱 전체에서 항상 일치. `ui_portfolio_tab.py` Pit Stop 블록이 이미 §4에서
+    계산해둔 `_iva_s`(SamHynix extracted 비교, `_idx_ex_h` 기반)와 `_wk`(코스피/코스닥 평가금액
+    가중치)를 재사용해서 `_bench_cum = blended_benchmark_cum(_iva_s["index"], _wk)`를 만들고
+    `seed_engine_series(..., bench_cum=_bench_cum)`로 넘긴다 — 새 DB/네트워크 호출 없음.
+  - `bench_cum`에 없는 날짜(예: index_history 시작일 8/14 이전)는 누적수익률 0으로 취급 —
+    자연스럽게 예전 정의(실현손익 0% 가정)로 축소되니 별도 분기 불필요. `bench_cum=None`으로
+    부르면(기존 호출부·회귀테스트 그대로) 완전히 예전 동작과 동일.
+  - **2026-09-16 실측**: 벤치(ex-반도체 혼합지수) 8/14 대비 -7.46%, 초기자본 1000만원 기준
+    가상손익 -746,000원. 예수금 2,913,113원·누적실현손익 약 457,000원 → 새 No Refill ≈
+    2,913,113 − 457,000 − 746,000 ≈ 1,710,000원, Surplus ≈ +70%(예전 정의 기준 +19% 대비
+    크게 상승 — 현금 비중 유지 + 저베타 종목군이 벤치 대비 얼마나 방어됐는지가 그대로 반영됨).
 - **UI**(`ui_portfolio_tab.py`): plotly x-unified hover, **선 4개, 차트만(밑 설명줄 없음)**.
   §6-17 iframe(`components.html` + `responsive`) 렌더 — expander 안 `st.plotly_chart` 폭 0 회피.
   좌우 여백 최소화(`margin l=30 r=36`, 왼쪽 축 `tickformat="~s"` = "2M/10M").
   - **Cost Basis** (빨강 `UP_COLOR`, ↑여야 정상) = 총매입.
   - **Refill** (**녹색 `NEW_COLOR`**, 평행이어야 정상) = 실제 예수금(씨앗이 채워준 것).
-  - **No Refill** (**파랑 `DOWN_COLOR`, 실선**, Refill보다 더 가파르게 하락) = 씨앗 없었으면 남았을 현금.
-    **녹−파 간격 = 씨앗이 쌓아준 연료**.
+  - **No Refill** (**파랑 `DOWN_COLOR`, 실선**, Refill보다 더 가파르게 하락) = 위 새 정의(벤치
+    반사실) 기준 가상 현금. **녹−파 간격 = 내 알파(실현손익 − 벤치가 냈을 손익)가 쌓아준 연료**.
   - **Surplus** (**진노랑 `#c99a00`, 별도 선 + 우측 % y축**) = `(Refill ÷ No Refill − 1) × 100` =
-    "연료가 몇 % 더 있나"(현재 +16%, 손절 많으면 구조상 음수 가능). **우측 축 0% 중앙, ±30 고정**
+    "연료가 몇 % 더 있나"(손절 많거나 벤치보다 못하면 구조상 음수 가능). **우측 축 0% 중앙, ±30 고정**
     (peak>25면 ±40…), 틱 `[-30…30]` 10 간격 — **양수 틱 빨강 · 음수 틱 파랑 · 0 회색**, zeroline 표시.
-    No Refill≈0이면 발산 → 300% 소프트캡(축에서 잘림). hover `Surplus +16% 더 있음`.
+    No Refill≈0이면 발산 → 300% 소프트캡(축에서 잘림). hover `Surplus +N% 더 있음`.
   - hover(원 선 3개): `{값}원 (%)` — % = 총자산 대비.
-- 회귀 테스트 `test_seed_engine_series_tracks_cash_and_cost`(총매입·예수금·무연료예수금·비중).
+- 회귀 테스트 `test_seed_engine_series_tracks_cash_and_cost`(bench_cum 없을 때 예전 동작 그대로),
+  `test_seed_engine_series_bench_cum_uses_full_initial_capital`(벤치 반사실 새 공식),
+  `test_blended_benchmark_cum_*`(가중합·코스피단독 폴백·빈 입력 3종).
 - **new1 전용** (전략 개념 자체가 new1 밸류 계좌 것 — meritz는 성격이 다름).
 
 ### 6-28. "Link" (연결고리) — 가격·외인비중 다이버전스 감시목록 (2026-09-11, new1 전용)

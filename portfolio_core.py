@@ -2264,14 +2264,38 @@ def _cash_on(cash_map: dict, date: str, initial_capital: float) -> float:
     return cash_map[max(prior)] if prior else float(initial_capital)
 
 
+def blended_benchmark_cum(index_cum: pd.DataFrame, kospi_weight: float | None) -> dict:
+    """compute_index_vs_account가 반환하는 'index'(날짜/코스피/코스닥 누적수익률, 소수)를
+    kospi_weight로 가중합쳐 날짜→혼합 누적수익률 dict로 만든다 — compute_index_vs_account
+    내부의 `_bench_on`용 가중합과 정확히 같은 공식(wk·코스피+(1-wk)·코스닥, 없으면 코스피
+    단독)이라 두 곳의 "벤치" 정의가 항상 일치한다. seed_engine_series의 bench_cum 인자로 씀
+    (2026-09-16, §6-27 개정)."""
+    if index_cum is None or index_cum.empty:
+        return {}
+    wk = None if kospi_weight is None else min(max(float(kospi_weight), 0.0), 1.0)
+    blended = index_cum["코스피"] if wk is None else wk * index_cum["코스피"] + (1.0 - wk) * index_cum["코스닥"]
+    return dict(zip(index_cum["날짜"].astype(str), pd.to_numeric(blended, errors="coerce")))
+
+
 def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float,
-                       asset_hist: pd.DataFrame | None = None) -> pd.DataFrame:
+                       asset_hist: pd.DataFrame | None = None,
+                       bench_cum: dict | None = None) -> pd.DataFrame:
     """스노우볼 스코어카드(§6-27): 거래를 재생하며 날짜별 (예수금, 총매입액=Σ수량×평단가)을 기록.
     '매입액은 우상향 · 예수금은 300선 평행'이면 씨앗 엔진이 도는 것 — 자잘한 실현손익이 매입
     확대를 따라잡으며 예수금 버퍼를 유지한다는 뜻. 예수금 선이 같이 처지면 씨앗보다 배치가 빠름(경고).
     `_cash_by_date`와 같은 재생 루프(§1-1)라 예수금이 rebuild_portfolio_*와 안 어긋난다.
+
+    무연료예수금(No Refill, 2026-09-16 개정) = 예수금 − 그날까지 누적 실현손익 + 초기자본×
+    그날의 벤치(bench_cum) 누적수익률. "실현손익 대신 초기자본 전체를 처음부터 벤치(보통
+    삼성·하이닉스 제외 혼합지수)에 넣어뒀으면 남았을 예수금"이라는 뜻 — 사용자 지적(2026-09-16):
+    실제 투입한 원가만 벤치와 비교하는 건 지나치게 보수적이다. "보통 사람이면 초기자본을
+    다 넣었을 것"이므로 실제로 얼마를 굴렸는지와 무관하게 **초기자본 전체**를 반사실 기준으로
+    삼는다 — 현금을 아껴둔 것도, 적게 굴린 것도 전략의 결과로 그대로 드러나야 하기 때문.
+    `bench_cum`은 날짜(str)→누적수익률(소수) dict(`blended_benchmark_cum` 참고) — 없거나 그
+    날짜가 없으면 누적수익률 0으로 취급해(예: index_history 시작일 이전 구간) 예전 정의
+    (실현손익 0% 가정)로 자연스럽게 축소된다.
     반환 DataFrame(거래가 있었던 날짜만): 날짜, 총매입(=Σ수량×평단가), 예수금(=W Fuel), 무연료예수금
-    (=예수금 − 그날까지 누적 실현손익 = 씨앗 없었으면 남았을 현금, W/o Fuel), 총자산, 예수금비중(%)."""
+    (W/o Fuel), 총자산, 예수금비중(%)."""
     cols = ["날짜", "총매입", "예수금", "무연료예수금", "총자산", "예수금비중"]
     if tx is None or tx.empty:
         return pd.DataFrame(columns=cols)
@@ -2292,13 +2316,22 @@ def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float
     if asset_hist is not None and not asset_hist.empty and "총자산" in asset_hist:
         ah = dict(zip(asset_hist["날짜"].astype(str),
                       pd.to_numeric(asset_hist["총자산"], errors="coerce")))
+
+    def _bench_cum_on(d):
+        if not bench_cum:
+            return 0.0
+        prior = [bd for bd in bench_cum if bd <= d]
+        v = bench_cum[max(prior)] if prior else None
+        return float(v) if v is not None and pd.notna(v) else 0.0
+
     out = []
     for d in sorted(rows):
         cash, cost, cr = rows[d]
+        virtual_pl = float(initial_capital) * _bench_cum_on(d)
         ta = ah.get(d)
         if ta is None or pd.isna(ta):
             ta = cash + cost   # asset_hist에 없는 날은 근사(예수금+원가, 평가손익 제외)
-        out.append({"날짜": d, "총매입": cost, "예수금": cash, "무연료예수금": cash - cr,
+        out.append({"날짜": d, "총매입": cost, "예수금": cash, "무연료예수금": cash - cr + virtual_pl,
                     "총자산": float(ta),
                     "예수금비중": (cash / (cash + cost) * 100) if (cash + cost) > 0 else 0.0})
     return pd.DataFrame(out, columns=cols)

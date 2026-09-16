@@ -1356,6 +1356,48 @@ def test_seed_engine_series_tracks_cash_and_cost(monkeypatch):
     assert s.iloc[2]["예수금비중"] == pytest.approx(86_000.0 / 102_000.0 * 100)
 
 
+def test_seed_engine_series_bench_cum_uses_full_initial_capital(monkeypatch):
+    """2026-09-16 개정: No Refill = 예수금 − 누적실현 + 초기자본×벤치누적수익률. 실제 투입한
+    금액이 아니라 초기자본 전체를 반사실 기준으로 삼는다(사용자 지적 — "보통 사람이면 초기자본
+    다 넣었을 것"). bench_cum에 없는 날짜는 0%로 취급(예: index_history 시작 전)."""
+    monkeypatch.setattr(core, "load_code_cache", lambda: {})
+    monkeypatch.setattr(core, "load_sector_cache", lambda: {})
+    tx = pd.DataFrame([
+        {"id": "1", "날짜": "2026-01-05", "종목명": "A", "구분": "매수", "수량": 10, "단가": 1000, "실현손익": "", "메모": "", "정산반영": True},
+        {"id": "2", "날짜": "2026-01-07", "종목명": "A", "구분": "매도", "수량": 4, "단가": 1500, "실현손익": "", "메모": "", "정산반영": True},
+    ])
+    # 1/5엔 벤치 데이터 없음(0% 취급), 1/7엔 벤치 -10%.
+    bench_cum = {"2026-01-07": -0.10}
+    s = core.seed_engine_series(tx, 100_000.0, 0.0, bench_cum=bench_cum)
+    # 1/5: 예수금 90,000, 실현 0, 벤치 0% → 무연료예수금 = 90,000 - 0 + 0 = 90,000 (변화 없음)
+    assert s.iloc[0]["무연료예수금"] == pytest.approx(90_000.0)
+    # 1/7: 매도 4주@1500(평단 1000, 수수료 0) → 예수금 90,000+6,000=96,000, 누적실현 2,000,
+    #      벤치 -10%×초기자본(100,000) = -10,000
+    #      무연료예수금 = 96,000 - 2,000 + (-10,000) = 84,000
+    assert s.iloc[1]["무연료예수금"] == pytest.approx(84_000.0)
+
+
+def test_blended_benchmark_cum_weights_kospi_and_kosdaq():
+    index_cum = pd.DataFrame({
+        "날짜": ["2026-01-05", "2026-01-06"],
+        "코스피": [0.0, -0.04],
+        "코스닥": [0.0, -0.10],
+    })
+    out = core.blended_benchmark_cum(index_cum, kospi_weight=0.7)
+    assert out["2026-01-05"] == pytest.approx(0.0)
+    assert out["2026-01-06"] == pytest.approx(0.7 * -0.04 + 0.3 * -0.10)
+
+
+def test_blended_benchmark_cum_none_weight_uses_kospi_only():
+    index_cum = pd.DataFrame({"날짜": ["2026-01-05"], "코스피": [-0.05], "코스닥": [-0.20]})
+    out = core.blended_benchmark_cum(index_cum, kospi_weight=None)
+    assert out["2026-01-05"] == pytest.approx(-0.05)
+
+
+def test_blended_benchmark_cum_empty_returns_empty_dict():
+    assert core.blended_benchmark_cum(pd.DataFrame(), 0.5) == {}
+
+
 # ------------------------------------------------------------------ #
 # compute_pnl_actions (§6-20) — 실현손익을 FA/MO/MA 매매 스타일로 해부
 # ------------------------------------------------------------------ #

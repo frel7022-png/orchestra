@@ -21,7 +21,7 @@ from portfolio_core import (
     compute_link_candidates, load_link_watch_log, link_watch_status, fetch_quotes,
     load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
-    load_claude_notes, seed_engine_series, compute_fa_win_rate,
+    load_claude_notes, seed_engine_series, compute_fa_win_rate, blended_benchmark_cum,
     save_ui_cache_df, load_ui_cache_df, save_ui_cache_json, load_ui_cache_json,
 )
 
@@ -542,11 +542,16 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         """, unsafe_allow_html=True)
 
         # ---- Pit Stop (§6-27, 구 Seed Engine): 빨강 Cost Basis↑ · 녹색 Refill(예수금, 씨앗이 채운
-        #      것) 평행 · 파랑 No Refill(씨앗 없었으면 남았을 현금). 녹−파 간격 = 씨앗이 쌓아준 연료.
-        #      진노랑 Surplus(우측 % 축, ±30 고정, +빨강/−파랑) = (Refill÷No Refill − 1)×100. ----
+        #      것) 평행 · 파랑 No Refill(초기자본을 전부 벤치(삼성·하이닉스 제외 혼합지수)에
+        #      넣어뒀으면 남았을 예수금, 2026-09-16 개정 — 실제 투입액만 비교하는 대신 "보통
+        #      사람이면 넣었을 초기자본 전체"를 반사실 기준으로 씀, §6-27 참고). 녹−파 간격 =
+        #      내 알파(실현손익이 벤치 대비 더 벌어준 몫)가 쌓아준 연료. 진노랑 Surplus(우측 %
+        #      축, ±30 고정, +빨강/−파랑) = (Refill÷No Refill − 1)×100. ----
         with st.container(key="seed_engine_wrap"):
             with st.expander("⛽ Pit Stop", expanded=False):
-                _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0), load_history())
+                _bench_cum = blended_benchmark_cum(_iva_s["index"], _wk) if _iva_s else None
+                _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0),
+                                          load_history(), bench_cum=_bench_cum)
                 if len(_se) < 2:
                     st.caption("거래가 쌓이면 궤적이 그려집니다.")
                 else:
