@@ -1790,9 +1790,18 @@ manual/                           # report/와 성격이 다름 — **살아있�
     내렸는데 반복 매매로는 플러스를 냄, 정확히 사용자가 찾으려던 "가격 역행+매매 효율" 사례),
     실리콘투(4회, +25.7% 가격변화 대비 누적실현 +3.6% — 반대로 가격은 크게 올랐는데 반복매매
     효율은 상대적으로 낮은 사례).
+  - **계좌 정리성 거래 제외 (2026-09-16 당일)**: `min_abs_realized_pct`(기본 1.0%p) 미만인
+    종목은 목록에서 아예 뺀다 — 사용자 지시: "월덱스·에코플라스틱·필옵틱스처럼 처음에
+    계좌 종목 정리하려고 위아래로 0.대% 나온 것들은 제외" (실측: 월덱스 −0.71%,
+    에코플라스틱 +0.30%, 필옵틱스 +0.64% — 전부 하루~이틀 만에 되판 1회성 정리 거래,
+    실제 매매 판단으로 보기 어려움). **"제외" 판정(Selection Index의 근소 갭)과는 다른
+    단계** — 이건 Top Traded/Selection Index 계산에 들어가기 **전에** 아예 걸러내는
+    사전 필터라, 걸러진 종목은 `rows`/`excluded`/`wins`/`losses` 어디에도 안 잡히고
+    통계에서 조용히 사라진다(Selection Index 쪽 "제외"는 반대로 갭 계산까지는 하되 판정만
+    안 매기는 것 — 둘을 혼동하지 말 것). 73개 → 63개 종목으로 감소(2026-09-16 실측).
 - **함수 추가**(`portfolio_core.py`): `_all_cycles`에 `close_price` 필드 신설(그 사이클을
   닫은 매도의 단가). `PRICE_BRACKET_LABELS`, `price_bracket_distribution(tx)`,
-  `top_traded_stocks(tx, top_n=10)`.
+  `top_traded_stocks(tx, top_n=10, min_abs_realized_pct=1.0)`.
 - **가격변화 계산을 최후매도가 대신 현재가 기준으로 (2026-09-16 당일, 사용자 지적: "최후매도가
   대신 현재가를 쓰는 게 낫겠다")**: 처음엔 최후매도가 옆에 현재가를 "병기"만 했는데, 곧바로
   "가격변화(순수 가격 이동) 계산 자체의 종점을 최후매도가가 아니라 현재가로 바꾸자"로 정정 —
@@ -1851,7 +1860,8 @@ manual/                           # report/와 성격이 다름 — **살아있�
   포함), `test_price_bracket_distribution_excludes_open_cycles`,
   `test_top_traded_stocks_ranks_by_cycle_count_then_price`,
   `test_top_traded_stocks_tie_breaks_by_higher_first_entry_price`,
-  `test_top_traded_stocks_excludes_open_cycles_and_respects_top_n`.
+  `test_top_traded_stocks_excludes_open_cycles_and_respects_top_n`,
+  `test_top_traded_stocks_excludes_tiny_realized_pct_cleanup_trades`.
 - **검증**: 함수 단위 테스트(6개, 위) + `AppTest`(`test_app_smoke.py`)로 탭 3개 조립까지
   예외 없이 실행되는지 확인 + 실제 데이터로 계산해 수치 확인(위 실측). 픽셀 레이아웃은
   Playwright로 (Streamlit 세션의 느린 실시간 시세 새로고침을 피하려고) `st.markdown`을

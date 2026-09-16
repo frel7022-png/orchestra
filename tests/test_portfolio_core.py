@@ -1607,6 +1607,21 @@ def test_top_traded_stocks_uses_current_price_over_last_exit_when_available():
     assert b["기준가구분"] == "최후매도가"
 
 
+def test_top_traded_stocks_excludes_tiny_realized_pct_cleanup_trades():
+    """2026-09-16 사용자 지시: "월덱스·에코플라스틱·필옵틱스처럼 처음에 계좌 종목 정리하려고
+    위아래로 0.대% 나온 것들은 제외" — 누적실현손익률이 min_abs_realized_pct(기본 1.0%p)
+    미만이면 아예 목록에서 뺀다(제외로 표시되는 게 아니라 통계에서 완전히 사라짐)."""
+    tx = pd.DataFrame(
+        _cycle_tx("정리성거래", 10000, 10050, "2026-01-01", "2026-01-02")  # 실현 0.5% -> 제외
+        + _cycle_tx("진짜거래", 10000, 11000, "2026-01-01", "2026-01-02")  # 실현 10% -> 유지
+    )
+    top = core.top_traded_stocks(tx, top_n=None)
+    assert list(top["종목명"]) == ["진짜거래"]
+    # 임계값을 낮추면(0.1) 다시 포함됨 — 상수가 실제로 쓰이는지 확인
+    top_low = core.top_traded_stocks(tx, top_n=None, min_abs_realized_pct=0.1)
+    assert set(top_low["종목명"]) == {"정리성거래", "진짜거래"}
+
+
 # ------------------------------------------------------------------ #
 # selection_index (§6-32): 승/패 카운트 기반 "선택 지수"
 # ------------------------------------------------------------------ #
@@ -1642,12 +1657,12 @@ def test_selection_index_win_rate_uses_decided_only_not_excluded():
     rows = (
         _cycle_tx("Win", 10000, 20000, "2026-01-01", "2026-01-02")     # 큰 승
         + _cycle_tx("Lose", 10000, 10100, "2026-01-01", "2026-01-02")  # 큰 패(현재가로 확인)
-        + _cycle_tx("Flat", 10000, 10050, "2026-01-01", "2026-01-02")  # 갭 작음 -> 제외
+        + _cycle_tx("Flat", 10000, 10300, "2026-01-01", "2026-01-02")  # 실현 3%, 가격변화 2.5% -> 갭 0.5 -> 제외
     )
     tx = pd.DataFrame(rows)
-    current_prices = {"Win": 10000.0, "Lose": 50000.0, "Flat": 10050.0}
+    current_prices = {"Win": 10000.0, "Lose": 50000.0, "Flat": 10250.0}
     r = core.selection_index(tx, current_prices=current_prices, tie_band_pct=1.0)
-    assert r["excluded"] == 1  # Flat: 가격변화 0.5%, 실현손익률 0.5% -> 갭 0 -> 제외
+    assert r["excluded"] == 1  # Flat: 갭이 tie_band 안이라 제외(실현 3%라 min_abs_realized_pct 사전 필터엔 안 걸림)
     assert r["decided"] == 2
     assert r["wins"] == 1 and r["losses"] == 1
     assert r["win_rate"] == pytest.approx(50.0)
@@ -1668,11 +1683,11 @@ def test_selection_index_avg_trims_trivial_and_extreme_gaps():
     안 바뀜), 평균 계산에서만 뺀다."""
     rows = (
         _cycle_tx("Mid", 10000, 10500, "2026-01-01", "2026-01-02")     # 실현 5%, 가격변화 0% -> 갭 5(평균 포함)
-        + _cycle_tx("Trivial", 10000, 10050, "2026-01-01", "2026-01-02")  # 갭 0.5 -> 제외(근소)
+        + _cycle_tx("Trivial", 10000, 10300, "2026-01-01", "2026-01-02")  # 실현 3%, 가격변화 3.5% -> 갭 -0.5 -> 제외(근소)
         + _cycle_tx("Extreme", 10000, 12000, "2026-01-01", "2026-01-02")  # 실현 20%, 현재가는 아래서 30000으로 지정(가격변화 200%) -> 갭 -180
     )
     tx = pd.DataFrame(rows)
-    current_prices = {"Mid": 10000.0, "Trivial": 10050.0, "Extreme": 30000.0}
+    current_prices = {"Mid": 10000.0, "Trivial": 10350.0, "Extreme": 30000.0}
     # Extreme: 가격변화율 = (30000-10000)/10000*100 = 200%, 실현손익률 20% -> 갭 = 20-200 = -180 (극단 패)
     r = core.selection_index(tx, current_prices=current_prices, tie_band_pct=1.0, extreme_gap_pct=20.0)
     assert r["wins"] == 1 and r["losses"] == 1  # Mid=승, Extreme=패(둘 다 카운트엔 포함)

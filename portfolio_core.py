@@ -2274,7 +2274,8 @@ def price_bracket_distribution(tx: pd.DataFrame) -> pd.DataFrame:
     ])
 
 
-def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10, current_prices: dict | None = None) -> pd.DataFrame:
+def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10, current_prices: dict | None = None,
+                       min_abs_realized_pct: float = 1.0) -> pd.DataFrame:
     """Statistics 탭(§6-32): 청산 완료된 사이클이 가장 많은 종목 top_n개 — "가장 많이
     들어갔다 나온 종목"과, 그 반복 매매가 "가격이 움직인 것보다 더 벌었는지"(효율성, 사용자
     표현: "1만원 진입·2만원 매도를 5회 반복했다면 가격은 1만원만 움직였어도 5만원을 번
@@ -2298,6 +2299,12 @@ def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10, current_prices: dict | 
     - cum_realized/cum_realized_pct = 그 종목의 청산된 사이클 전부의 실현손익 합 / 총매수액
       합 대비 % — 이게 price_diff_pct보다 훨씬 크면(특히 같은 방향이 아니어도) 반복 매매가
       단순 보유보다 더 벌었다는 뜻(=Up/Down 재진입 타이밍이 실제로 유효했다는 신호).
+    - **`min_abs_realized_pct`(기본 1.0%p) 미만인 종목은 아예 뺀다**(2026-09-16 사용자 지시:
+      "월덱스·에코플라스틱·필옵틱스처럼 처음에 계좌 종목 정리하려고 [산 지 하루 이틀 만에
+      다시 판] 위아래로 0.대% 나온 것들은 제외" — 실측: 월덱스 −0.71%, 에코플라스틱
+      +0.30%, 필옵틱스 +0.64%, 전부 진짜 매매 판단이 아니라 초기 계좌 정리성 거래로 보여
+      1%p 미만은 통계에서 아예 제외). Selection Index도 이 함수 위에 얹어 계산하므로
+      자동으로 같이 빠짐.
     반환: DataFrame[종목명, 청산횟수, 최초진입가, 최초진입일, 최후매도가, 최후매도일,
     기준가, 기준가구분, 가격변화, 가격변화율, 누적실현손익, 누적실현손익률]."""
     cycles = [c for c in _all_cycles(tx) if c["closed"]]
@@ -2325,6 +2332,7 @@ def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10, current_prices: dict | 
             "누적실현손익": realized_total,
             "누적실현손익률": (realized_total / buy_total * 100.0) if buy_total else 0.0,
         })
+    rows = [r for r in rows if abs(r["누적실현손익률"]) >= min_abs_realized_pct]
     rows.sort(key=lambda r: (-r["청산횟수"], -r["최초진입가"]))
     return pd.DataFrame(rows[:top_n])
 
