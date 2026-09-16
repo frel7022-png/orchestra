@@ -1883,21 +1883,37 @@ manual/                           # report/와 성격이 다름 — **살아있�
     (+45% 오르는 동안 1회밖에 못 먹은 사례, 갭이 30%p 넘게 벌어짐) 같은 극단치 하나가
     평균을 흔드는 걸 막으려는 것(§6-17 "Σ/Σ, 일별 비율 평균 안 씀"과 같은 철학).
     `wins − losses == 0`이면 "선택 자체가 순수하게는 하나도 안 움직인 것"(사용자 표현).
+  - **평균 강도 비교(같은 날 추가)** — 승/패 카운트는 얼마나 크게 이기고 졌는지는 안 보여줘서,
+    "실현손익 본 종목들이 평균 몇 % 벌었는데 그 종목들 자체는 평균 몇 %밖에 안 움직였나"를
+    별도로 계산한다(사용자 예시: "지금까지 실현손익 본 종목이 대략 3% 이익 봤는데 선택한
+    종목들은 사실 1%밖에 안 올랐다"). **`tie_band_pct`(근소, ≤1%p)와 `extreme_gap_pct`
+    (극단, 기본 20%p 초과) 양쪽 다 평균에서 뺀다**(사용자 지시: "20% 이상 앞서가거나
+    뒤처지는 극단적인 경우와 ±1%의 격차 정도는 빼고") — **승/패 카운트 자체는 극단치를
+    그대로 포함**한 채 안 바뀌고, 이 트리밍은 평균 계산에만 적용됨. `avg_realized_pct`/
+    `avg_price_change_pct`는 트리밍 후 남은 종목들의 `누적실현손익률`/`가격변화율`을 각각
+    독립적으로 평균 낸 것(갭을 평균 내는 게 아니라 두 평균을 나란히 비교).
   - 반환: `{"rows": [...top_traded_stocks 컬럼 + 갭·판정...], "wins", "losses", "excluded",
-    "decided"(=wins+losses), "win_rate"(wins/decided%), "index"(wins−losses)}`.
+    "decided"(=wins+losses), "win_rate"(wins/decided%), "index"(wins−losses),
+    "avg_realized_pct", "avg_price_change_pct"(트리밍 후 평균, 대상 없으면 None), "n_avg",
+    "extreme_count"}`.
   - **UI**: Top Traded expander 맨 위에 `Selection Index ±N (승 A · 패 B · 제외 C, 승률 D%)`
-    한 줄 + 카드마다 종목명 옆에 승/패 배지(제외는 배지 안 뜸). `_refresh_top_traded()`가
+    한 줄 + `평균 실현 ±R% vs 평균 가격변화 ±P% (근소·극단 제외 N종목)` 한 줄 더(대상 없으면
+    안 뜸) + 카드마다 종목명 옆에 승/패 배지(제외는 배지 안 뜸). `_refresh_top_traded()`가
     `top_traded_stocks` 대신 `selection_index`를 호출해 캐시에 같이 저장 — 새 새로고침·
     네트워크 호출 추가 없음(하루 1회 고정 메커니즘 그대로 재사용).
-  - 2026-09-16 실측(holdings 현재가만 반영한 부분 표본): 41개 종목이 승패 결정됨(24승
-    17패), 제외 32개, 승률 58.5%, Selection Index +7.
-  - 회귀 테스트 5개: `test_selection_index_win_when_realized_beats_price_change`,
+  - 2026-09-16 실측(holdings 현재가만 반영한 부분 표본): 41개 종목 승패 결정(26승 16패,
+    승률 61.9%, Selection Index +10), 제외 31개. 평균 강도(극단 1건 제외, 41종목 대상):
+    평균 실현 +4.63% vs 평균 가격변화 +3.06% — 실현이 종목 자체 움직임보다 평균적으로
+    더 큼(선택/타이밍이 순수 보유보다 나았다는 뜻).
+  - 회귀 테스트 7개: `test_selection_index_win_when_realized_beats_price_change`,
     `test_selection_index_loss_when_price_change_beats_realized`,
     `test_selection_index_excludes_small_gap_from_decided_count`,
     `test_selection_index_win_rate_uses_decided_only_not_excluded`,
-    `test_selection_index_empty_transactions`.
+    `test_selection_index_empty_transactions`,
+    `test_selection_index_avg_trims_trivial_and_extreme_gaps`,
+    `test_selection_index_avg_none_when_nothing_qualifies`.
 - **아직 안 한 것 (다음에 이어서)**: "완성하자, 해보고 고치면서"(사용자) — FA 승률·
   P&L Actions처럼 이미 있는 결과 지표들을 이 탭으로 옮기거나 참조할지, meritz에도
-  이식할지는 아직 미정. Selection Index의 `tie_band_pct` 기본값(1.0%p)도 실사용하며
-  조정될 수 있음.
+  이식할지는 아직 미정. `tie_band_pct`(1.0%p)·`extreme_gap_pct`(20%p) 둘 다 실사용하며
+  조정될 수 있는 상수.
 - **new1 전용**.

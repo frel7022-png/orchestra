@@ -59,6 +59,9 @@ def _refresh_top_traded(tx, holdings) -> None:
         "rows": sel["rows"], "wins": sel["wins"], "losses": sel["losses"],
         "excluded": sel["excluded"], "decided": sel["decided"],
         "win_rate": sel["win_rate"], "index": sel["index"],
+        "avg_realized_pct": sel["avg_realized_pct"],
+        "avg_price_change_pct": sel["avg_price_change_pct"],
+        "n_avg": sel["n_avg"], "extreme_count": sel["extreme_count"],
     }
     save_ui_cache_json("top_traded", st.session_state["top_traded_cache"])
 
@@ -151,12 +154,22 @@ def render_statistics_tab(tx, holdings, T):
             idx = cache["index"]
             idx_color = UP_COLOR if idx > 0 else (DOWN_COLOR if idx < 0 else T["muted"])
             idx_sign = "+" if idx > 0 else ""
+            avg_r, avg_p = cache.get("avg_realized_pct"), cache.get("avg_price_change_pct")
+            avg_line = ""
+            if avg_r is not None:
+                avg_color = UP_COLOR if avg_r >= avg_p else DOWN_COLOR
+                avg_line = (
+                    f'<div style="font-size:12px;color:{T["muted"]};margin-bottom:6px">'
+                    f'평균 실현 <span style="color:{avg_color};font-weight:600">{avg_r:+.1f}%</span>'
+                    f' vs 평균 가격변화 {avg_p:+.1f}% (근소·극단 제외 {cache["n_avg"]}종목)</div>'
+                )
             st.markdown(
-                f'<div style="font-size:12.5px;color:{T["text"]};font-weight:600;margin-bottom:6px">'
+                f'<div style="font-size:12.5px;color:{T["text"]};font-weight:600;margin-bottom:2px">'
                 f'Selection Index <span style="color:{idx_color}">{idx_sign}{idx}</span>'
                 f'<span style="font-weight:400;color:{T["muted"]}">'
                 f' (승 {cache["wins"]} · 패 {cache["losses"]} · 제외 {cache["excluded"]}, '
-                f'승률 {cache["win_rate"]:.0f}%)</span></div>',
+                f'승률 {cache["win_rate"]:.0f}%)</span></div>'
+                f'{avg_line}',
                 unsafe_allow_html=True,
             )
             _render_top_traded_cards(cache["rows"], T)

@@ -2330,7 +2330,7 @@ def top_traded_stocks(tx: pd.DataFrame, top_n: int = 10, current_prices: dict | 
 
 
 def selection_index(tx: pd.DataFrame, current_prices: dict | None = None,
-                     tie_band_pct: float = 1.0) -> dict:
+                     tie_band_pct: float = 1.0, extreme_gap_pct: float = 20.0) -> dict:
     """Statistics 탭(§6-32) — "Selection Index": 청산한 종목 하나하나가 사후적으로 옳은
     선택이었나(=팔고 나온 뒤 가격이 어떻게 됐든, 내가 실제로 챙긴 몫이 그 종목을 계속
     들고 있었을 때보다 나았나)를 승/패로 매겨 집계한다. P&L Actions·FA 승률이 "얼마
@@ -2361,12 +2361,29 @@ def selection_index(tx: pd.DataFrame, current_prices: dict | None = None,
       가짜 정밀도가 된다는 문제 제기(세션)에 사용자가 동의, Fishing 데이터로 진짜 breadth를
       구하는 안도 "피싱 자체가 내가 고른 종목이라 의미없다"고 기각(2026-09-16) — 지금은
       승률과 시장 상황을 각각 사실로 나란히 보여주고 하나로 안 뭉치는 것으로 결론.
+
+    **평균 강도 비교(2026-09-16 당일 추가)** — 승/패 카운트(Selection Index)는 "이겼나
+    졌나"만 보고 얼마나 크게 이기고 졌는지는 안 본다. 그래서 "실현손익 본 종목들이 평균
+    몇 % 벌었는데, 그 종목들 자체는 평균 몇 %밖에 안 움직였다"를 별도로 낸다 — 단
+    `tie_band_pct`(근소, ≤1%p) 종목과 `extreme_gap_pct`(극단, >20%p, 기본값) 종목은
+    **양쪽 다 평균에서 뺀다**(사용자 지시: "20% 이상 앞서가거나 뒤처지는 극단적인 경우와
+    ±1%의 격차 정도는 빼고" — 극단치 하나가 평균을 왜곡하는 걸 Selection Index 카운트
+    설계 때와 같은 이유로 여기서도 막음). 승/패 카운트 자체는 극단치를 포함한 채 그대로 —
+    이 트리밍은 오직 평균 계산에만 적용된다.
+    - `avg_realized_pct`/`avg_price_change_pct` = 트리밍 후 남은 종목들의 `누적실현손익률`/
+      `가격변화율` 산술평균(각각 독립적으로 평균 — 종목별 갭을 평균 내는 게 아니라, "내가
+      챙긴 평균 %"와 "종목 자체가 움직인 평균 %"를 따로 내서 나란히 비교하는 것).
+    - `n_avg` = 이 평균에 쓰인 종목 수, `extreme_count` = `extreme_gap_pct` 초과로 평균에서
+      빠진 종목 수(승패 카운트에는 여전히 포함됨).
     반환: {"rows": [...top_traded_stocks 컬럼 + 갭·판정...], "wins", "losses", "excluded",
-    "decided"(=wins+losses), "win_rate"(wins/decided%, decided=0이면 0), "index"(wins-losses)}."""
+    "decided"(=wins+losses), "win_rate"(wins/decided%, decided=0이면 0), "index"(wins-losses),
+    "avg_realized_pct", "avg_price_change_pct"(트리밍 후 평균, 대상 없으면 None), "n_avg",
+    "extreme_count"}."""
     top = top_traded_stocks(tx, top_n=None, current_prices=current_prices)
     if top.empty:
         return {"rows": [], "wins": 0, "losses": 0, "excluded": 0, "decided": 0,
-                "win_rate": 0.0, "index": 0}
+                "win_rate": 0.0, "index": 0, "avg_realized_pct": None,
+                "avg_price_change_pct": None, "n_avg": 0, "extreme_count": 0}
     rows = []
     wins = losses = excluded = 0
     for _, r in top.iterrows():
@@ -2385,10 +2402,19 @@ def selection_index(tx: pd.DataFrame, current_prices: dict | None = None,
         row["판정"] = verdict
         rows.append(row)
     decided = wins + losses
+
+    avg_rows = [r for r in rows if r["판정"] in ("승", "패") and abs(r["갭"]) <= extreme_gap_pct]
+    extreme_count = sum(1 for r in rows if r["판정"] in ("승", "패") and abs(r["갭"]) > extreme_gap_pct)
+    n_avg = len(avg_rows)
+    avg_realized_pct = (sum(r["누적실현손익률"] for r in avg_rows) / n_avg) if n_avg else None
+    avg_price_change_pct = (sum(r["가격변화율"] for r in avg_rows) / n_avg) if n_avg else None
+
     return {
         "rows": rows, "wins": wins, "losses": losses, "excluded": excluded,
         "decided": decided, "win_rate": (wins / decided * 100.0) if decided else 0.0,
         "index": wins - losses,
+        "avg_realized_pct": avg_realized_pct, "avg_price_change_pct": avg_price_change_pct,
+        "n_avg": n_avg, "extreme_count": extreme_count,
     }
 
 

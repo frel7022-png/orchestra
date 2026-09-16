@@ -1658,7 +1658,37 @@ def test_selection_index_empty_transactions():
     empty = pd.DataFrame(columns=["날짜", "종목명", "구분", "수량", "단가", "실현손익"])
     assert core.selection_index(empty) == {
         "rows": [], "wins": 0, "losses": 0, "excluded": 0, "decided": 0,
-        "win_rate": 0.0, "index": 0}
+        "win_rate": 0.0, "index": 0, "avg_realized_pct": None,
+        "avg_price_change_pct": None, "n_avg": 0, "extreme_count": 0}
+
+
+def test_selection_index_avg_trims_trivial_and_extreme_gaps():
+    """2026-09-16 사용자 지시: "20% 이상 앞서가거나 뒤처지는 극단적인 경우와 ±1%의 격차
+    정도는 빼고" 나머지만 평균 — 승패 카운트는 극단치를 그대로 포함하되(Selection Index는
+    안 바뀜), 평균 계산에서만 뺀다."""
+    rows = (
+        _cycle_tx("Mid", 10000, 10500, "2026-01-01", "2026-01-02")     # 실현 5%, 가격변화 0% -> 갭 5(평균 포함)
+        + _cycle_tx("Trivial", 10000, 10050, "2026-01-01", "2026-01-02")  # 갭 0.5 -> 제외(근소)
+        + _cycle_tx("Extreme", 10000, 12000, "2026-01-01", "2026-01-02")  # 실현 20%, 현재가는 아래서 30000으로 지정(가격변화 200%) -> 갭 -180
+    )
+    tx = pd.DataFrame(rows)
+    current_prices = {"Mid": 10000.0, "Trivial": 10050.0, "Extreme": 30000.0}
+    # Extreme: 가격변화율 = (30000-10000)/10000*100 = 200%, 실현손익률 20% -> 갭 = 20-200 = -180 (극단 패)
+    r = core.selection_index(tx, current_prices=current_prices, tie_band_pct=1.0, extreme_gap_pct=20.0)
+    assert r["wins"] == 1 and r["losses"] == 1  # Mid=승, Extreme=패(둘 다 카운트엔 포함)
+    assert r["excluded"] == 1  # Trivial
+    assert r["extreme_count"] == 1  # Extreme만 평균에서 추가로 빠짐
+    assert r["n_avg"] == 1  # Mid만 평균에 남음
+    assert r["avg_realized_pct"] == pytest.approx(5.0)
+    assert r["avg_price_change_pct"] == pytest.approx(0.0)
+
+
+def test_selection_index_avg_none_when_nothing_qualifies():
+    tx = pd.DataFrame(_cycle_tx("Trivial", 10000, 10050, "2026-01-01", "2026-01-02"))
+    r = core.selection_index(tx, current_prices={"Trivial": 10050.0})
+    assert r["n_avg"] == 0
+    assert r["avg_realized_pct"] is None
+    assert r["avg_price_change_pct"] is None
 
 
 def test_compute_index_vs_account_caps_me_to_index_coverage():
