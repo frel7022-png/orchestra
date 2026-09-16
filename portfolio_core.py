@@ -1001,6 +1001,31 @@ def _latest_change_pct_map(price_hist: pd.DataFrame | None) -> dict:
     return pd.to_numeric(latest["등락률"], errors="coerce").to_dict()
 
 
+def cumulative_price_change_map(price_hist: pd.DataFrame | None, live_quotes: dict | None = None) -> dict:
+    """종목별 "기준일(추적 시작일) 대비 지금까지" 누적 등락률(%) — `compute_link_candidates`의
+    P와 완전히 같은 정의(현재가는 live_quotes 우선, 없으면 price_hist 마지막 저장 종가로 폴백)를
+    Foreigner 화면에서도 재사용하려고 추출(2026-09-17). Foreigner의 "누적"(기준일pp) 라디오
+    옆에 예전엔 `_latest_change_pct_map`(오늘 하루치 등락률)을 붙이고 있어서, "외인은 몇 주간
+    누적 +3.9%p인데 주가는 -1.5%"처럼 **서로 다른 기간을 나란히 보여주는 바람에 헷갈리는
+    문제**가 있었음(2026-09-17 사용자 지적 — "주가 -1.5%는 외인 3.88%p 담는 동안 저만큼
+    떨어졌단거니? 차트 보면 오히려 오른 거 같은데") — "누적" 기준일 땐 주가도 같은 기준일부터
+    누적으로 보여줘야 두 숫자가 같은 창을 가리킨다. {종목코드: 누적등락률} dict, 기준가가
+    0이거나 데이터가 없는 종목은 빠진다."""
+    result = {}
+    if price_hist is None or price_hist.empty:
+        return result
+    live_quotes = live_quotes or {}
+    for code, g in price_hist.groupby("종목코드"):
+        g = g.sort_values("날짜")
+        p0 = g.iloc[0]
+        if not p0["종가"]:
+            continue
+        cur_price = live_quotes.get(code)
+        cur_price = float(cur_price) if cur_price is not None else float(g.iloc[-1]["종가"])
+        result[code] = (cur_price - p0["종가"]) / p0["종가"] * 100
+    return result
+
+
 def compute_volume_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = None) -> list[dict]:
     """종목별 오늘 거래량이 그동안 쌓인 평균/어제 대비 얼마나 튀었는지.
     hist: load_investor_flow_db()가 반환하는 형태. price_hist(선택): load_watchlist_
@@ -1230,6 +1255,7 @@ def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
         return pd.DataFrame(columns=cols)
     live_quotes = live_quotes or {}
     fx_by_code = {f["종목코드"]: f for f in compute_foreign_flags(flow_hist, price_hist)}
+    price_change_map = cumulative_price_change_map(price_hist, live_quotes)
     rows = []
     for code, g in price_hist.groupby("종목코드"):
         g = g.sort_values("날짜")
@@ -1241,9 +1267,11 @@ def compute_link_candidates(price_hist: pd.DataFrame, flow_hist: pd.DataFrame,
         fx = fx_by_code.get(code)
         if fx is None:
             continue
+        P = price_change_map.get(code)
+        if P is None:
+            continue
         cur_price = live_quotes.get(code)
         cur_price = float(cur_price) if cur_price is not None else float(g.iloc[-1]["종가"])
-        P = (cur_price - p0["종가"]) / p0["종가"] * 100
         dF = float(fx["기준일pp"])
         recent_dF = float(fx["최근3일pp"])
         quad = _link_quadrant(P, dF)

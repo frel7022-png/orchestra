@@ -1613,6 +1613,27 @@ manual/                           # report/와 성격이 다름 — **살아있�
   `test_compute_link_candidates_reuses_compute_foreign_flags_exactly`(Foreigner와 dF 완전 일치),
   `test_compute_link_candidates_empty_inputs`, `test_link_watch_status_computes_change_since_flagged`,
   `test_link_watch_status_empty_log_returns_empty`, `test_add_link_watch_entry_overwrites_same_stock_code`.
+- **Foreigner "주가" 칸이 다른 기간을 보여주던 버그 (2026-09-17)**: Foreigner 화면에서
+  "누적"(기준일pp) 라디오를 골라도, 그 옆 "주가" 칸은 항상 `_latest_change_pct_map`(그날
+  하루치 등락률)만 보여주고 있었다 — 방향(DOWN/UP)과 무관하게 늘 이랬다. 그래서 "우리금융지주
+  50.2% +3.88%p 주가 -1.5%" 같은 줄이 "외인이 몇 주간 누적 +3.88%p 담는 동안 주가는 그만큼
+  빠졌다"로 읽혔지만, 실제로는 **+3.88%p는 기준일부터 지금까지 누적, -1.5%는 그냥 오늘 하루**
+  — 서로 다른 기간을 나란히 붙여놔서 헷갈렸던 것(사용자가 실제 차트와 안 맞는다고 지적해서
+  발견). Link 패널은 처음부터 P(가격)와 dF(외인) 둘 다 "기준일 대비 누적"으로 통일해서 이
+  문제가 없었는데, Foreigner는 "주가" 칸만 그 통일에서 빠져있었던 것.
+  - **수정**: `portfolio_core.cumulative_price_change_map(price_hist, live_quotes=None)` 신설
+    — Link의 P와 완전히 같은 정의(현재가는 live_quotes 우선, 없으면 price_hist 마지막 저장
+    종가 폴백)를 함수로 뽑아냄. `compute_link_candidates`도 이 함수를 내부에서 재사용하도록
+    리팩터(로직 복제 없음, `test_compute_link_candidates_p_matches_cumulative_price_change_map`
+    으로 둘이 항상 같은 값임을 고정). Foreigner UI는 `fx_basis=="누적"`일 때만 이 함수로
+    "주가"를 다시 계산해서 쓰고, `fx_basis=="전일"`일 때는 그대로 둠(전일 라디오는 원래도
+    "오늘 하루"라 외인 쪽(vs어제pp)과 이미 같은 기간이라 문제 없었음). **방향(DOWN/UP) 라디오와
+    무관하게 적용** — 어느 쪽을 보든 "누적"이면 항상 누적 주가, "전일"이면 항상 오늘 주가.
+  - 회귀 테스트 5개: `test_cumulative_price_change_map_uses_first_row_as_baseline`,
+    `test_cumulative_price_change_map_prefers_live_quote_over_stale_db_row`,
+    `test_cumulative_price_change_map_skips_zero_baseline_price`,
+    `test_cumulative_price_change_map_empty_input`,
+    `test_compute_link_candidates_p_matches_cumulative_price_change_map`.
 - **CFG(Chicken For Golden eggs) — 최종 종착역, 아직 미착수**: 2026-09-11 사용자가 개념 확정
   (MEMORY `project_foreigner_fop` 참고). Up/Down(매도 후 추가 하락)+Fishing(누적 하락 후 횡보)+
   Link(4분면×볼륨 증폭)를 매일 종합해 리포트 쓰고 상위 3픽(1위 3점, 2·3위 비율) 추리는 엔진 —

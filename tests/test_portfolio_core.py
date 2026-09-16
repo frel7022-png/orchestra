@@ -1933,3 +1933,41 @@ def test_compute_todays_alarm_empty_inputs_returns_no_alarms():
     assert alarm["watering"] == []
     assert alarm["quiet_hands"] == {"items": [], "is_fallback": False}
     assert alarm["fishing"] == {"items": [], "is_fallback": False}
+
+
+# ------------------------------------------------------------------ #
+# cumulative_price_change_map (2026-09-17) — Foreigner "누적" 라디오의 주가를
+# Link의 P와 같은 "기준일 대비 누적"으로 맞추기 위해 추출
+# ------------------------------------------------------------------ #
+def test_cumulative_price_change_map_uses_first_row_as_baseline():
+    price = _price_df([("X", "2026-08-19", 1000), ("X", "2026-08-26", 900)])
+    got = core.cumulative_price_change_map(price)
+    assert got["X"] == pytest.approx((900 - 1000) / 1000 * 100)  # -10%
+
+
+def test_cumulative_price_change_map_prefers_live_quote_over_stale_db_row():
+    # DB 마지막 행은 어제 종가(장중엔 하루 뒤처짐, §6-28에서 실제로 겪은 문제) — live_quotes가
+    # 있으면 그걸 "현재가"로 우선 써야 Link의 P와 정확히 같은 값이 나온다.
+    price = _price_df([("X", "2026-08-19", 1000), ("X", "2026-08-26", 900)])
+    got = core.cumulative_price_change_map(price, live_quotes={"X": 950})
+    assert got["X"] == pytest.approx((950 - 1000) / 1000 * 100)  # -5%, DB의 900이 아니라 950 기준
+
+
+def test_cumulative_price_change_map_skips_zero_baseline_price():
+    price = _price_df([("Y", "2026-08-19", 0), ("Y", "2026-08-26", 100)])
+    assert "Y" not in core.cumulative_price_change_map(price)
+
+
+def test_cumulative_price_change_map_empty_input():
+    assert core.cumulative_price_change_map(None) == {}
+    assert core.cumulative_price_change_map(pd.DataFrame()) == {}
+
+
+def test_compute_link_candidates_p_matches_cumulative_price_change_map():
+    # 리팩터 후에도 Link의 P가 여전히 cumulative_price_change_map과 정확히 같은 값이어야 함
+    # (2026-09-17, compute_link_candidates가 이 함수를 내부에서 재사용하도록 바꿈).
+    price = _price_df([("X", "2026-08-19", 1000), ("X", "2026-08-26", 900)])
+    flow = _flow_df([("X", "2026-08-19", 100, 10.0), ("X", "2026-08-26", 100, 13.5)])
+    out = core.compute_link_candidates(price, flow, min_price_days=2)
+    price_map = core.cumulative_price_change_map(price)
+    assert out.iloc[0]["P"] == pytest.approx(price_map["X"])

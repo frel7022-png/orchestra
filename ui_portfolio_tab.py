@@ -17,6 +17,7 @@ from portfolio_core import (
     load_investor_flow_db, load_market_flow_db, load_watchlist_history_db,
     get_stock_price_history_db,
     compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline, foreign_pct_change_since,
+    cumulative_price_change_map,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     compute_link_candidates, load_link_watch_log, link_watch_status, fetch_quotes,
     load_index_history, load_market_cache,
@@ -1180,6 +1181,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     flow_hist = st.session_state.get("flow_hist")
     market_hist = st.session_state.get("market_hist")
     price_hist_flow = st.session_state.get("price_hist_flow")
+    live_quotes_ff = st.session_state.get("live_quotes")
 
     # Link(§6-28)도 이 새로고침을 그대로 씀 — Foreigner/Volume/Link가 전부 같은 DB 호출
     # 하나를 공유해야 "같은 기준일이면 흔들림이 없다"는 전제가 실제로 성립한다(사용자 지적,
@@ -1271,10 +1273,16 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 if not ranked:
                     st.caption(f"{fx_basis} 기준 {fx_dir}으로 움직인 종목이 없습니다.")
                 else:
+                    # "누적"(기준일pp) 라디오일 땐 주가도 같은 기준일부터의 누적 등락률로 —
+                    # 예전엔 방향(DOWN/UP)과 무관하게 항상 "오늘 하루" 등락률만 붙어있어서
+                    # "외인은 몇 주간 누적 +3.9%p인데 주가는 오늘 -1.5%"처럼 서로 다른 기간이
+                    # 나란히 보여 헷갈렸음(2026-09-17 사용자 지적, 우리금융지주 사례).
+                    cum_price_map = (cumulative_price_change_map(price_hist_flow, live_quotes_ff)
+                                      if fx_basis == "누적" else None)
                     parts = []
                     for i, r in enumerate(ranked[:20], 1):
                         v = r[fkey]
-                        chg = r["오늘등락률"]
+                        chg = cum_price_map.get(r["종목코드"]) if cum_price_map is not None else r["오늘등락률"]
                         chg_s = (f'{"+" if chg >= 0 else ""}{chg:.1f}%') if chg is not None else "-"
                         parts.append(
                             f'<div class="updown-row flow-row"><span class="rank">{i}</span>'
