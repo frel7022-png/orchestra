@@ -1093,16 +1093,19 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 전역 CSS(app.py의 `div[data-testid="stColumn"] { flex:1 1 0 !important; }`)가 모든
     # st.columns() 비율을 강제로 동일폭으로 만들어버리므로, 이 줄만 st.container(key=...)로
     # 감싸서 app.py의 [class*="st-key-holdings_title_row"] 스코프 CSS로 비율을 다시 덮어씀.
-    _pnl = pd.to_numeric(df["손익"], errors="coerce")
-    _n_win, _n_loss = int((_pnl > 0).sum()), int((_pnl < 0).sum())
+    # 2026-09-16 사용자 요청으로 "손익(누적) 이익/손실 카운트"에서 "오늘 등락률 3구간"으로 변경 —
+    # 상승중(빨강, 등락률 +1% 이상) / 보합(회색, -1%~+1%) / 하락중(파랑, -1% 이하).
+    _chg = pd.to_numeric(df["등락률"], errors="coerce")
+    _n_up, _n_flat, _n_down = int((_chg >= 1).sum()), int(((_chg > -1) & (_chg < 1)).sum()), int((_chg <= -1).sum())
 
     with st.container(key="holdings_title_row"):
         col_title2, col_right = st.columns([5, 4])
         with col_title2:
             st.markdown(
                 f"##### Holdings <span style='font-size:12px;font-weight:400'>"
-                f"(<span style='color:{UP_COLOR}'>{_n_win}</span> / "
-                f"<span style='color:{DOWN_COLOR}'>{_n_loss}</span>)</span>",
+                f"(<span style='color:{UP_COLOR}'>{_n_up}</span> / "
+                f"<span style='color:{T['muted']}'>{_n_flat}</span> / "
+                f"<span style='color:{DOWN_COLOR}'>{_n_down}</span>)</span>",
                 unsafe_allow_html=True,
             )
         with col_right:
