@@ -766,6 +766,41 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 )
                 st.markdown(rows_html, unsafe_allow_html=True)
 
+    # ---- Watering Detect: 물타기 중인 종목이 "마지막으로 물탄 지점"보다 더 빠졌는지 감지
+    # (new1 전용, 2026-09-16). Up/Down이 "청산 후" 변화를 보듯, 이건 "보유 중" 물타기 종목이
+    # 마지막 매수가 대비 -1% 이상 더 밀렸는지를 본다 — 다음 물타기 판단 참고용. 이미 로드된
+    # holdings/tx로만 계산해 네이버 재조회가 필요 없다(새로고침 버튼 없음, 종목카드와 동일하게
+    # 매 렌더링마다 최신 현재가 기준으로 계산).
+    with st.expander("Watering Detect", expanded=False):
+        watering_rows = []
+        for _, hrow in df.iterrows():
+            name = hrow["종목명"]
+            pts = get_holding_trade_points(tx, name)
+            buys = pts[pts["구분"] == "매수"]
+            if len(buys) < 2:
+                continue
+            last_buy_price = float(buys.iloc[-1]["단가"])
+            if last_buy_price <= 0:
+                continue
+            cur_price = float(hrow["현재가"])
+            pct = (cur_price - last_buy_price) / last_buy_price * 100
+            if pct <= -1.0:
+                watering_rows.append({
+                    "종목명": name, "마지막매수일": buys.iloc[-1]["날짜"],
+                    "마지막매수가": last_buy_price, "현재가": cur_price, "pct": pct,
+                })
+        watering_rows.sort(key=lambda r: r["pct"])
+        if not watering_rows:
+            st.caption("마지막 물타기 지점보다 1% 이상 더 빠진 종목이 없습니다.")
+        else:
+            rows_html = "".join(
+                f'<div class="updown-row"><span class="name">{r["종목명"]}</span>'
+                f'<span class="pct" style="color:{DOWN_COLOR}">{r["pct"]:.1f}%</span>'
+                f'<span class="detail">{r["마지막매수가"]:,.0f} → {r["현재가"]:,.0f}</span></div>'
+                for r in watering_rows
+            )
+            st.markdown(rows_html, unsafe_allow_html=True)
+
     # ---- Fishing: 관심종목 리스트 (보유/거래와 무관, 순수 관찰용) ----
     # 최초가(처음 관측된 시점의 전일 종가, 영구 보존)/전일대비(네이버가 주는 정식 전일 종가
     # 대비 등락률)를 기준으로 ±3% 이상 움직인 종목만 걸러서 보여준다 — 자세한 건
