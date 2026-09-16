@@ -471,15 +471,15 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 1번째 박자: Total = 총아웃/총진입(open 포함) 비율. 2번째: §6-20 P&L Actions와 같은
     # 버킷 이름 그대로(FA/MA/MO) — FA=1회 진입 1회 나온 것(승률), MA=물타서 나온 것,
     # MO=나눠 팔아서 나온 것(MO_closed). 셋의 합이 총아웃과 정확히 일치(2026-09-16 사용자가
-    # "합이 안 맞는다"고 지적해서 MO도 추가해 검산되게 함). 평균일수는 FA 기준 부가정보.
+    # "합이 안 맞는다"고 지적해서 MO도 추가해 검산되게 함). 평균 보유일수는 2026-09-16
+    # 표시 제거(사용자 요청) — compute_fa_win_rate 자체의 avg_days 필드는 그대로 둠.
     _fa = compute_fa_win_rate(tx)
-    _fa_days = f" · 평균 {_fa['avg_days']:.0f}일" if _fa["avg_days"] is not None else ""
     _fa_out_pct = (_fa["n_out"] / _fa["total"] * 100.0) if _fa["total"] else 0.0
     _fa_html = (
         f'<div style="font-size:12px;color:{T["text"]};font-weight:600;margin-top:4px">'
         f'Total {_fa["n_out"]}/{_fa["total"]} ({_fa_out_pct:.0f}%)</div>'
         f'<div style="font-size:12px;color:{T["text"]};font-weight:600;margin-top:1px">'
-        f'FA {_fa["win"]}({_fa["win_rate"]:.0f}%) · MA {_fa["ma"]} · MO {_fa["mo_closed"]}{_fa_days}</div>'
+        f'FA {_fa["win"]}({_fa["win_rate"]:.0f}%) · MA {_fa["ma"]} · MO {_fa["mo_closed"]}</div>'
         if _fa["total"] else ""
     )
 
