@@ -17,6 +17,13 @@ from portfolio_core import (
 
 _VERDICT_COLOR = {"승": UP_COLOR, "패": DOWN_COLOR}  # "제외"는 회색(T["muted2"])
 
+# Top Traded 캐시 스키마 버전 — 하루 1회 고정(§6-32) 게이트는 "오늘 이미 새로고침했는지"만
+# 보므로, 같은 날 안에 이 캐시가 담는 필드 자체가 바뀌면(2026-09-16 당일 Selection
+# Index·평균 강도·정리성 거래 필터를 연달아 추가하며 실제로 겪음) 옛 스키마로 굳어진
+# 캐시가 그대로 남아 새 필드가 하루 종일 안 보이는 버그가 생긴다. 캐시에 이 버전이
+# 없거나 다르면 날짜가 같아도 강제로 다시 계산 — 스키마를 바꿀 때마다 이 숫자를 올릴 것.
+_TOP_TRADED_CACHE_VERSION = 2
+
 
 def _current_price_map(holdings: pd.DataFrame) -> dict:
     """종목명→현재가. 지금 보유 중이면 holdings의 현재가(이미 메인 "시세 새로고침"으로
@@ -44,8 +51,9 @@ def _refresh_top_traded(tx, holdings) -> None:
     이 함수가 실제로 아끼는 비용."""
     cache = st.session_state.get("top_traded_cache")
     today = today_kst_str()
-    if cache and cache.get("as_of_date") == today:
-        return  # 오늘 이미 고정됨 — 새로 조회 안 함(부하 절약)
+    if (cache and cache.get("as_of_date") == today
+            and cache.get("cache_version") == _TOP_TRADED_CACHE_VERSION):
+        return  # 오늘 이미 고정됨 + 스키마도 최신 — 새로 조회 안 함(부하 절약)
 
     top = top_traded_stocks(tx, top_n=None)
     names = list(top["종목명"]) if not top.empty else []
@@ -55,6 +63,7 @@ def _refresh_top_traded(tx, holdings) -> None:
         price_map.update(get_current_prices_for_names(missing))
     sel = selection_index(tx, current_prices=price_map)
     st.session_state["top_traded_cache"] = {
+        "cache_version": _TOP_TRADED_CACHE_VERSION,
         "as_of_date": today, "checked_at": now_kst_str(),
         "rows": sel["rows"], "wins": sel["wins"], "losses": sel["losses"],
         "excluded": sel["excluded"], "decided": sel["decided"],
