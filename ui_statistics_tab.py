@@ -23,12 +23,15 @@ from portfolio_core import (
 _TOP_TRADED_PAGE_SIZE = 20
 
 
-def _render_bracket_bars(dist, T: dict, color: str) -> None:
-    max_pct = max(dist["비율"].max(), 1.0)
-    rows_html = []
-    for _, r in dist.iterrows():
+def _render_bracket_bars_paired(dist_sold, dist_held, T: dict) -> None:
+    """구간마다 빨강(매도 이력) 막대 바로 밑에 파랑(현재 보유) 막대를 짝지어 보여준다
+    (2026-09-16 사용자 지시: "둘이 비교되게 빨간 막대 밑에 파란 막대가 낫지 않을까") —
+    두 분포를 한 스케일(max_pct)로 같이 정규화해서 막대 길이가 색끼리도 바로 비교되게 함."""
+    max_pct = max(dist_sold["비율"].max(), dist_held["비율"].max(), 1.0)
+
+    def _bar(r, color):
         width_pct = max(min(r["비율"] / max_pct * 100, 100), 0) if r["건수"] else 0
-        rows_html.append(
+        return (
             '<div class="sector-bar-row">'
             f'<div class="sector-bar-label">{r["구간"]}</div>'
             '<div class="sector-bar-track">'
@@ -38,6 +41,14 @@ def _render_bracket_bars(dist, T: dict, color: str) -> None:
             f'<span class="delta" style="color:{T["muted"]}">({r["비율"]:.0f}%)</span></div>'
             '</div>'
         )
+
+    rows_html = []
+    for (_, rs), (_, rh) in zip(dist_sold.iterrows(), dist_held.iterrows()):
+        rows_html.append(
+            f'<div style="margin-bottom:10px">{_bar(rs, UP_COLOR)}'
+            f'<div style="margin-top:2px">{_bar(rh, DOWN_COLOR)}</div></div>'
+        )
+    st.caption("빨강 매도 이력 · 파랑 현재 보유")
     st.markdown(f'<div class="sector-bar-list">{"".join(rows_html)}</div>', unsafe_allow_html=True)
 
 
@@ -70,16 +81,13 @@ def _render_top_traded_cards(rows, T: dict) -> None:
 def render_statistics_tab(tx, holdings, T):
     st.markdown("##### Price Brackets")
     dist = price_bracket_distribution(tx)
-    if int(dist["건수"].sum()) == 0:
+    holdings_dist = holdings_price_bracket_distribution(holdings)
+    if int(dist["건수"].sum()) == 0 and int(holdings_dist["건수"].sum()) == 0:
         st.caption("매도 완료된 사이클이 아직 없어요.")
     else:
-        _render_bracket_bars(dist, T, UP_COLOR)
-
-    # 지금 계좌 분포(평단가 기준, 파랑) — 위 빨간 막대(그동안의 매매 성향)와 같은 구간으로
-    # "지금 한쪽으로 쏠려있지 않은지"를 나란히 비교(2026-09-16 사용자 지시).
-    holdings_dist = holdings_price_bracket_distribution(holdings)
-    if int(holdings_dist["건수"].sum()) > 0:
-        _render_bracket_bars(holdings_dist, T, DOWN_COLOR)
+        # 구간마다 빨강(매도 이력) 막대 밑에 파랑(현재 보유) 막대를 짝지어 — 과거 성향과
+        # 지금 실제 분포가 한쪽으로 안 쏠렸는지 바로 비교되게(2026-09-16 사용자 지시).
+        _render_bracket_bars_paired(dist, holdings_dist, T)
 
     with st.expander("Top Traded", expanded=False):
         top = top_traded_stocks(tx, top_n=None)
