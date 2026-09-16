@@ -21,7 +21,7 @@ from portfolio_core import (
     compute_link_candidates, load_link_watch_log, link_watch_status, fetch_quotes,
     load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
-    load_claude_notes, seed_engine_series,
+    load_claude_notes, seed_engine_series, compute_fa_win_rate,
 )
 
 _CLAUDE_ORANGE = "#D97757"   # Claude 클레이 오렌지 — "Claude's Read" 마크·라벨·채운 별
@@ -463,6 +463,18 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     sell_total_amt = (pd.to_numeric(sell_tx["수량"], errors="coerce") * pd.to_numeric(sell_tx["단가"], errors="coerce")).sum()
     total_trade_count = len(today_tx)
 
+    # ---- FA 승률(2026-09-16 사용자 정의) — Fishing/Up-Down 기반 진입 판단이 "한 번 사서
+    # 한 번에 다 파는"(FA) 것만으로 끝났는지 비율. 물타서 나왔든(MA), 나눠 팔았든(MO), 아직도
+    # 들고 있든(HOLD) 전부 실패로 센다 — 손익이 아니라 "최초 판단의 정확도"를 재는 지표라서
+    # 일일거래 요약(daily-trade-box)에 같이 둠. compute_fa_win_rate() 참고.
+    _fa = compute_fa_win_rate(tx)
+    _fa_days = f" 평균일수 {_fa['avg_days']:.0f}일" if _fa["avg_days"] is not None else ""
+    _fa_html = (
+        f'<div style="font-size:12px;color:{T["text"]};font-weight:600;margin-top:4px">'
+        f'{_fa["win"]}/{_fa["total"]} ({_fa["win_rate"]:.0f}%){_fa_days}</div>'
+        if _fa["total"] else ""
+    )
+
     daily_trade_html = f"""
     <div class="daily-trade-box">
         <div class="daily-trade-count">일일거래 총 {total_trade_count}회
@@ -471,7 +483,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             <span style="color:{UP_COLOR}">매수</span> <b>{buy_total_amt:,.0f}원</b>
             &nbsp;&nbsp;·&nbsp;&nbsp;
             <span style="color:{DOWN_COLOR}">매도</span> <b>{sell_total_amt:,.0f}원</b></div>
-    </div>
+        {_fa_html}</div>
     """
 
     # ---- 요약 카드: 평가손익+그리드 (A) → Seed Engine 토글(§6-27, Claude's Read식 작은 글씨) →

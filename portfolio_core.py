@@ -2051,8 +2051,9 @@ def get_holding_avg_price_path(tx: pd.DataFrame, name: str) -> pd.DataFrame:
 # ------------------------------------------------------------------ #
 def _all_cycles(tx: pd.DataFrame) -> list[dict]:
     """모든 종목의 모든 사이클(진입 ~ 전량청산, 청산 안 됐으면 open)을 리스트로.
-    사이클 dict: 종목, n_buy, n_sell, n_partial, first_buy_qty, first_buy_px,
-    buy_amt(Σ매수 수량×단가), sell_amt(Σ매도 수량×단가), realized(Σ실현손익), closed."""
+    사이클 dict: 종목, n_buy, n_sell, n_partial, first_buy_qty, first_buy_px, first_buy_date,
+    close_date(전량청산된 마지막 매도일, closed=False면 None), buy_amt(Σ매수 수량×단가),
+    sell_amt(Σ매도 수량×단가), realized(Σ실현손익), closed."""
     if tx is None or tx.empty:
         return []
     t = tx.copy()
@@ -2071,11 +2072,13 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
         for _, r in g.iterrows():
             if cur is None:
                 cur = {"종목": name, "n_buy": 0, "n_sell": 0, "n_partial": 0,
-                       "first_buy_qty": 0.0, "first_buy_px": 0.0,
+                       "first_buy_qty": 0.0, "first_buy_px": 0.0, "first_buy_date": None,
+                       "close_date": None,
                        "buy_amt": 0.0, "sell_amt": 0.0, "realized": 0.0, "closed": False}
             if r["구분"] == "매수":
                 if cur["n_buy"] == 0:
                     cur["first_buy_qty"], cur["first_buy_px"] = float(r["수량"]), float(r["단가"])
+                    cur["first_buy_date"] = r["날짜"]
                 cur["n_buy"] += 1
                 cur["buy_amt"] += r["수량"] * r["단가"]
                 qty += r["수량"]
@@ -2086,6 +2089,7 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
                 qty -= r["수량"]
                 if qty <= 1e-9:
                     cur["closed"] = True
+                    cur["close_date"] = r["날짜"]
                     out.append(cur)
                     cur, qty = None, 0.0
                 else:
@@ -2187,6 +2191,34 @@ def compute_pnl_actions(tx: pd.DataFrame, holdings: pd.DataFrame) -> dict:
     }
 
     return {"total": total, "baskets": baskets, "status": status, "watering": watering_detail}
+
+
+def compute_fa_win_rate(tx: pd.DataFrame) -> dict:
+    """Fishing/Up-Down 기반 진입 판단이 "한 번 사서 한 번에 다 파는"(FA) 것만으로 끝났는지를
+    승률로 본다(2026-09-16 사용자 정의) — 물을 타야 했든(MA), 나눠 팔았든(MO), 아직도 들고
+    있든(HOLD, 물타기 중이든 단발 보유든 전부) **FA가 아니면 전부 실패로 센다.** "처음 판단이
+    맞았으면 물 안 타고 한 번에 끝났을 것"이라는 전제 — 즉 이 승률은 손익이 아니라 **최초
+    진입 시점의 판단 정확도**를 재는 지표. 반환: {"win": FA 사이클 수, "total": 전체 사이클 수,
+    "win_rate": %, "avg_days": FA 사이클의 평균 보유일수(달력일, 없으면 None)}."""
+    cycles = _all_cycles(tx)
+    if not cycles:
+        return {"win": 0, "total": 0, "win_rate": 0.0, "avg_days": None}
+    for c in cycles:
+        c["bucket"] = _cycle_bucket(c)
+    fa = [c for c in cycles if c["bucket"] == "FA"]
+    total = len(cycles)
+    win = len(fa)
+    days = []
+    for c in fa:
+        if c.get("first_buy_date") and c.get("close_date"):
+            try:
+                d = (pd.Timestamp(c["close_date"]) - pd.Timestamp(c["first_buy_date"])).days
+                days.append(max(d, 0))
+            except (ValueError, TypeError):
+                pass
+    avg_days = (sum(days) / len(days)) if days else None
+    return {"win": win, "total": total,
+            "win_rate": (win / total * 100.0) if total else 0.0, "avg_days": avg_days}
 
 
 # ------------------------------------------------------------------ #

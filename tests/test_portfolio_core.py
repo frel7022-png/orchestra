@@ -1412,6 +1412,37 @@ def test_pnl_actions_buckets_and_watering():
     assert wd["absorbed_pp"] == pytest.approx(17.5)                      # -12.5 - (-30)
 
 
+def test_compute_fa_win_rate_counts_only_fa_as_win():
+    """2026-09-16 사용자 정의: 승률 = FA(한 번 사서 한 번에 전량청산) / 전체 사이클.
+    물타서 나온 것(MA)·부분매도(MO)·아직 보유 중(HOLD)은 전부 실패로 센다. 위
+    test_pnl_actions_buckets_and_watering과 같은 tx로 A=FA·B=MA·C/D=MO·E=HOLD 5사이클
+    구성 — 승리는 A 하나뿐(1/5=20%), 평균 보유일수는 A의 1/5~1/10 = 5일."""
+    tx = pd.DataFrame([
+        _tx_row("a1", "2026-01-05", "A", "매수", 10, 100),
+        _tx_row("a2", "2026-01-10", "A", "매도", 10, 110, 실현손익=100),
+        _tx_row("b1", "2026-01-05", "B", "매수", 10, 100),
+        _tx_row("b2", "2026-01-06", "B", "매수", 10, 80),
+        _tx_row("b3", "2026-01-12", "B", "매도", 20, 95, 실현손익=200),
+        _tx_row("c1", "2026-01-05", "C", "매수", 10, 100),
+        _tx_row("c2", "2026-01-11", "C", "매도", 4, 120, 실현손익=50),
+        _tx_row("d1", "2026-01-05", "D", "매수", 10, 100),
+        _tx_row("d2", "2026-01-09", "D", "매도", 5, 110, 실현손익=30),
+        _tx_row("d3", "2026-01-13", "D", "매도", 5, 115, 실현손익=40),
+        _tx_row("e1", "2026-01-05", "E", "매수", 10, 100),
+        _tx_row("e2", "2026-01-07", "E", "매수", 10, 60),
+    ])
+    r = core.compute_fa_win_rate(tx)
+    assert r["total"] == 5
+    assert r["win"] == 1
+    assert r["win_rate"] == pytest.approx(20.0)
+    assert r["avg_days"] == pytest.approx(5.0)
+
+
+def test_compute_fa_win_rate_empty_transactions():
+    empty = pd.DataFrame(columns=["날짜", "종목명", "구분", "수량", "단가", "실현손익"])
+    assert core.compute_fa_win_rate(empty) == {"win": 0, "total": 0, "win_rate": 0.0, "avg_days": None}
+
+
 def test_compute_index_vs_account_caps_me_to_index_coverage():
     """index_hist가 asset_hist보다 뒤처지면(매매일지 반영으로 asset엔 오늘 행이 생겼는데
     index_history엔 아직 없음) 그 앞선 asset 행의 벤치당일이 0으로 계산돼 "혼합지수 당일
