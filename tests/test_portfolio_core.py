@@ -1398,6 +1398,46 @@ def test_seed_engine_series_bench_cum_scales_to_closed_cycle_buy_amount(monkeypa
     assert s.iloc[1]["무연료예수금"] == pytest.approx(99_000.0)
 
 
+def test_virtual_unrealized_on_open_cycle_scales_to_buy_amount():
+    """가상미실현손익(2026-09-17, Pit Stop 3차 개정) — 아직 청산 안 된 사이클이 벤치를
+    따라갔다면, 평가일(d) 기준 얼마일지. buy_amt(10,000)×벤치수익률(+20%) = +2,000."""
+    tx = pd.DataFrame([
+        {"id": "1", "날짜": "2026-01-05", "종목명": "A", "구분": "매수", "수량": 10, "단가": 1000, "실현손익": "", "메모": "", "정산반영": True},
+    ])
+    cycles = core._all_cycles(tx)
+    bench_cum = {"2026-01-05": 0.0, "2026-01-10": 0.20}
+    assert core.virtual_unrealized_on(cycles, bench_cum, "2026-01-10") == pytest.approx(2_000.0)
+
+
+def test_virtual_unrealized_on_excludes_cycles_already_closed_by_eval_date():
+    """d 시점에 이미 청산된 사이클은 가상미실현손익 0 — virtual_realized 쪽에서 이미 처리하므로
+    중복 계산 방지."""
+    tx = pd.DataFrame([
+        {"id": "1", "날짜": "2026-01-05", "종목명": "A", "구분": "매수", "수량": 10, "단가": 1000, "실현손익": "", "메모": "", "정산반영": True},
+        {"id": "2", "날짜": "2026-01-07", "종목명": "A", "구분": "매도", "수량": 10, "단가": 1500, "실현손익": "", "메모": "", "정산반영": True},
+    ])
+    cycles = core._all_cycles(tx)
+    bench_cum = {"2026-01-05": 0.0, "2026-01-10": 0.20}
+    assert core.virtual_unrealized_on(cycles, bench_cum, "2026-01-10") == 0.0
+
+
+def test_seed_engine_series_subtracts_my_unrealized_loss_when_worse_than_flat_bench(monkeypatch):
+    """지수리필(Index Refill) = 예수금 − 실현손익 + 가상실현 + 가상미실현 − 내_미실현손익.
+    벤치가 그대로(0%)인데 내 보유분이 실제로 -5,000 손실이면, Refill−IndexRefill = -5,000
+    (벤치 대비 내가 그만큼 못했다는 뜻) — asset_hist로 내 실제 평가손익을 반영."""
+    monkeypatch.setattr(core, "load_code_cache", lambda: {})
+    monkeypatch.setattr(core, "load_sector_cache", lambda: {})
+    tx = pd.DataFrame([
+        {"id": "1", "날짜": "2026-01-05", "종목명": "A", "구분": "매수", "수량": 10, "단가": 1000, "실현손익": "", "메모": "", "정산반영": True},
+    ])
+    bench_cum = {"2026-01-05": 0.0}
+    # 총자산 95,000 = 예수금 90,000 + 실제 평가금액 5,000(원가 10,000 대비 -5,000 미실현손실)
+    asset_hist = pd.DataFrame([{"날짜": "2026-01-05", "총자산": 95_000.0}])
+    s = core.seed_engine_series(tx, 100_000.0, 0.0, asset_hist=asset_hist, bench_cum=bench_cum)
+    assert s.iloc[0]["예수금"] == pytest.approx(90_000.0)
+    assert s.iloc[0]["무연료예수금"] == pytest.approx(95_000.0)  # 90,000 - 0 + 0 + 0 - (-5,000)
+
+
 def test_blended_benchmark_cum_weights_kospi_and_kosdaq():
     index_cum = pd.DataFrame({
         "날짜": ["2026-01-05", "2026-01-06"],

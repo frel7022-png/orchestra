@@ -1522,25 +1522,71 @@ manual/                           # report/와 성격이 다름 — **살아있�
     냄). 예수금 2,913,113원 → 새 No Refill ≈ 2,913,113 − 457,182 − 104,095 ≈ 2,351,836원,
     **Surplus ≈ +23.9%**(1차 "초기자본 전체" 시도의 +70%는 안 굴린 현금까지 벌점 받아서
     부풀려진 값이었음 — 이 +23.9%가 "예수금 대 예수금"으로 정확히 비교한 진짜 알파 수치).
+- **3차 개정 + 개명 — "No Refill" → "지수 리필"(Index Refill), 실현뿐 아니라 미실현까지
+  포함(2026-09-17)**: 2차 개정(위)은 **청산된 사이클만** 벤치와 비교해서, "지금 보유 중인
+  종목이 벤치보다 잘하고 있나"는 전혀 안 봤다 — 사용자 지적: "핏 스탑이 주가 하락(그리고
+  상승)을 실시간으로 반영해야 한다." 사용자가 직접 예시 두 개(하락장·상승장)로 검산해
+  최종 공식을 도출함:
+
+      지수리필(t) = 예수금(t) − 실현손익(t) + 가상실현손익(t) + 가상미실현손익(t) − 내_미실현손익(t)
+
+  이렇게 두면 `Orchestra Refill − Index Refill = (내 실현손익+미실현손익) − (벤치 가상실현+
+  가상미실현)` — **"같은 돈을 같은 타이밍에 넣었다면"이라는 전제 아래 내 종목선택 실력
+  전체(실현+미실현)를 벤치와 직접 비교한 값**이 됨.
+  - **핵심 통찰(사용자, 500만원 예시로 도출)**: 반사실의 앵커를 "매입액(원가)"이 아니라
+    **"주식자산 가치"**로 잡아야 한다 — 지수(벤치) 쪽의 주식가치를 내 실제 주식가치에
+    강제로 맞추고, 그 차액을 예수금이 자동으로 흡수하게 만들면, 지수 쪽이 시장을 따라
+    자동으로 오르내리는 진짜 대조군이 된다. 하락장에서도, 상승장에서도(내가 벤치보다
+    일찍 팔아 덜 먹었으면 Surplus가 마이너스로 나옴) 양방향 검증됨.
+  - **이름 변경 이유**: "No Refill"은 "익절 안 했으면"이라는 한쪽 방향(항상 더 적을 거라는
+    뉘앙스) 이름인데, 이제 **지수가 나보다 잘하면 오히려 지수 쪽 예수금이 더 커질 수도
+    있는 양방향 지표**가 됐다 — 그래서 "**오케스트라 리필**(Orchestra Refill, 내 실제
+    예수금) vs **지수 리필**(Index Refill, 같은 돈이 지수를 따라갔다면의 예수금)"로 개명.
+    "무연료예수금"이라는 내부 컬럼명·표시용 "No Refill" 문구는 하위호환으로 값 계산
+    로직은 그대로 두고 UI 라벨만 바꿈.
+  - `portfolio_core.virtual_unrealized_on(cycles, bench_cum, d)` 신설 — d 시점에 아직
+    청산 안 된(열려있는) 사이클들이 벤치를 따라갔다면 d 기준 얼마의 가상 미실현손익을
+    냈을지 합산(`virtual_realized_cum_by_close_date`의 "열린 사이클" 버전). "열려있다" =
+    최초매수일 ≤ d 이고 (아직 안 팔렸거나 청산일이 d보다 나중) — 청산된 사이클은 제외해
+    `virtual_realized_cum_by_close_date`와 중복 계산 안 함.
+  - **내_미실현손익(t)**은 새 계산 없이 기존 데이터로 뽑음: `asset_hist`(§1-5, 매일 쌓이는
+    총자산 스냅샷)의 그날 총자산에서 그날 예수금·총매입(원가)을 빼면 나옴 — 별도 과거
+    시세 재조회 불필요. `asset_hist`에 그 날짜가 없으면(근사 폴백, `총자산=예수금+원가`)
+    U=0으로 자연스럽게 축소.
+  - **알려진 근사(2차 개정과 같은 성격)**: 열린 사이클의 `buy_amt`는 `_all_cycles`가
+    반환하는 **최종(오늘 기준) 누적 매수액**을 쓴다 — 물을 여러 번 탄 사이클이면, 차트의
+    이른 과거 날짜에서도 아직 안 산 미래분까지 포함된 채로 계산돼 그 시점 정확도가 살짝
+    떨어질 수 있음(오늘/최신 값은 그 시점까지 모든 매수가 이미 일어났으므로 정확). 2차
+    개정의 "사이클 내부 부분매도 타이밍 근사"와 같은 급의 근사로 수용.
+  - **2026-09-17 실측**: Orchestra Refill 3,131,736원, **Index Refill 2,677,894원**(2차
+    개정치 2,546,231원보다 약 13만원 오름 — 지금 보유 중인 종목들이 순수 벤치 추종보다
+    약간 못한 몫이 반영된 것), **Surplus +16.9%**(2차 개정치 +23.0%보다 낮아짐 — 청산분만
+    보던 예전엔 "미실현으로 깔린 부진"이 안 보였는데, 이번엔 그것까지 포함해 더 정직한
+    수치가 됨).
 - **UI**(`ui_portfolio_tab.py`): plotly x-unified hover, **선 4개, 차트만(밑 설명줄 없음)**.
   §6-17 iframe(`components.html` + `responsive`) 렌더 — expander 안 `st.plotly_chart` 폭 0 회피.
   좌우 여백 최소화(`margin l=30 r=36`, 왼쪽 축 `tickformat="~s"` = "2M/10M").
   - **Cost Basis** (빨강 `UP_COLOR`, ↑여야 정상) = 총매입.
-  - **Refill** (**녹색 `NEW_COLOR`**, 평행이어야 정상) = 실제 예수금(씨앗이 채워준 것).
-  - **No Refill** (**파랑 `DOWN_COLOR`, 실선**, Refill보다 더 가파르게 하락) = 위 새 정의(매도
-    사이클마다 실제 투입액을 벤치 반사실로 치환) 기준 가상 현금. **녹−파 간격 = 내 알파
-    (실제 실현손익 − 벤치가 냈을 가상 실현손익)가 쌓아준 연료**.
-  - **Surplus** (**진노랑 `#c99a00`, 별도 선 + 우측 % y축**) = `(Refill ÷ No Refill − 1) × 100` =
-    "연료가 몇 % 더 있나"(손절 많거나 벤치보다 못하면 구조상 음수 가능). **우측 축 0% 중앙, ±30 고정**
-    (peak>25면 ±40…), 틱 `[-30…30]` 10 간격 — **양수 틱 빨강 · 음수 틱 파랑 · 0 회색**, zeroline 표시.
-    No Refill≈0이면 발산 → 300% 소프트캡(축에서 잘림). hover `Surplus +N% 더 있음`.
+  - **Orchestra Refill** (**녹색 `NEW_COLOR`**) = 실제 예수금(씨앗이 채워준 것).
+  - **Index Refill** (**파랑 `DOWN_COLOR`, 실선**) = 위 3차 개정 공식(청산분+보유분 다 반영)
+    기준 가상 현금. **녹−파 간격 = 내 알파(내 실현+미실현 총손익이 벤치 대비 더 벌어준
+    몫)가 쌓아준 연료** — 방향에 따라 파랑이 녹색보다 위로 갈 수도 있음(내가 벤치보다
+    못했을 때, 양방향 지표).
+  - **Surplus** (**진노랑 `#c99a00`, 별도 선 + 우측 % y축**) = `(Orchestra Refill ÷ Index Refill
+    − 1) × 100` = "연료가 몇 % 더/덜 있나"(내가 벤치보다 못하면 마이너스 가능). **우측 축
+    0% 중앙, ±30 고정**(peak>25면 ±40…), 틱 `[-30…30]` 10 간격 — **양수 틱 빨강 · 음수 틱
+    파랑 · 0 회색**, zeroline 표시. Index Refill≈0이면 발산 → 300% 소프트캡(축에서 잘림).
+    hover `Surplus +N% 더 있음`.
   - hover(원 선 3개): `{값}원 (%)` — % = 총자산 대비.
-- 회귀 테스트 `test_seed_engine_series_tracks_cash_and_cost`(bench_cum 없을 때 예전 동작 그대로),
-  `test_virtual_realized_cum_by_close_date_scales_to_actual_buy_amount`(매도 사이클의 buy_amt·
-  보유기간 기준 가상실현손익), `test_virtual_realized_cum_by_close_date_ignores_open_cycles`
-  (열린 사이클 제외), `test_seed_engine_series_bench_cum_scales_to_closed_cycle_buy_amount`
-  (seed_engine_series에 최종 연결), `test_blended_benchmark_cum_*`(가중합·코스피단독 폴백·
-  빈 입력 3종).
+- 회귀 테스트: `test_seed_engine_series_tracks_cash_and_cost`(bench_cum 없을 때 예전 동작
+  그대로), `test_virtual_realized_cum_by_close_date_scales_to_actual_buy_amount`(매도
+  사이클의 buy_amt·보유기간 기준 가상실현손익), `test_virtual_realized_cum_by_close_date_
+  ignores_open_cycles`(열린 사이클 제외), `test_seed_engine_series_bench_cum_scales_to_
+  closed_cycle_buy_amount`(seed_engine_series에 최종 연결), `test_blended_benchmark_cum_*`
+  (가중합·코스피단독 폴백·빈 입력 3종), `test_virtual_unrealized_on_open_cycle_scales_to_
+  buy_amount`/`test_virtual_unrealized_on_excludes_cycles_already_closed_by_eval_date`
+  (3차 개정, 열린 사이클 가상미실현손익), `test_seed_engine_series_subtracts_my_unrealized_
+  loss_when_worse_than_flat_bench`(내 미실현손익이 지수리필에 정확히 반영되는지).
 - **new1 전용** (전략 개념 자체가 new1 밸류 계좌 것 — meritz는 성격이 다름).
 
 ### 6-28. "Link" (연결고리) — 가격·외인비중 다이버전스 감시목록 (2026-09-11, new1 전용)

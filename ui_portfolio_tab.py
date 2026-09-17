@@ -649,12 +649,14 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         </div>
         """, unsafe_allow_html=True)
 
-        # ---- Pit Stop (§6-27, 구 Seed Engine): 빨강 Cost Basis↑ · 녹색 Refill(예수금, 씨앗이 채운
-        #      것) 평행 · 파랑 No Refill(초기자본을 전부 벤치(삼성·하이닉스 제외 혼합지수)에
-        #      넣어뒀으면 남았을 예수금, 2026-09-16 개정 — 실제 투입액만 비교하는 대신 "보통
-        #      사람이면 넣었을 초기자본 전체"를 반사실 기준으로 씀, §6-27 참고). 녹−파 간격 =
-        #      내 알파(실현손익이 벤치 대비 더 벌어준 몫)가 쌓아준 연료. 진노랑 Surplus(우측 %
-        #      축, ±30 고정, +빨강/−파랑) = (Refill÷No Refill − 1)×100. ----
+        # ---- Pit Stop (§6-27, 구 Seed Engine): 빨강 Cost Basis↑ · 녹색 Orchestra Refill(예수금,
+        #      씨앗이 채운 것) · 파랑 Index Refill(같은 돈을 같은 타이밍에 넣었는데 내 종목 대신
+        #      벤치(삼성·하이닉스 제외 혼합지수)를 따라갔다면 지금 예수금이 얼마일지, 2026-09-17
+        #      3차 개정 — 청산분+보유분(실현+미실현) 다 포함, §6-27 참고. 예전 "No Refill"이라는
+        #      이름은 지수가 나보다 잘하면 오히려 더 커질 수도 있는 양방향 지표라 안 맞아서
+        #      "오케스트라 리필 vs 지수 리필"로 개명함). 녹−파 간격 = 내 알파(내 실현+미실현
+        #      총손익이 벤치 대비 더 벌어준 몫)가 쌓아준 연료. 진노랑 Surplus(우측 % 축, ±30
+        #      고정, +빨강/−파랑) = (Orchestra Refill÷Index Refill − 1)×100. ----
         with st.container(key="seed_engine_wrap"):
             with st.expander("⛽ Pit Stop", expanded=False):
                 _bench_cum = blended_benchmark_cum(_iva_s["index"], _wk) if _iva_s else None
@@ -669,8 +671,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         return (_se[col] / _ta * 100).fillna(0).tolist()
 
                     _FUEL_C = "#c99a00"  # 진한 노란색
-                    # Surplus = Refill÷No Refill − 1 (%). 손절 많으면 음수 가능. No Refill≈0이면 발산
-                    # → 300% 소프트캡(축에서 잘림). 우측 축은 0% 중앙, ±30 고정(peak가 25 넘으면 ±40).
+                    # Surplus = Orchestra Refill÷Index Refill − 1 (%). 내가 벤치보다 못하면 음수
+                    # 가능(2026-09-17 상승장 예시로 검증됨). Index Refill≈0이면 발산 → 300%
+                    # 소프트캡(축에서 잘림). 우측 축은 0% 중앙, ±30 고정(peak가 25 넘으면 ±40).
                     _sp = [min((wf / wof - 1.0) * 100.0, 300.0) if wof > 1e-9 else 300.0
                            for wf, wof in zip(_se["예수금"], _se["무연료예수금"])]
                     _peak = max((abs(v) for v in _sp if abs(v) < 150), default=16.0)
@@ -690,13 +693,13 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         line=dict(color=UP_COLOR, width=2), customdata=_rat("총매입"),
                         hovertemplate="Cost Basis %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
                     fig_se.add_trace(go.Scatter(
-                        x=_se["날짜"], y=_se["예수금"], name="Refill", mode="lines",
+                        x=_se["날짜"], y=_se["예수금"], name="Orchestra Refill", mode="lines",
                         line=dict(color=NEW_COLOR, width=2), customdata=_rat("예수금"),
-                        hovertemplate="Refill %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+                        hovertemplate="Orchestra Refill %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
                     fig_se.add_trace(go.Scatter(
-                        x=_se["날짜"], y=_se["무연료예수금"], name="No Refill", mode="lines",
+                        x=_se["날짜"], y=_se["무연료예수금"], name="Index Refill", mode="lines",
                         line=dict(color=DOWN_COLOR, width=1.8), customdata=_rat("무연료예수금"),
-                        hovertemplate="No Refill %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
+                        hovertemplate="Index Refill %{y:,.0f}원 (%{customdata:.0f}%)<extra></extra>"))
                     fig_se.add_trace(go.Scatter(
                         x=_se["날짜"], y=_sp, name="Surplus", mode="lines", yaxis="y2",
                         line=dict(color=_FUEL_C, width=1.6),

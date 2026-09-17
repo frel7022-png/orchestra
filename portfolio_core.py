@@ -2620,6 +2620,29 @@ def virtual_realized_cum_by_close_date(tx: pd.DataFrame, bench_cum: dict | None)
     return out
 
 
+def virtual_unrealized_on(cycles: list[dict], bench_cum: dict | None, d: str) -> float:
+    """d 시점에 아직 청산 안 된(열려있는) 사이클들이 벤치를 따라갔다면, d 기준으로 얼마의
+    가상 미실현손익을 냈을지 합산 — `virtual_realized_cum_by_close_date`의 "열린 사이클"
+    버전(2026-09-17, Pit Stop 3차 개정). "열려있다" = 최초매수일 ≤ d 이고, (아직 한 번도
+    안 팔렸거나, 청산일이 d보다 나중). 청산된(d 시점 기준) 사이클은 여기서 제외 —
+    `virtual_realized_cum_by_close_date` 쪽에서 이미 처리하므로 중복 계산 방지."""
+    if not bench_cum:
+        return 0.0
+    b_d = _bench_cum_on(bench_cum, d)
+    total = 0.0
+    for c in cycles:
+        fbd = c.get("first_buy_date")
+        if not fbd or str(fbd) > d:
+            continue
+        cd = c.get("close_date")
+        if c.get("closed") and cd and str(cd) <= d:
+            continue
+        b0 = _bench_cum_on(bench_cum, str(fbd))
+        bench_ret = (1.0 + b_d) / (1.0 + b0) - 1.0 if (1.0 + b0) != 0 else 0.0
+        total += float(c["buy_amt"]) * bench_ret
+    return total
+
+
 def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float,
                        asset_hist: pd.DataFrame | None = None,
                        bench_cum: dict | None = None) -> pd.DataFrame:
@@ -2628,18 +2651,30 @@ def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float
     확대를 따라잡으며 예수금 버퍼를 유지한다는 뜻. 예수금 선이 같이 처지면 씨앗보다 배치가 빠름(경고).
     `_cash_by_date`와 같은 재생 루프(§1-1)라 예수금이 rebuild_portfolio_*와 안 어긋난다.
 
-    무연료예수금(No Refill, 2026-09-16 개정) = 예수금 − 그날까지 누적 실현손익 + 그날까지
-    누적된 "벤치 기준 가상실현손익"(`virtual_realized_cum_by_close_date`, 매도된 사이클마다
-    실제 투입금액만큼만 벤치 수익률 적용). "실현손익 대신, 실제로 팔아서 현금화했던 그 돈이
-    벤치(보통 삼성·하이닉스 제외 혼합지수)를 따라갔다면 남았을 예수금"이라는 뜻.
-    **초기자본 전체가 아니라 사이클별 실제 투입 금액만 반사실 기준으로 삼는다**(2026-09-16
-    사용자 지적 — 안 굴리고 남겨둔 현금은 실제로도 가상으로도 시장 노출이 없어야 "예수금 대
-    예수금" 비교가 맞고, 미실현 손익은 예수금에 안 닿아야 한다. 처음엔 초기자본 전체를 쓰는
-    안을 시도했는데, 그러면 한 번도 안 굴린 현금 몫까지 손실로 잡혀 비교가 왜곡됨을 확인함).
-    `bench_cum`은 날짜(str)→누적수익률(소수) dict(`blended_benchmark_cum` 참고) — 없으면
-    가상실현손익이 전부 0이 돼 예전 정의(실현손익 0% 가정)로 자연스럽게 축소된다.
-    반환 DataFrame(거래가 있었던 날짜만): 날짜, 총매입(=Σ수량×평단가), 예수금(=W Fuel), 무연료예수금
-    (W/o Fuel), 총자산, 예수금비중(%)."""
+    **"지수 리필"(Index Refill, 구 No Refill/무연료예수금, 2026-09-17 3차 개정) — 같은
+    돈을 같은 타이밍에 넣었는데, 내 종목 선택 대신 벤치(보통 삼성·하이닉스 제외 혼합지수)를
+    따라갔다면 지금 예수금이 얼마일지**를 계산한 DataFrame 컬럼(이름은 하위호환으로
+    "무연료예수금" 그대로 둠). 공식:
+
+        지수리필(t) = 예수금(t) − 실현손익(t) + 가상실현손익(t) + 가상미실현손익(t) − 내_미실현손익(t)
+
+    이렇게 두면 `Refill(예수금) − 지수리필 = (내 실현손익+미실현손익) − (벤치 가상실현+가상미실현)`
+    — 즉 **"같은 돈, 같은 타이밍"이라는 전제 아래 내 종목선택 실력 전체(실현+미실현)를
+    벤치와 직접 비교한 값**이 된다. 청산된 사이클은 `virtual_realized_cum_by_close_date`
+    (실제 투입금액×그 보유기간 벤치수익률), 아직 열려있는(보유 중) 사이클은
+    `virtual_unrealized_on`(같은 방식, 청산일 대신 평가일 d까지)으로 각각 계산 — 안 굴린
+    현금은 여전히 어느 쪽 계산에도 안 들어간다(2026-09-16 확정 원칙 그대로 유지).
+
+    **경위(2026-09-17, 세 번째 개정)**: 2차 개정(청산분만 벤치 반사실 적용)은 "이미 판
+    것"만 봐서, 지금 보유 중인 종목이 벤치보다 잘하는지/못하는지는 전혀 반영을 못 했다 —
+    사용자가 "핏 스탑이 주가 하락(그리고 상승)을 실시간으로 반영해야 한다"고 지적하고,
+    직접 여러 예시(하락장 500만원 예시, 상승장 예시)로 검산해 이 최종 공식을 도출함.
+    상승장 예시("내가 벤치보다 일찍 팔아서 덜 먹었으면 격차가 마이너스로 나와야 한다")까지
+    포함해 양방향 검증 완료 — 예: 내 총손익 10, 벤치 총손익 50이면 격차 −40(Surplus 마이너스),
+    반대로 내가 벤치보다 잘 방어했으면 플러스로 나옴. `bench_cum`이 없으면 가상실현·
+    가상미실현이 전부 0이 돼 예전 정의(실현손익 0% 가정)로 자연스럽게 축소된다.
+    반환 DataFrame(거래가 있었던 날짜만): 날짜, 총매입(=Σ수량×평단가), 예수금(=Refill), 무연료예수금
+    (=지수 리필/Index Refill), 총자산, 예수금비중(%)."""
     cols = ["날짜", "총매입", "예수금", "무연료예수금", "총자산", "예수금비중"]
     if tx is None or tx.empty:
         return pd.DataFrame(columns=cols)
@@ -2662,6 +2697,7 @@ def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float
                       pd.to_numeric(asset_hist["총자산"], errors="coerce")))
 
     virtual_cum = virtual_realized_cum_by_close_date(tx, bench_cum)
+    cycles = _all_cycles(tx) if bench_cum else []
 
     def _virtual_on(d):
         if not virtual_cum:
@@ -2672,11 +2708,18 @@ def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float
     out = []
     for d in sorted(rows):
         cash, cost, cr = rows[d]
-        virtual_pl = _virtual_on(d)
+        virtual_realized = _virtual_on(d)
+        virtual_unrealized = virtual_unrealized_on(cycles, bench_cum, d) if cycles else 0.0
         ta = ah.get(d)
         if ta is None or pd.isna(ta):
-            ta = cash + cost   # asset_hist에 없는 날은 근사(예수금+원가, 평가손익 제외)
-        out.append({"날짜": d, "총매입": cost, "예수금": cash, "무연료예수금": cash - cr + virtual_pl,
+            ta = cash + cost   # asset_hist에 없는 날은 근사(예수금+원가, 평가손익 제외) → 이때 U=0
+        my_unrealized = float(ta) - cash - cost
+        # 지수 리필(구 No Refill, 2026-09-17 3차 개정) = 예수금 − 실현손익 + 가상실현손익
+        # + 가상미실현손익 − 내_미실현손익. Refill−지수리필 = (내 실현+미실현) − (벤치 가상
+        # 실현+미실현) = "같은 돈을 같은 타이밍에 넣었다면" 내 총손익 대 벤치 총손익 격차 —
+        # 청산분만 보던 이전 버전과 달리 지금 보유 중인(미실현) 성과까지 포함한다.
+        index_refill = cash - cr + virtual_realized + virtual_unrealized - my_unrealized
+        out.append({"날짜": d, "총매입": cost, "예수금": cash, "무연료예수금": index_refill,
                     "총자산": float(ta),
                     "예수금비중": (cash / (cash + cost) * 100) if (cash + cost) > 0 else 0.0})
     return pd.DataFrame(out, columns=cols)
