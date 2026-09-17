@@ -136,6 +136,24 @@ def main():
             core.save_holdings(holdings2)
             print("[코드보충] " + ", ".join(f"{n}={c}" for n, c in resolved.items()))
 
+    # ---- 라이브 시세 새로고침, 매일 무조건 (2026-09-17 추가) ----
+    # 예전엔 "코드 미확인 종목이 있을 때만" 세션이 수동으로 refresh_all_prices를 돌렸는데,
+    # 코드가 이미 다 있는 평범한 날엔 이 스텝이 통째로 스킵돼서 portfolio_data.csv에 커밋되는
+    # 현재가/등락률이 "마지막으로 라이브 새로고침됐던 시점"에 그대로 멈춰있었다. 실제로 겪음
+    # (2026-09-17): GS리테일이 9/15 17:20 시점 값(등락률 -5.79%)으로 이틀 넘게 멈춰있었는데
+    # 그 사이 코드 미확인 종목이 없어 아무도 이걸 안 건드렸고, 그 stale 값이 그대로 커밋돼
+    # §6-33 Today's Alarm에 "오늘 -5.8% 급락"으로 잘못 떴다(실제 그날 등락률은 -0.21%).
+    # 배포 서버의 라이브 새로고침은 git에 안 올라가므로(§6-1), 재배포가 잦은 날엔 이 stale
+    # 커밋값으로 계속 되돌아가는 것처럼 보인다 — 매 ingest마다 무조건 한 번 라이브로 새로고침해
+    # 커밋하면 이 멀티데이 staleness 자체가 생기지 않는다. compute_metrics_at_close(위) 기반
+    # 스냅샷 계산은 이미 끝났으므로 여기서 표시용 현재가만 바꿔도 asset_history 등엔 영향 없음.
+    holdings2, _price_report = core.refresh_all_prices(holdings2)
+    core.save_holdings(holdings2)
+    if _price_report["unresolved"]:
+        print("[경고] 시세를 못 찾은 종목: " + ", ".join(_price_report["unresolved"]))
+    if _price_report["failed"]:
+        print("[경고] 시세 조회 실패 종목: " + ", ".join(_price_report["failed"]))
+
     # 관심종목(watchlist) 밖의 신규 보유종목이 있으면 Supabase에 자동 편입 (§6-16) — 안 그러면
     # 그 종목이 Fishing/Volume/Foreigner 스크리너에 계속 안 나온다. 실패해도(시크릿 없음/네트워크
     # 오류 등) 매매일지 반영 자체는 성공으로 두고 경고만 남긴다.
