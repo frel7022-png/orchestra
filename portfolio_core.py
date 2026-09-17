@@ -2269,8 +2269,8 @@ def compute_watering_rows(tx: pd.DataFrame, df: pd.DataFrame) -> list[dict]:
     정확히 같은 모집단을 봐야 하므로 계산 로직을 여기 하나로 통일(2026-09-17, 원래
     ui_portfolio_tab.py 안에 인라인으로만 있던 걸 Today's Alarm이 재사용하려고 추출).
     반환 각 항목: 종목명, 최초매수일, pct_first_cur(최초진입가 대비 현재가%),
-    pct_first_avg(최초진입가 대비 평단가%), pct_last(마지막 매수가 대비 현재가%),
-    등락률(holdings의 전일 대비 등락률, %) — pct_last 오름차순 정렬."""
+    pct_first_avg(최초진입가 대비 평단가%), pct_last(마지막 매수가 대비 현재가%) —
+    pct_last 오름차순 정렬."""
     rows = []
     for _, hrow in df.iterrows():
         name = hrow["종목명"]
@@ -2286,14 +2286,12 @@ def compute_watering_rows(tx: pd.DataFrame, df: pd.DataFrame) -> list[dict]:
         avg_price = float(hrow["평단가"])
         pct_last = (cur_price - last_buy_price) / last_buy_price * 100
         if pct_last <= -1.0:
-            chg = pd.to_numeric(hrow.get("등락률"), errors="coerce")
             rows.append({
                 "종목명": name,
                 "최초매수일": buys.iloc[0]["날짜"],
                 "pct_first_cur": (cur_price - first_buy_price) / first_buy_price * 100,
                 "pct_first_avg": (avg_price - first_buy_price) / first_buy_price * 100,
                 "pct_last": pct_last,
-                "등락률": float(chg) if pd.notna(chg) else None,
             })
     rows.sort(key=lambda r: r["pct_last"])
     return rows
@@ -2325,8 +2323,17 @@ def compute_todays_alarm(tx: pd.DataFrame, df: pd.DataFrame, fishing_prices: pd.
     """"Today's Alarm"(§6-34, 2026-09-17) — "Setting"(§6-33)으로 이미 새로고침된 데이터만
     갖고, 아침에 바빠서 패널을 하나하나 못 열어볼 때 먼저 봐야 할 것 세 가지를 추린다
     (사용자 설계). 새 네트워크 호출 없음 — 전부 이미 세션에 있는 값의 재가공.
-    ① Watering Detect 모집단 중 전일 대비(holdings 등락률) -5% 이하로 급락한 것 —
-       없으면 표시 안 함(fallback 없음).
+    ① Watering Detect 모집단 중 **마지막 매수가 대비 현재가(pct_last)**가 -3% 이하로
+       빠진 것 — 없으면 표시 안 함(fallback 없음). **2026-09-17 개정**: 원래는 "전일
+       대비(holdings 등락률) -5% 이하"(그날 갑자기 급변만 포착)였는데, 사용자가 실제
+       사례(크라운해태홀딩스: 전일대비 -5.9% 급락 알람을 보고 그날 추가 매수 → 마지막
+       매수가 대비로는 -3.6%가 됨)를 들어 "이게 새 알람의 숫자가 되어야 한다"고 지적—
+       Watering Detect 패널이 애초에 그 종목을 후보로 넣는 기준(pct_last)과 알람 기준을
+       통일해, "마지막으로 물 탄 가격보다 지금 얼마나 더 빠졌나"라는 물타기 재진입
+       판단에 직접 쓰이는 값으로 교체함(전일 대비는 그날 우연히 조회한 시각의 등락일
+       뿐이라 재진입 판단과 무관하다는 게 이유). 문턱은 Watering Detect 팝업 자체의
+       -1%보다 더 강하게 -3%로 잡아 "이미 후보인데 그중에서도 눈에 띄게 더 빠진 것"만
+       추림.
     ② Quiet Hands "Undertow"(Fishing 누적 -3%↓) 모집단 중 외국인비중 **최근3일pp**
        (compute_foreign_flags, 최근 3거래일간의 변화 — "갑자기 최근 폭발적으로"라는
        사용자 표현에 맞춰 기준일 대비 누적이 아니라 최근 창 하나만 봄)가 +5%p 이상인 것.
@@ -2338,8 +2345,7 @@ def compute_todays_alarm(tx: pd.DataFrame, df: pd.DataFrame, fishing_prices: pd.
     회색으로 구분할 수 있게 한다(사용자 지시: "보여주기식으로 한 개 쓰되 그런건 회색글씨로").
     반환: {"watering": [...], "quiet_hands": {"items": [...], "is_fallback": bool},
     "fishing": {"items": [...], "is_fallback": bool}}."""
-    watering = [r for r in compute_watering_rows(tx, df)
-                if r.get("등락률") is not None and r["등락률"] <= -5.0]
+    watering = [r for r in compute_watering_rows(tx, df) if r["pct_last"] <= -3.0]
 
     quiet_hands = {"items": [], "is_fallback": False}
     undertow_pop = fishing_decline_population(fishing_prices, threshold=-3.0)

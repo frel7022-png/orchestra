@@ -84,7 +84,7 @@ def _todays_alarm_html(alarm: dict, T: dict) -> str:
     rows = []
     for r in watering:
         rows.append(_row("Watering", r["종목명"],
-                          f'<span style="color:{DOWN_COLOR}">{r["등락률"]:+.1f}%</span>'))
+                          f'<span style="color:{DOWN_COLOR}">{r["pct_last"]:+.1f}%</span>'))
     for it in qh_items:
         c = T["muted"] if qh_fallback else UP_COLOR
         rows.append(_row("Undertow", it["종목명"],

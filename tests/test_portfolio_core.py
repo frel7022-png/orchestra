@@ -1802,27 +1802,25 @@ def test_foreign_pct_change_since_returns_none_when_no_data():
 # ------------------------------------------------------------------ #
 # Today's Alarm (§6-34, 2026-09-17)
 # ------------------------------------------------------------------ #
-def _holding_row(name, avg_px, cur_px, chg_pct):
+def _holding_row(name, avg_px, cur_px, chg_pct=0.0):
     return {"종목명": name, "종목코드": "000000", "섹터": "기타2", "수량": 10,
             "평단가": avg_px, "현재가": cur_px, "등락률": chg_pct, "업데이트시각": ""}
 
 
-def test_compute_watering_rows_includes_daily_change_field():
-    # A·B 둘 다 물타기 중(매수 2회) + 마지막 매수가(9000) 대비 -1% 이상 더 빠짐(현재가 8800)
-    # — Watering Detect 모집단 조건은 같지만 "등락률"(전일 대비)은 서로 다름(A=-6.0, B=-2.0).
+def test_compute_watering_rows_computes_all_three_metrics():
+    # 매수 8/24=10000, 9/10=9200(물타기) → 최초진입가 10000, 마지막 매수가 9200.
+    # 현재가 8800, 평단가 9500(주어짐) — pct_first_cur/pct_first_avg/pct_last 전부 검증.
     tx = pd.DataFrame([
         _tx_row("a1", "2026-01-05", "A", "매수", 10, 10000),
-        _tx_row("a2", "2026-01-06", "A", "매수", 10, 9000),
-        _tx_row("b1", "2026-01-05", "B", "매수", 10, 10000),
-        _tx_row("b2", "2026-01-06", "B", "매수", 10, 9000),
+        _tx_row("a2", "2026-01-06", "A", "매수", 10, 9200),
     ])
-    df = pd.DataFrame([_holding_row("A", 9500, 8800, -6.0), _holding_row("B", 9500, 8800, -2.0)])
+    df = pd.DataFrame([_holding_row("A", 9500, 8800)])
     rows = core.compute_watering_rows(tx, df)
-    by_name = {r["종목명"]: r for r in rows}
-    assert set(by_name) == {"A", "B"}
-    assert by_name["A"]["등락률"] == pytest.approx(-6.0)
-    assert by_name["B"]["등락률"] == pytest.approx(-2.0)
-    assert by_name["A"]["pct_last"] == pytest.approx((8800 - 9000) / 9000 * 100)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["pct_first_cur"] == pytest.approx((8800 - 10000) / 10000 * 100)
+    assert r["pct_first_avg"] == pytest.approx((9500 - 10000) / 10000 * 100)
+    assert r["pct_last"] == pytest.approx((8800 - 9200) / 9200 * 100)
 
 
 def test_compute_watering_rows_excludes_single_buy_stocks():
@@ -1856,14 +1854,15 @@ def _alarm_flow_df(rows):
 
 
 def test_compute_todays_alarm_flags_real_signals_without_fallback():
-    # ① Watering: A(등락률 -6%)만 -5% 문턱 통과, B(-2%)는 통과 못 함 → watering엔 A만.
+    # ① Watering: A는 마지막 매수가(9200) 대비 현재가(8800)가 -4.3%로 -3% 문턱을 넘고,
+    # B는 마지막 매수가(9000) 대비 -2.2%로 못 넘음 → watering엔 A만.
     tx = pd.DataFrame([
         _tx_row("a1", "2026-01-05", "A", "매수", 10, 10000),
-        _tx_row("a2", "2026-01-06", "A", "매수", 10, 9000),
+        _tx_row("a2", "2026-01-06", "A", "매수", 10, 9200),
         _tx_row("b1", "2026-01-05", "B", "매수", 10, 10000),
         _tx_row("b2", "2026-01-06", "B", "매수", 10, 9000),
     ])
-    df = pd.DataFrame([_holding_row("A", 9500, 8800, -6.0), _holding_row("B", 9500, 8800, -2.0)])
+    df = pd.DataFrame([_holding_row("A", 9500, 8800), _holding_row("B", 9500, 8800)])
 
     # ② Quiet Hands(Undertow): C·D 둘 다 Fishing 누적 -3%↓ 모집단이지만, 최근3일pp는
     # C만 +5%p 이상(진짜 급증) — D는 완만해서 fallback 대상도 아니고 목록에서도 빠진다.
