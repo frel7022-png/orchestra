@@ -2269,8 +2269,14 @@ def compute_watering_rows(tx: pd.DataFrame, df: pd.DataFrame) -> list[dict]:
     정확히 같은 모집단을 봐야 하므로 계산 로직을 여기 하나로 통일(2026-09-17, 원래
     ui_portfolio_tab.py 안에 인라인으로만 있던 걸 Today's Alarm이 재사용하려고 추출).
     반환 각 항목: 종목명, 최초매수일, pct_first_cur(최초진입가 대비 현재가%),
-    pct_first_avg(최초진입가 대비 평단가%), pct_last(마지막 매수가 대비 현재가%) —
-    pct_last 오름차순 정렬."""
+    pct_first_avg(최초진입가 대비 평단가%), pct_last(마지막 매수가 대비 현재가%),
+    등락률(holdings의 전일 대비 등락률, %) — pct_last 오름차순 정렬.
+    **등락률과 pct_last는 용도가 다르다(2026-09-17 재정리)**: Today's Alarm①은 "오늘
+    갑자기 큰 폭으로 빠졌나"(트리거)는 등락률로 판단하고, "그래서 지금 마지막 매수가
+    대비 얼마나 빠져있나"(표시값·재진입 판단 근거)는 pct_last로 보여준다 — 물을 타면
+    pct_last는 새 매수가 기준으로 다시 0에 가까워져 "진정됐다"를 자연스럽게 반영하지만,
+    등락률(오늘 하루 변화)은 물을 타든 안 타든 그날의 실제 변동폭 그대로라 "오늘 뭔가
+    일어났다"는 트리거로는 계속 유효하다."""
     rows = []
     for _, hrow in df.iterrows():
         name = hrow["종목명"]
@@ -2286,12 +2292,14 @@ def compute_watering_rows(tx: pd.DataFrame, df: pd.DataFrame) -> list[dict]:
         avg_price = float(hrow["평단가"])
         pct_last = (cur_price - last_buy_price) / last_buy_price * 100
         if pct_last <= -1.0:
+            chg = pd.to_numeric(hrow.get("등락률"), errors="coerce")
             rows.append({
                 "종목명": name,
                 "최초매수일": buys.iloc[0]["날짜"],
                 "pct_first_cur": (cur_price - first_buy_price) / first_buy_price * 100,
                 "pct_first_avg": (avg_price - first_buy_price) / first_buy_price * 100,
                 "pct_last": pct_last,
+                "등락률": float(chg) if pd.notna(chg) else None,
             })
     rows.sort(key=lambda r: r["pct_last"])
     return rows
@@ -2323,17 +2331,21 @@ def compute_todays_alarm(tx: pd.DataFrame, df: pd.DataFrame, fishing_prices: pd.
     """"Today's Alarm"(§6-34, 2026-09-17) — "Setting"(§6-33)으로 이미 새로고침된 데이터만
     갖고, 아침에 바빠서 패널을 하나하나 못 열어볼 때 먼저 봐야 할 것 세 가지를 추린다
     (사용자 설계). 새 네트워크 호출 없음 — 전부 이미 세션에 있는 값의 재가공.
-    ① Watering Detect 모집단 중 **마지막 매수가 대비 현재가(pct_last)**가 -3% 이하로
-       빠진 것 — 없으면 표시 안 함(fallback 없음). **2026-09-17 개정**: 원래는 "전일
-       대비(holdings 등락률) -5% 이하"(그날 갑자기 급변만 포착)였는데, 사용자가 실제
-       사례(크라운해태홀딩스: 전일대비 -5.9% 급락 알람을 보고 그날 추가 매수 → 마지막
-       매수가 대비로는 -3.6%가 됨)를 들어 "이게 새 알람의 숫자가 되어야 한다"고 지적—
-       Watering Detect 패널이 애초에 그 종목을 후보로 넣는 기준(pct_last)과 알람 기준을
-       통일해, "마지막으로 물 탄 가격보다 지금 얼마나 더 빠졌나"라는 물타기 재진입
-       판단에 직접 쓰이는 값으로 교체함(전일 대비는 그날 우연히 조회한 시각의 등락일
-       뿐이라 재진입 판단과 무관하다는 게 이유). 문턱은 Watering Detect 팝업 자체의
-       -1%보다 더 강하게 -3%로 잡아 "이미 후보인데 그중에서도 눈에 띄게 더 빠진 것"만
-       추림.
+    ① Watering Detect 모집단 중 **전일 대비(holdings 등락률) -5% 이하로 급락한 것을
+       트리거로 삼되, 표시하는 숫자는 마지막 매수가 대비 현재가(pct_last)** — 없으면
+       표시 안 함(fallback 없음). **2026-09-17 두 차례 정정 끝에 확정**: 처음엔 "전일
+       대비"만 썼는데, 사용자가 "물을 타서 -3.6%(pct_last)가 됐는데도 알람이 그 전
+       숫자(-5.9%, 전일대비)를 계속 보여주면 또 살 수 있다"고 지적 — 그래서 pct_last로
+       전부 교체했더니, 이번엔 "여전히 전일 대비 급락 자체는 트리거로 남아야 한다"는
+       재지적. 정리하면 **트리거(포함 여부)와 표시값(보여주는 숫자)의 역할이 다르다**:
+       - 트리거 = 등락률(오늘 하루 변화) ≤ -5%. 물을 타든 안 타든 "오늘 실제로 급변이
+         있었다"는 사실 자체는 안 변하므로, 이게 있어야 애초에 알람이 뜬다.
+       - 표시값 = pct_last(마지막 매수가 대비). 물을 타면 "마지막 매수가"가 갱신되므로
+         pct_last는 새 진입가 기준으로 다시 0에 가까워진다 — "방금 대응해서 진정됐다"를
+         자연스럽게 보여줌. 반대로 물을 안 탔거나(혹은 탔는데도) 그 뒤 추가로 더
+         빠지면(예: 오늘 안에 −10%가 또 나면) 다음 새로고침 때 등락률이 다시 -5% 밑을
+         찍어 트리거가 재발화되고, pct_last도 그 급락을 반영해 다시 커진 값을 보여줘
+         "아직 안 끝났다"를 알려준다.
     ② Quiet Hands "Undertow"(Fishing 누적 -3%↓) 모집단 중 외국인비중 **최근3일pp**
        (compute_foreign_flags, 최근 3거래일간의 변화 — "갑자기 최근 폭발적으로"라는
        사용자 표현에 맞춰 기준일 대비 누적이 아니라 최근 창 하나만 봄)가 +5%p 이상인 것.
@@ -2345,7 +2357,8 @@ def compute_todays_alarm(tx: pd.DataFrame, df: pd.DataFrame, fishing_prices: pd.
     회색으로 구분할 수 있게 한다(사용자 지시: "보여주기식으로 한 개 쓰되 그런건 회색글씨로").
     반환: {"watering": [...], "quiet_hands": {"items": [...], "is_fallback": bool},
     "fishing": {"items": [...], "is_fallback": bool}}."""
-    watering = [r for r in compute_watering_rows(tx, df) if r["pct_last"] <= -3.0]
+    watering = [r for r in compute_watering_rows(tx, df)
+                if r.get("등락률") is not None and r["등락률"] <= -5.0]
 
     quiet_hands = {"items": [], "is_fallback": False}
     undertow_pop = fishing_decline_population(fishing_prices, threshold=-3.0)

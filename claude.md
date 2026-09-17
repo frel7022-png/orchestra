@@ -1942,17 +1942,24 @@ manual/                           # report/와 성격이 다름 — **살아있�
   (§6-22) 위.
 - **세 규칙(사용자 설계, 2026-09-16~17 대화로 확정)** — 전부 Setting이 이미 새로고침해둔
   session_state 값만 재가공, **새 네트워크 호출 없음**:
-  1. **Watering Detect 급락**: 물타기 중인 종목 중 **마지막 매수가 대비 현재가(pct_last)**가
-     -3% 이하로 빠진 것. **fallback 없음** — 하나도 없으면 그냥 표시 안 함.
-     **2026-09-17 개정**: 원래는 "전일 대비"(holdings의 등락률, 그날 갑자기 급변만 포착)
-     였는데, 사용자가 실제 사례를 들어 지적 — 크라운해태홀딩스가 전일대비 -5.9%로 알람에
-     떠서 그날 추가 매수했더니 마지막 매수가 대비로는 -3.6%가 됨. "저걸 보고 내가 사서
-     -3.6%를 만들었으니, 이게 새로운 알람의 숫자가 되어야 한다"는 지적대로, 알람 기준을
-     Watering Detect 패널이 애초에 그 종목을 후보로 넣는 지표(pct_last)로 통일함 — 전일
-     대비는 "그날 우연히 조회한 시각의 등락"일 뿐 물타기 재진입 판단과 무관하지만, pct_last는
-     "마지막으로 물 탄 가격보다 지금 얼마나 더 빠졌나"를 직접 말해줘서 재진입 판단에 바로
-     쓰이는 값이기 때문. 문턱은 Watering Detect 팝업 자체의 -1%보다 더 세게 -3%로 잡아
-     "이미 후보인데 그중에서도 눈에 띄게 더 빠진 것"만 추림.
+  1. **Watering Detect 급락**: 물타기 중인 종목 중 **전일 대비(holdings 등락률) -5%
+     이하로 급락한 것을 트리거**로 삼되, **표시하는 숫자는 마지막 매수가 대비 현재가
+     (pct_last)** — 없으면 그냥 표시 안 함(fallback 없음). **2026-09-17, 세 단계 시행착오로
+     확정**:
+     - 1차(전일 대비만): "오늘 갑자기 급변했나"만 봄 — 그런데 크라운해태홀딩스가 전일대비
+       -5.9%로 알람에 떠서 그날 추가 매수했는데도, 알람 숫자가 계속 -5.9%(그날 등락률
+       그대로)를 보여줘서 "이미 대응했는데도 알람이 안 바뀌어 또 살 수 있다"는 문제 지적.
+     - 2차(pct_last만): 그래서 표시값을 pct_last(마지막 매수가 대비, 매수 사례에선 -3.6%)로
+       전부 바꿨더니, 이번엔 "그래도 전일 대비 급락 자체는 트리거로 남아야 한다"는 재지적 —
+       pct_last만으로 트리거까지 정하면, 마지막 매수가 애초에 최근 값이라 진짜 위험한
+       급락인데도 문턱을 못 넘어 알람 자체가 안 뜨는 경우가 생김.
+     - **최종(트리거·표시값 분리)**: 트리거 = 등락률(오늘 하루 변화) ≤ -5%(물을 타든 안
+       타든 "오늘 실제로 급변이 있었다"는 사실은 안 변하므로 계속 유효), 표시값 = pct_last
+       (마지막 매수가 대비 — 물을 타면 "마지막 매수가"가 갱신돼 pct_last가 새 진입가
+       기준으로 다시 0에 가까워짐, 사용자 표현: "내가 사면 불껐다 정도로"). 안 사거나
+       사고도 또 급락하면(예: 그날 안에 추가로 -10%) 다음 새로고침 때 등락률이 다시
+       -5% 밑을 찍어 트리거가 재발화되고, pct_last도 그 급락을 반영해 다시 커진 값을
+       보여준다 — "아직 안 끝났다"는 신호.
   2. **Quiet Hands "Undertow"(Fishing 누적 -3%↓ 모집단) 외인비중 급증**: "갑자기 **최근**
      폭발적으로 늘었다"는 사용자 표현에 맞춰, Undertow가 원래 쓰는 "기준일 대비 누적"이
      아니라 `compute_foreign_flags`의 **"최근3일pp"**(최근 3거래일간의 변화, §6-28에서
@@ -1970,8 +1977,8 @@ manual/                           # report/와 성격이 다름 — **살아있�
   추출해서 패널과 알람이 **정확히 같은 모집단**을 보게 함(하나만 고치고 다른 하나는 안
   고치는 사고 방지):
   - `compute_watering_rows(tx, df)` — Watering Detect 모집단(물타기 2회+ · 마지막 매수가
-    대비 -1%↓) 계산, pct_first_cur/pct_first_avg/pct_last 반환. Watering Detect UI는
-    이제 이 함수를 호출만 함.
+    대비 -1%↓) 계산, pct_first_cur/pct_first_avg/pct_last/등락률(holdings 전일 대비) 반환.
+    Watering Detect UI는 이제 이 함수를 호출만 함.
   - `fishing_decline_population(fishing_prices, threshold=-3.0)` — Fishing 누적 하락
     모집단 계산. Quiet Hands "Undertow" UI도 이제 이 함수를 호출만 함.
   - `compute_todays_alarm(tx, df, fishing_prices, flow_hist, price_hist_flow) -> dict` —
@@ -1990,10 +1997,12 @@ manual/                           # report/와 성격이 다름 — **살아있�
   그 줄엔 `</div>`가 있어 절대 "빈 줄"이 안 됨.
 - **함수**(`portfolio_core.py`): `compute_watering_rows`, `fishing_decline_population`,
   `compute_todays_alarm`. `ui_portfolio_tab.py`: `_todays_alarm_html(alarm, T)`.
-  회귀 테스트 6개: `test_compute_watering_rows_computes_all_three_metrics`,
+  회귀 테스트 7개: `test_compute_watering_rows_computes_all_three_metrics`,
   `test_compute_watering_rows_excludes_single_buy_stocks`,
   `test_fishing_decline_population_filters_by_cumulative_threshold`,
   `test_compute_todays_alarm_flags_real_signals_without_fallback`,
+  `test_compute_todays_alarm_watering_buy_extinguishes_display_value`(트리거=등락률
+  유지·표시값=pct_last만 매수 후 0에 가까워짐을 검증),
   `test_compute_todays_alarm_falls_back_to_top_one_when_no_stock_meets_threshold`,
   `test_compute_todays_alarm_empty_inputs_returns_no_alarms`.
 - **new1 전용** (meritz는 Fishing/Foreigner류 인프라 자체가 없음).

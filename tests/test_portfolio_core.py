@@ -1809,18 +1809,19 @@ def _holding_row(name, avg_px, cur_px, chg_pct=0.0):
 
 def test_compute_watering_rows_computes_all_three_metrics():
     # 매수 8/24=10000, 9/10=9200(물타기) → 최초진입가 10000, 마지막 매수가 9200.
-    # 현재가 8800, 평단가 9500(주어짐) — pct_first_cur/pct_first_avg/pct_last 전부 검증.
+    # 현재가 8800, 평단가 9500(주어짐) — pct_first_cur/pct_first_avg/pct_last/등락률 전부 검증.
     tx = pd.DataFrame([
         _tx_row("a1", "2026-01-05", "A", "매수", 10, 10000),
         _tx_row("a2", "2026-01-06", "A", "매수", 10, 9200),
     ])
-    df = pd.DataFrame([_holding_row("A", 9500, 8800)])
+    df = pd.DataFrame([_holding_row("A", 9500, 8800, -5.9)])
     rows = core.compute_watering_rows(tx, df)
     assert len(rows) == 1
     r = rows[0]
     assert r["pct_first_cur"] == pytest.approx((8800 - 10000) / 10000 * 100)
     assert r["pct_first_avg"] == pytest.approx((9500 - 10000) / 10000 * 100)
     assert r["pct_last"] == pytest.approx((8800 - 9200) / 9200 * 100)
+    assert r["등락률"] == pytest.approx(-5.9)
 
 
 def test_compute_watering_rows_excludes_single_buy_stocks():
@@ -1854,15 +1855,16 @@ def _alarm_flow_df(rows):
 
 
 def test_compute_todays_alarm_flags_real_signals_without_fallback():
-    # ① Watering: A는 마지막 매수가(9200) 대비 현재가(8800)가 -4.3%로 -3% 문턱을 넘고,
-    # B는 마지막 매수가(9000) 대비 -2.2%로 못 넘음 → watering엔 A만.
+    # ① Watering: 트리거는 등락률(전일 대비) — A(-6.0%)만 -5% 문턱 통과, B(-2.0%)는
+    # 통과 못 함 → watering엔 A만. 표시값은 pct_last(마지막 매수가 대비 현재가) —
+    # A의 마지막 매수가(9200) 대비 현재가(8800)는 -4.35%, 트리거(등락률)와는 다른 숫자.
     tx = pd.DataFrame([
         _tx_row("a1", "2026-01-05", "A", "매수", 10, 10000),
         _tx_row("a2", "2026-01-06", "A", "매수", 10, 9200),
         _tx_row("b1", "2026-01-05", "B", "매수", 10, 10000),
         _tx_row("b2", "2026-01-06", "B", "매수", 10, 9000),
     ])
-    df = pd.DataFrame([_holding_row("A", 9500, 8800), _holding_row("B", 9500, 8800)])
+    df = pd.DataFrame([_holding_row("A", 9500, 8800, -6.0), _holding_row("B", 9500, 8800, -2.0)])
 
     # ② Quiet Hands(Undertow): C·D 둘 다 Fishing 누적 -3%↓ 모집단이지만, 최근3일pp는
     # C만 +5%p 이상(진짜 급증) — D는 완만해서 fallback 대상도 아니고 목록에서도 빠진다.
@@ -1891,10 +1893,41 @@ def test_compute_todays_alarm_flags_real_signals_without_fallback():
     alarm = core.compute_todays_alarm(tx, df, fishing_all, flow_hist, None)
 
     assert [r["종목명"] for r in alarm["watering"]] == ["A"]
+    assert alarm["watering"][0]["pct_last"] == pytest.approx((8800 - 9200) / 9200 * 100)
     assert alarm["quiet_hands"]["is_fallback"] is False
     assert [it["종목명"] for it in alarm["quiet_hands"]["items"]] == ["C"]
     assert alarm["fishing"]["is_fallback"] is False
     assert [it["종목명"] for it in alarm["fishing"]["items"]] == ["E"]
+
+
+def test_compute_todays_alarm_watering_buy_extinguishes_display_value():
+    # 트리거(등락률 -5% 이하)는 물을 타든 안 타든 그날의 실제 등락 그대로 유지되지만,
+    # 표시값(pct_last)은 "마지막 매수가"가 갱신되면 새 진입가 기준으로 다시 0에 가까워져
+    # "방금 사서 진정됐다"를 반영한다(2026-09-17 사용자 확인: "내가 사면 불껐다 정도로").
+    # 같은 종목, 같은 등락률(-6.0%, 트리거 유지)인데 마지막 매수가만 다른 두 시나리오 비교.
+    tx_before_buy = pd.DataFrame([
+        _tx_row("a1", "2026-01-05", "A", "매수", 10, 10000),
+        _tx_row("a2", "2026-01-06", "A", "매수", 10, 9500),   # 오래된 마지막 매수가
+    ])
+    tx_after_buy = pd.DataFrame([
+        _tx_row("a1", "2026-01-05", "A", "매수", 10, 10000),
+        _tx_row("a2", "2026-01-06", "A", "매수", 10, 9500),
+        _tx_row("a3", "2026-01-07", "A", "매수", 10, 8900),   # 오늘 급락 직후 추가 매수(불끄기)
+    ])
+    df = pd.DataFrame([_holding_row("A", 9500, 8800, -6.0)])
+
+    before = core.compute_todays_alarm(tx_before_buy, df, None, None, None)
+    after = core.compute_todays_alarm(tx_after_buy, df, None, None, None)
+
+    # 트리거는 그대로 유지(둘 다 watering에 A가 뜸) — 등락률은 매수 여부와 무관.
+    assert [r["종목명"] for r in before["watering"]] == ["A"]
+    assert [r["종목명"] for r in after["watering"]] == ["A"]
+    # 표시값(pct_last)은 마지막 매수가가 갱신되며 0에 훨씬 가까워짐("진정됐다").
+    before_pct = before["watering"][0]["pct_last"]
+    after_pct = after["watering"][0]["pct_last"]
+    assert before_pct == pytest.approx((8800 - 9500) / 9500 * 100)   # -7.37%
+    assert after_pct == pytest.approx((8800 - 8900) / 8900 * 100)    # -1.12%
+    assert after_pct > before_pct   # 매수 후 덜 부정적으로(0에 더 가깝게) 바뀜
 
 
 def test_compute_todays_alarm_falls_back_to_top_one_when_no_stock_meets_threshold():
