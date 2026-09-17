@@ -26,14 +26,18 @@ _TOP_TRADED_PAGE_SIZE = 20
 def _render_bracket_bars_paired(dist_sold, dist_held, T: dict) -> None:
     """구간마다 빨강(매도 이력) 막대 바로 밑에 파랑(현재 보유) 막대를 짝지어 보여준다
     (2026-09-16 사용자 지시: "둘이 비교되게 빨간 막대 밑에 파란 막대가 낫지 않을까") —
-    두 분포를 한 스케일(max_pct)로 같이 정규화해서 막대 길이가 색끼리도 바로 비교되게 함."""
+    두 분포를 한 스케일(max_pct)로 같이 정규화해서 막대 길이가 색끼리도 바로 비교되게 함.
+    **구간 라벨(예: "1만원 이하")은 빨강 줄에만 쓰고 파랑 줄엔 비워둔다**(2026-09-17 사용자
+    지시: "둘 다 써있으면 혼잡하다") — 어차피 같은 구간이 위아래로 짝지어 있어 라벨 없이도
+    파랑이 어느 구간인지 헷갈리지 않는다."""
     max_pct = max(dist_sold["비율"].max(), dist_held["비율"].max(), 1.0)
 
-    def _bar(r, color):
+    def _bar(r, color, show_label):
         width_pct = max(min(r["비율"] / max_pct * 100, 100), 0) if r["건수"] else 0
+        label = r["구간"] if show_label else ""
         return (
             '<div class="sector-bar-row">'
-            f'<div class="sector-bar-label">{r["구간"]}</div>'
+            f'<div class="sector-bar-label">{label}</div>'
             '<div class="sector-bar-track">'
             f'<div class="sector-bar-fill" style="background:{color};width:{width_pct}%"></div>'
             '</div>'
@@ -45,8 +49,8 @@ def _render_bracket_bars_paired(dist_sold, dist_held, T: dict) -> None:
     rows_html = []
     for (_, rs), (_, rh) in zip(dist_sold.iterrows(), dist_held.iterrows()):
         rows_html.append(
-            f'<div style="margin-bottom:10px">{_bar(rs, UP_COLOR)}'
-            f'<div style="margin-top:2px">{_bar(rh, DOWN_COLOR)}</div></div>'
+            f'<div style="margin-bottom:10px">{_bar(rs, UP_COLOR, True)}'
+            f'<div style="margin-top:2px">{_bar(rh, DOWN_COLOR, False)}</div></div>'
         )
     st.caption("빨강 매도 이력 · 파랑 현재 보유")
     st.markdown(f'<div class="sector-bar-list">{"".join(rows_html)}</div>', unsafe_allow_html=True)
