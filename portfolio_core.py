@@ -1608,6 +1608,33 @@ def fetch_daily_price_history(code: str, start_date: str, end_date: str) -> list
     return result
 
 
+def confirmed_close_or_live(code: str, trade_date: str, fallback: float | None) -> float | None:
+    """trade_date의 확정 종가를 우선 쓰고, 없으면(당일 장중 반영 등) fallback(보통 실시간
+    시세)으로 폴백한다 — index_history/bigcap_history 스냅샷 오염 방지 원칙(new1 §6-2
+    4번째 재발, 2026-09-10)을 함수 하나로 통일(2026-09-17). **원래 `ingest_daily.py`의
+    `_close_on` 로컬 클로저로 new1·meritz 두 스크립트에 각각 인라인 복제돼 있었는데,
+    "같은 로직인데 왜 파일이 둘이냐"는 사용자 지적(2026-09-17) — 실제로 meritz의
+    index_history[9/16]이 6,653.21(장중 스냅)로, 확정 종가 6,717.97과 65p 차이 나며
+    커밋된 채 방치돼 그 이후 "당일" 등락률이 전부 왜곡되는 사고가 실제로 터졌다(같은 날
+    bigcap_history[9/14~9/16]도 양쪽 레포 모두 몇천~몇만 원씩 어긋나 있었음 — SamHynix
+    extracted 합성지수가 (1−W)≈0.48로 나눠 증폭하는 구조라 이 오차가 크게 부풀려짐).
+    **과거 날짜의 매매일지를 오늘(장중)에 반영하면 fetch_index_quotes()/fetch_bigcap_quotes()
+    같은 실시간 시세 함수는 '오늘 장중값'을 주는데, 그걸 그 과거 날짜 행에 그대로 찍으면
+    히스토리가 오염된다** — 그래서 먼저 네이버 일별시세(fetch_daily_price_history)로
+    trade_date '그 날짜의 확정 종가'를 조회하고, 그게 아직 없을 때(막 개장한 당일 등)만
+    호출부가 이미 조회해온 실시간 시세로 폴백한다. 이렇게 하면 new1/meritz가 언제
+    반영하든 같은 날짜엔 항상 같은 값으로 수렴한다 — 두 레포가 각자 로컬 클로저로
+    복제하지 않고 이 함수 하나를 그대로 가져다 쓸 것(ingest_daily.py 수정 시 이 원칙
+    유지)."""
+    try:
+        for row in fetch_daily_price_history(code, trade_date, trade_date) or []:
+            if row.get("날짜") == trade_date and row.get("종가"):
+                return float(row["종가"])
+    except Exception:
+        pass
+    return fallback
+
+
 def load_dividend_cache() -> dict:
     """종목코드→{"배당수익률": float, "배당기준월": str, "조회일": str}. stock_code_cache.csv/
     stock_sector_cache.csv와 똑같은 §1-3 "최초 1회만 조회, 그 뒤로는 영구 재사용" 캐시

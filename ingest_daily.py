@@ -77,26 +77,18 @@ def main():
     # 그래서 배포판에서 index_history가 asset_history보다 며칠 뒤처져 "혼합지수 당일 0.00%"
     # 버그가 났다(2026-09-07 실제로 겪음). ingest에서도 같이 찍어 두 파일을 lock-step으로.
     #
-    # **확정 종가 우선(2026-09-10)**: 과거 날짜의 매매일지를 오늘(장중)에 반영하면
-    # fetch_index_quotes()/fetch_bigcap_quotes()는 '오늘 장중값'을 준다 — 그걸 그 과거
-    # 날짜 행에 찍으면 히스토리가 오염된다(실제로 겪음: meritz 9/9 행이 9/10 장중값으로 덮여
-    # new1과 어긋나고 혼합지수·VIP vs Orchestra 패널이 통째로 오염됨). 그래서 네이버 일별
-    # 시세(fetch_daily_price_history)로 trade_date '그 날짜의 종가'를 먼저 조회하고, 그게
-    # 없을 때(막 개장한 당일 등)만 실시간 시세로 폴백한다. 이래야 new1/meritz가 언제
-    # 반영하든 index_history/bigcap_history가 같은 값으로 수렴한다.
-    def _close_on(code, fallback):
-        try:
-            for row in core.fetch_daily_price_history(code, trade_date, trade_date) or []:
-                if row.get("날짜") == trade_date and row.get("종가"):
-                    return float(row["종가"])
-        except Exception:
-            pass
-        return fallback
+    # **확정 종가 우선(2026-09-10, 2026-09-17 core.confirmed_close_or_live로 통합)**: 과거
+    # 날짜의 매매일지를 오늘(장중)에 반영하면 fetch_index_quotes()/fetch_bigcap_quotes()는
+    # '오늘 장중값'을 준다 — 그걸 그 과거 날짜 행에 찍으면 히스토리가 오염된다. 이 로직을
+    # new1/meritz가 각자 로컬 클로저로 복제하던 걸(§6-2 4번째 재발 당시) portfolio_core.py의
+    # 공유 함수로 통합함 — 실제로 그 복제 때문에 meritz의 index_history[9/16]이 확정 종가와
+    # 65p 어긋난 채 방치된 사고가 재발했음(2026-09-17).
+    _close_on = core.confirmed_close_or_live
 
     try:
         iq = core.fetch_index_quotes() or {}
-        kospi = _close_on("KOSPI", (iq.get("KOSPI") or {}).get("price"))
-        kosdaq = _close_on("KOSDAQ", (iq.get("KOSDAQ") or {}).get("price"))
+        kospi = _close_on("KOSPI", trade_date, (iq.get("KOSPI") or {}).get("price"))
+        kosdaq = _close_on("KOSDAQ", trade_date, (iq.get("KOSDAQ") or {}).get("price"))
         if kospi and kosdaq:
             core.snapshot_index_history(kospi, kosdaq, on_date=trade_date)
             print(f"[지수] {trade_date} 코스피 {kospi:,.2f} · 코스닥 {kosdaq:,.2f} index_history 반영")
@@ -108,7 +100,7 @@ def main():
     # 빼서 ex 지수가 폭주한다(2026-09-08 실제로 -10%까지 튐).
     try:
         bq = core.fetch_bigcap_quotes() or {}
-        closes = {n: _close_on(core.BIGCAP_CODES[n], bq.get(n)) for n in core.BIGCAP_CODES}
+        closes = {n: _close_on(core.BIGCAP_CODES[n], trade_date, bq.get(n)) for n in core.BIGCAP_CODES}
         if all(closes.get(n) for n in core.BIGCAP_CODES):
             core.snapshot_bigcap_history(closes, on_date=trade_date)
             print(f"[대형주] {trade_date} " + " · ".join(f"{n} {closes[n]:,.0f}" for n in core.BIGCAP_CODES)
