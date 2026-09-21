@@ -3243,6 +3243,30 @@ def _sort_tx_for_replay(tx: pd.DataFrame) -> pd.DataFrame:
     return tx_sorted.sort_values(["날짜", "_ord"]).reset_index(drop=True)
 
 
+def compute_sell_fraction_map(tx: pd.DataFrame) -> dict:
+    """매도 거래 id → (매도수량, 그 직전 보유수량). 거래 기록 캘린더에서 "5주 중 3주만
+    팔았는지, 다 팔았는지"를 "3/5"처럼 보여주기 위한 순수 조회용 계산 — holdings 재계산
+    (§1-1, apply_transaction/_replay_transactions)과는 완전히 별개의 경량 재생(현금/섹터/
+    종목코드 캐시 없이 종목별 수량만 추적)이라, rebuild_portfolio_* 계열과 절대 안 섞는다."""
+    if tx.empty:
+        return {}
+    qty_map: dict[str, float] = {}
+    result: dict = {}
+    for _, row in _sort_tx_for_replay(tx).iterrows():
+        kind = row["구분"]
+        if kind not in ("매수", "매도"):
+            continue
+        name = row["종목명"]
+        qty = float(row["수량"])
+        held_before = qty_map.get(name, 0.0)
+        if kind == "매수":
+            qty_map[name] = held_before + qty
+        else:
+            result[row["id"]] = (qty, held_before)
+            qty_map[name] = held_before - qty
+    return result
+
+
 def _replay_transactions(holdings: pd.DataFrame, state: dict, tx_sorted: pd.DataFrame,
                           code_cache: dict, sector_cache: dict, fee_rate: float):
     """이미 정렬된(_sort_tx_for_replay) tx_sorted를 순서대로 하나씩 재생하며 holdings/state를

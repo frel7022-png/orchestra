@@ -12,7 +12,8 @@ from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, compute_pnl_actions, _index_day_moves,
     load_bigcap_history, synthetic_kospi_ex_bigcap, synthetic_kospi_sh_only,
-    load_fund_nav_history, compute_vip_vs_orchestra,
+    load_fund_nav_history, compute_vip_vs_orchestra, compute_sell_fraction_map,
+    DAILY_IMPORT_TAG,
 )
 
 KOSPI_COLOR = "#f59e0b"   # 지수 참조선(코스피) — 앰버
@@ -871,11 +872,13 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     if day_tx.empty:
         st.info("이 날짜엔 기록된 거래가 없습니다.")
     else:
+        sell_frac_map = compute_sell_fraction_map(tx)
         card_parts = []
         for _, r in day_tx.iterrows():
             realized = r["실현손익"]
             right_html = ""
-            memo_html = f' · {r["메모"]}' if str(r["메모"]) not in ("", "nan") else ""
+            memo = str(r["메모"])
+            memo_html = f' · {memo}' if memo not in ("", "nan", DAILY_IMPORT_TAG) else ""
             if r["구분"] in ("입금", "출금"):
                 amt = float(r["수량"]) * float(r["단가"])
                 sign = "+" if r["구분"] == "입금" else "-"
@@ -890,18 +893,23 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             </div>
             """)
                 continue
+            frac_html = ""
             if r["구분"] == "매도" and str(realized) not in ("", "nan"):
                 rv = float(realized)
                 trc = UP_COLOR if rv >= 0 else DOWN_COLOR
                 trs = "+" if rv >= 0 else ""
                 right_html = f'<span style="color:{trc}">{trs}{rv:,.0f}원</span>'
+                frac = sell_frac_map.get(r["id"])
+                if frac:
+                    sold_qty, held_before = frac
+                    frac_html = f'<div class="tx-frac">{sold_qty:.0f}/{held_before:.0f}</div>'
             card_parts.append(f"""
             <div class="tx-card">
                 <div class="tx-left">
                     <span class="name">{r['종목명']}</span>
                     <span class="meta">{r['구분']} {float(r['수량']):.0f}주 @ {float(r['단가']):,.0f}원{memo_html}</span>
                 </div>
-                <div class="tx-right">{right_html}</div>
+                <div class="tx-right">{right_html}{frac_html}</div>
             </div>
             """)
         st.markdown("".join(card_parts), unsafe_allow_html=True)

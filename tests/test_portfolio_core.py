@@ -2043,3 +2043,31 @@ def test_compute_link_candidates_p_matches_cumulative_price_change_map():
     out = core.compute_link_candidates(price, flow, min_price_days=2)
     price_map = core.cumulative_price_change_map(price)
     assert out.iloc[0]["P"] == pytest.approx(price_map["X"])
+
+
+# ------------------------------------------------------------------ #
+# compute_sell_fraction_map — 거래 기록 캘린더의 "3/5"(부분매도) 표시 (2026-09-21)
+# ------------------------------------------------------------------ #
+def test_compute_sell_fraction_map_full_and_partial_sell():
+    tx = pd.DataFrame([
+        _tx_row(1, "2026-09-01", "A", "매수", 5, 1000),
+        _tx_row(2, "2026-09-02", "A", "매도", 2, 1100),  # 5주 중 2주만 매도
+        _tx_row(3, "2026-09-03", "A", "매도", 3, 1200),  # 남은 3주 전량매도
+    ])
+    out = core.compute_sell_fraction_map(tx)
+    assert out[2] == (2, 5)
+    assert out[3] == (3, 3)
+
+
+def test_compute_sell_fraction_map_ignores_deposit_withdraw_rows():
+    tx = pd.DataFrame([
+        _tx_row(1, "2026-09-01", "", "입금", 1, 10000, 메모="예탁금이용료"),
+        _tx_row(2, "2026-09-02", "A", "매수", 5, 1000),
+        _tx_row(3, "2026-09-03", "A", "매도", 5, 1200),
+    ])
+    out = core.compute_sell_fraction_map(tx)
+    assert out == {3: (5, 5)}
+
+
+def test_compute_sell_fraction_map_empty_input():
+    assert core.compute_sell_fraction_map(pd.DataFrame()) == {}

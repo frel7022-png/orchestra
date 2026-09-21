@@ -206,6 +206,7 @@ st.markdown(f"""
     .tx-left .name {{ font-weight:700; color:{T['text']}; }}
     .tx-left .meta {{ color:{T['muted']}; font-size:11.5px; }}
     .tx-right {{ text-align:right; font-size:13px; font-weight:700; }}
+    .tx-frac {{ font-size:11px; font-weight:400; color:{T['muted']}; }}
 
     /* ---- 옅은/짙은 회색 버튼: 눌러도 색 안 바뀌게 강제 고정 ---- */
     div.stButton > button,
