@@ -1830,77 +1830,70 @@ def fetch_investor_flow(code: str) -> list[dict]:
         return []
 
 
-def fetch_market_flow(market: str) -> list[dict]:
-    """코스피/코스닥 "시장 전체"의 일별 거래량 + 투자자별(개인/외국인/기관) 순매수.
+def fetch_market_flow(market: str, trade_date: str | None = None) -> list[dict]:
+    """코스피/코스닥 "시장 전체"의 하루치 거래량 + 투자자별(개인/외국인/기관) 순매수.
     개별 종목의 거래량/수급이 그날 유난히 튀었는지 판단하려면 "평소 이 종목" 기준뿐 아니라
     "그날 시장 전체" 기준도 있어야 비교가 되므로 둔 베이스라인(2026-08-24, 사용자 요청) —
     코스닥 종목은 코스닥과, 코스피 종목은 코스피와 비교해야 기준이 맞아서 시장별로 따로
-    저장한다. fetch_investor_flow와 같은 이유로 비공식 HTML 스크레이핑이라 실패하면
-    조용히 빈 리스트를 반환한다.
+    저장한다.
 
+    **2026-09-29 소스 API 전면 교체**: 옛 소스 두 페이지(finance.naver.com/sise/
+    sise_index_day.naver, .../investorDealTrendDay.naver)가 둘 다 HTTP 410(영구 폐쇄)로
+    확인됨 — market_flow가 9/16 이후 12일간 조용히 안 쌓이다 발각됨(cron은 이 단계 실패를
+    격리하는 구조라 "success"로 계속 찍혀서 사용자가 직접 물어볼 때까지 안 드러났음).
+    fetch_investor_flow(§6-9)가 걸어간 것과 같은 경로로 모바일 API로 이전:
+    - 거래량: 이미 쓰고 있던 fetch_daily_price_history(§6-16, api.finance.naver.com/
+      siseJson.naver — KOSPI/KOSDAQ 심볼도 그대로 먹힘)를 재사용. 9/16 값(209,130)이 옛
+      market_flow 저장값과 정확히 일치함을 확인해서 같은 데이터 소스임을 검증함.
+    - 순매수: m.stock.naver.com/api/index/{market}/trend?bizdate=YYYYMMDD JSON —
+      {"bizdate","personalValue","foreignValue","institutionalValue"}(부호+콤마 포함
+      문자열, 억원). bizdate로 과거 특정일 조회 가능하고, 응답 자체의 bizdate가 요청한
+      값을 그대로 echo함(휴장일은 전부 "0"으로 정확히 옴 — 9/24 추석 연휴로 확인). 응답의
+      bizdate가 요청과 다르면(다른 날짜로 조용히 폴백할 가능성 대비) 데이터 없음으로
+      취급한다.
+
+    trade_date 없으면 오늘(resolve_trading_date()) 하루치, 있으면 그 날짜 하루치만
+    반환한다 — 옛 페이지처럼 최근 ~20일치를 한 번에 안 주므로, 과거 여러 날짜를 채우려면
+    날짜별로 반복 호출해야 한다(일일 cron은 하루치만 필요해서 문제없음).
     market: "KOSPI" 또는 "KOSDAQ".
-    반환: [{"날짜": "YYYY-MM-DD", "거래량": int(천주) | None, "개인순매수": int(억원) | None,
-            "외국인순매수": int(억원) | None, "기관순매수": int(억원) | None}, ...]
-    거래량은 지수 일별시세 페이지, 순매수는 투자자별 매매동향 페이지 — 서로 다른 두 페이지를
-    가져와 날짜 기준으로 합친다(한쪽만 있으면 다른 쪽 필드는 None)."""
-    sosok = "02" if market == "KOSDAQ" else ""
-    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
+    반환: 거래량·순매수가 전부 없으면 빈 리스트, 하나라도 있으면 원소 1개짜리 리스트
+    [{"날짜": "YYYY-MM-DD", "거래량": int(천주) | None, "개인순매수": int(억원) | None,
+    "외국인순매수": int(억원) | None, "기관순매수": int(억원) | None}]."""
+    trade_date = trade_date or resolve_trading_date()
+    headers = {"User-Agent": "Mozilla/5.0"}
 
-    def num(td):
-        t = td.get_text(strip=True).replace(",", "")
+    def parse_signed(v):
         try:
-            return int(t)
-        except ValueError:
+            return int(str(v).replace(",", "").replace("+", ""))
+        except (TypeError, ValueError):
             return None
 
-    volumes = {}
+    volume = None
     try:
-        resp = requests.get(f"https://finance.naver.com/sise/sise_index_day.naver?code={market}",
-                             headers=headers, timeout=10)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.content.decode("euc-kr", errors="replace"), "html.parser")
-        for tr in soup.find_all("tr"):
-            tds = tr.find_all("td")
-            if len(tds) < 6 or "date" not in (tds[0].get("class") or []):
-                continue
-            date_txt = tds[0].get_text(strip=True)
-            vol = num(tds[4])
-            if date_txt and vol is not None:
-                volumes[date_txt.replace(".", "-")] = vol
+        price_rows = fetch_daily_price_history(market, trade_date, trade_date)
+        if price_rows:
+            volume = price_rows[0].get("거래량")
     except Exception:
         pass
 
-    flows = {}
+    personal = foreign = institution = None
     try:
-        today = today_kst_str().replace("-", "")
-        resp = requests.get(
-            f"https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate={today}&sosok={sosok}",
-            headers=headers, timeout=10)
+        bizdate = trade_date.replace("-", "")
+        resp = requests.get(f"https://m.stock.naver.com/api/index/{market}/trend",
+                             params={"bizdate": bizdate}, headers=headers, timeout=10)
         resp.raise_for_status()
-        soup = BeautifulSoup(resp.content.decode("euc-kr", errors="replace"), "html.parser")
-        for tr in soup.find_all("tr"):
-            tds = tr.find_all("td")
-            if len(tds) < 4 or "date2" not in (tds[0].get("class") or []):
-                continue
-            date_txt = tds[0].get_text(strip=True)  # "26.08.24" (2자리 연도)
-            if not date_txt:
-                continue
-            date_iso = "20" + date_txt.replace(".", "-")
-            flows[date_iso] = {
-                "개인순매수": num(tds[1]), "외국인순매수": num(tds[2]), "기관순매수": num(tds[3]),
-            }
+        data = resp.json()
+        if data.get("bizdate") == bizdate:
+            personal = parse_signed(data.get("personalValue"))
+            foreign = parse_signed(data.get("foreignValue"))
+            institution = parse_signed(data.get("institutionalValue"))
     except Exception:
         pass
 
-    rows = []
-    for d in sorted(set(volumes) | set(flows), reverse=True):
-        f = flows.get(d, {})
-        rows.append({
-            "날짜": d, "거래량": volumes.get(d),
-            "개인순매수": f.get("개인순매수"), "외국인순매수": f.get("외국인순매수"),
-            "기관순매수": f.get("기관순매수"),
-        })
-    return rows
+    if volume is None and personal is None and foreign is None and institution is None:
+        return []
+    return [{"날짜": trade_date, "거래량": volume, "개인순매수": personal,
+             "외국인순매수": foreign, "기관순매수": institution}]
 
 
 def fetch_index_quotes() -> dict:

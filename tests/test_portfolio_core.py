@@ -314,7 +314,9 @@ def test_parse_daily_trade_csv_rejects_truncated_format():
 # 이틀 연속 전종목 실패). 지금은 그 페이지가 내부적으로 쓰는 모바일 API의
 # dealTrendInfos JSON을 대신 쓴다. requests.get을 monkeypatch해서 네트워크 없이
 # 파싱 로직만 검증한다.
-# fetch_market_flow는 아직 HTML 스크레이핑(다른 페이지, 이번 개편 영향 없음 확인됨).
+# fetch_market_flow도 2026-09-29부터 같은 이유로 모바일 API로 이전(§6-9 참고) —
+# 옛 두 HTML 페이지(sise_index_day.naver, investorDealTrendDay.naver)가 전부 HTTP 410
+# 영구 폐쇄로 확인돼 market_flow가 9/16 이후 12일간 조용히 안 쌓였음.
 # ------------------------------------------------------------------ #
 class _FakeResp:
     def __init__(self, content=None, text=None, json_data=None):
@@ -366,27 +368,29 @@ def test_fetch_investor_flow_returns_empty_on_network_failure(monkeypatch):
     assert core.fetch_investor_flow("097950") == []
 
 
-_MARKET_VOLUME_HTML = """
-<table><tr>
-<td class="date">2026.08.24</td><td class="number_1">812.23</td><td class="rate_down">10.29</td>
-<td class="number_1">+1.28%</td><td class="number_1">478,302</td><td class="number_1">4,263,302</td>
-</tr></table>
-""".encode("euc-kr")
+_MARKET_SISE_JSON_TEXT = """ [['날짜', '시가', '고가', '저가', '종가', '거래량'],
 
-_MARKET_FLOW_HTML = """
-<table><tr>
-<td class="date2">26.08.24</td><td class="rate_down3">-2,382</td><td class="rate_up3">2,161</td>
-<td class="rate_up3">292</td>
-</tr></table>
-""".encode("euc-kr")
+["20260824", 810.0, 815.0, 805.0, 812.23, 478302]
+
+]
+"""
+
+_MARKET_TREND_JSON = {
+    "bizdate": "20260824",
+    "personalValue": "-2,382",
+    "foreignValue": "+2,161",
+    "institutionalValue": "+292",
+}
 
 
-def test_fetch_market_flow_merges_volume_and_flow_pages(monkeypatch):
-    def fake_get(url, headers=None, timeout=None):
-        return _FakeResp(_MARKET_VOLUME_HTML if "sise_index_day" in url else _MARKET_FLOW_HTML)
+def test_fetch_market_flow_merges_volume_and_trend_api(monkeypatch):
+    def fake_get(url, headers=None, timeout=None, params=None):
+        if "siseJson" in url:
+            return _FakeResp(text=_MARKET_SISE_JSON_TEXT)
+        return _FakeResp(json_data=_MARKET_TREND_JSON)
     monkeypatch.setattr(core.requests, "get", fake_get)
 
-    rows = core.fetch_market_flow("KOSDAQ")
+    rows = core.fetch_market_flow("KOSDAQ", "2026-08-24")
     assert len(rows) == 1
     r = rows[0]
     assert r["날짜"] == "2026-08-24"
@@ -394,6 +398,18 @@ def test_fetch_market_flow_merges_volume_and_flow_pages(monkeypatch):
     assert r["개인순매수"] == -2382
     assert r["외국인순매수"] == 2161
     assert r["기관순매수"] == 292
+
+
+def test_fetch_market_flow_discards_trend_when_bizdate_mismatches(monkeypatch):
+    """API가 요청한 날짜와 다른 bizdate를 돌려주면(향후 폴백 동작 대비) 그 순매수 값은
+    안 믿고 버린다 — 거래량마저 없으면 빈 리스트."""
+    def fake_get(url, headers=None, timeout=None, params=None):
+        if "siseJson" in url:
+            return _FakeResp(text=" [['날짜', '시가', '고가', '저가', '종가', '거래량']]\n")
+        return _FakeResp(json_data={"bizdate": "20260825", "personalValue": "0",
+                                     "foreignValue": "0", "institutionalValue": "0"})
+    monkeypatch.setattr(core.requests, "get", fake_get)
+    assert core.fetch_market_flow("KOSPI", "2026-08-24") == []
 
 
 _SISE_JSON_TEXT = """ [['날짜', '시가', '고가', '저가', '종가', '거래량', '외국인소진율'],
