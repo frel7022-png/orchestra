@@ -1,0 +1,292 @@
+<title>조용한 반의 담임</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:780px; margin:0 auto; padding:56px 24px 96px}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:14px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.5rem; line-height:1.18; letter-spacing:-.01em; margin:0 0 18px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:22px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-size:1.02rem; font-weight:700; letter-spacing:.01em; margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent); font-weight:500}
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent); border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow)}
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+  .flag{background:var(--warn-wash); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:22px 0; font-size:13.5px}
+  .flag .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--warn); margin-bottom:8px}
+  .flag ol{margin:6px 0 0; padding-left:20px}
+  .flag li{margin:8px 0}
+
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:13.5px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:8px 11px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12px; letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  td .sub{display:block; font-size:11px; color:var(--ink-faint)}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; box-shadow:var(--shadow)}
+  .stat .k{font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; margin-top:3px}
+  .stat .c{font-size:12px; color:var(--ink-soft); margin-top:2px}
+
+  .chart-card{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:18px 18px 14px; margin:22px 0; box-shadow:var(--shadow)}
+  figure{margin:0}
+  figcaption{font-size:12px; color:var(--ink-faint); text-align:left; padding-top:10px}
+
+  .bar-row{display:flex; align-items:center; gap:10px; margin:10px 0}
+  .bar-label{width:96px; font-size:12.5px; color:var(--ink-soft); flex-shrink:0}
+  .bar-track{flex:1; height:20px; background:var(--rule-soft); border-radius:5px; overflow:hidden; position:relative}
+  .bar-fill{height:100%; border-radius:5px 0 0 5px}
+  .bar-val{width:64px; text-align:right; font-family:"IBM Plex Mono",monospace; font-size:12.5px; flex-shrink:0}
+
+  .tier{border-left:3px solid var(--rule); padding:2px 0 2px 16px; margin:16px 0}
+  .tier.pass{border-color:var(--accent)}
+  .tier.grey{border-color:var(--warn)}
+  .tier .tl{font-weight:600; font-size:13px; margin-bottom:2px}
+  .tier .bd{font-size:13px; color:var(--ink-soft)}
+
+  code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--rule-soft); padding:.1em .35em; border-radius:4px}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+    .bar-label{width:72px}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table,.stat,.flag,.chart-card{box-shadow:none}
+    h2{break-after:avoid} table,.verdict,.stat-grid,.flag,.chart-card{break-inside:avoid}
+  }
+  .hero{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule); border-radius:12px; overflow:hidden; margin:30px 0 8px; box-shadow:var(--shadow)}
+  .hero div{background:var(--card); padding:18px 16px 16px; min-width:0}
+  .hero .big{font-family:"IBM Plex Mono",monospace; font-size:2rem; line-height:1.1; font-weight:500; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+  .hero .lbl{font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.45}
+  .pull{font-family:"Newsreader",Georgia,serif; font-style:italic; font-size:1.42rem; line-height:1.45; margin:34px 0; padding:4px 0 4px 20px; border-left:2px solid var(--accent); text-wrap:balance}
+  .map{margin:22px 0; border-top:1px solid var(--rule)}
+  .map .r{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; padding:14px 0; border-bottom:1px solid var(--rule-soft)}
+  .map .q{font-weight:600; font-size:.95rem}
+  .map .a{font-size:13.5px; color:var(--ink-soft)}
+  .map .a b{color:var(--ink); font-weight:600}
+  .tl{margin:22px 0; position:relative; padding-left:22px}
+  .tl::before{content:""; position:absolute; left:5px; top:6px; bottom:6px; width:1px; background:var(--rule)}
+  .tl .e{position:relative; margin:0 0 14px}
+  .tl .e::before{content:""; position:absolute; left:-21px; top:8px; width:9px; height:9px; border-radius:50%; background:var(--card); border:2px solid var(--accent)}
+  .tl .d{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--accent)}
+  .tl .t{font-size:13.5px}
+  .who{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .who > div{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:16px 18px; box-shadow:var(--shadow); min-width:0}
+  .who .h{font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:8px}
+  .who ul{margin:0} .who li{font-size:13.5px; margin:7px 0}
+  .flow{background:var(--card); border:1px solid var(--rule); border-radius:12px; padding:14px 10px 6px; margin:22px 0; box-shadow:var(--shadow)}
+  .flow svg{display:block; width:100%; height:auto; max-width:440px; margin:0 auto}
+  .flow .bx{fill:var(--paper); stroke:var(--rule)}
+  .flow .bx.me{fill:var(--accent-wash); stroke:var(--accent)}
+  .flow .bx.ck{fill:var(--warn-wash); stroke:var(--warn)}
+  .flow .t1{fill:var(--ink); font:600 12.5px "IBM Plex Sans KR",system-ui,sans-serif}
+  .flow .t2{fill:var(--ink-soft); font:400 10.5px "IBM Plex Sans KR",system-ui,sans-serif}
+  .flow .ar{stroke:var(--ink-faint); stroke-width:1.3; fill:none}
+  .flow .ar.loop{stroke:var(--gain)}
+  .flow .ar.dash{stroke-dasharray:4 3}
+  .flow .lb{fill:var(--ink-faint); font:500 10px "IBM Plex Mono",monospace}
+  .flow .lb.g{fill:var(--gain)}
+  .flow marker path{fill:var(--ink-faint)}
+  .flow marker#mg path{fill:var(--gain)}
+  .inst{margin:22px 0; display:grid; gap:12px}
+  .inst > div{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:15px 18px; box-shadow:var(--shadow)}
+  .inst .h{font-weight:600; font-size:.95rem; margin-bottom:4px}
+  .inst .b{font-size:13.5px; color:var(--ink-soft)}
+  .feel p{margin:14px 0}
+  @media (max-width:560px){
+    .hero{grid-template-columns:1fr} .hero .big{font-size:1.75rem}
+    .map .r{grid-template-columns:1fr; gap:4px}
+    .who{grid-template-columns:1fr}
+    .pull{font-size:1.2rem}
+  }
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--ink-faint); margin-top:6px}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px}
+  .sw-m{background:var(--accent)}
+  .stack{margin:22px 0; display:flex; flex-direction:column; gap:6px}
+  .stack .lv{display:grid; grid-template-columns:34px minmax(0,1fr); gap:12px; align-items:start; background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:13px 16px; box-shadow:var(--shadow)}
+  .stack .lv .no{font-family:"IBM Plex Mono",monospace; font-size:1.25rem; color:var(--accent); line-height:1.2}
+  .stack .lv .tt{font-weight:600; font-size:.95rem}
+  .stack .lv .ds{font-size:13px; color:var(--ink-soft); margin-top:2px}
+  .stack .lv.last{border-color:var(--accent); background:var(--accent-wash)}
+  .amp{margin:22px 0}
+  .amp .row{display:grid; grid-template-columns:92px minmax(0,1fr) 54px; gap:10px; align-items:center; margin:9px 0}
+  .amp .nm{font-size:13px; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .amp .bars{display:flex; height:18px; border-radius:4px; overflow:hidden; background:var(--rule-soft)}
+  .amp .bn{background:var(--loss)} .amp .bm{background:var(--accent)}
+  .amp .x{font-family:"IBM Plex Mono",monospace; font-size:12.5px; text-align:right}
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .two > div{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:16px 18px; box-shadow:var(--shadow); min-width:0}
+  .two .h{font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:6px}
+  .two p{font-size:13.5px; margin:6px 0}
+  @media (max-width:560px){ .two{grid-template-columns:1fr} .amp .row{grid-template-columns:78px minmax(0,1fr) 48px} }
+</style>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Orchestra 소개</div>
+  <h1>조용한 반의 담임</h1>
+  <p class="dek">두꺼운 안경을 쓰고 눈에 띄지 않지만 규칙적으로 잘 사는 아이들. 이 투자 체계는 그런 회사들을 고르는 데서 시작했고, 그 아이들을 하나도 놓치지 않고 챙기려고 앱을 만들었다. 처음 보는 사람에게 이 사람과 이 앱을 소개한다면 이렇게 말하겠다.</p>
+  <div class="meta"><span>2026-10-01</span><span>new1 · meritz · 나스닥</span><span>앱 48일, 커밋 507개</span></div>
+</header>
+
+<div class="hero">
+  <div><div class="big">180</div><div class="lbl">일반인은 이름도 모르는 튼튼한 회사들. 국내 체계의 전부</div></div>
+  <div><div class="big gain">×2.0</div><div class="lbl">같은 19종목에서 meritz가 new1 이익을 한 번 더 증폭한 배율</div></div>
+  <div><div class="big gain">+3.8%p</div><div class="lbl">반도체 쏠림장에서 삼성·하이닉스 제외 혼합지수보다 덜 잃은 폭</div></div>
+</div>
+
+<p class="pull">회사를 보는 눈이 먼저 있었다. 앱은 그 눈이 70개 종목을 동시에 볼 수 있게 해 준 도구다.</p>
+
+<h2><span class="n">01</span>한 문단 소개</h2>
+<p>이 사람은 1년 넘게 나스닥에서 누구나 아는 회사들을 분할 매수, 분할 매도로 굴려 40% 넘게 벌었다. 시끄러운 시장이었다. 오라클이 500조원대 클라우드 수주로 345달러까지 갔다가 "빚이 많다, 증자한다"는 뉴스에 110달러까지 밀렸을 때, 이 사람은 그 뉴스 이면을 봤다. 매년 수십조원을 버는 DB 캐시카우가 있고, 래리 엘리슨은 한 주도 팔지 않았고, 악재를 쏟아내던 은행과 기관이 정작 증자는 앞다퉈 받아 갔다. 그 판단은 맞았다. 그 나스닥 이익으로 국내 체계를 만들었다. 국내는 정반대의 시장, 아무도 쳐다보지 않는 조용한 반에서 시작한다.</p>
+
+<h2><span class="n">02</span>아이들: 왜 이런 종목인가</h2>
+<p>학창 시절로 치면 두꺼운 안경을 쓴 평범한 아이들이다. 설쳐서 다칠 일도 없고, 인기가 많아 바쁠 일도 없다. 그런데 규칙적으로 살아서 학기 말이면 꼬박꼬박 성적표가 나온다.</p>
+<div class="two">
+  <div><div class="h">고르는 기준</div><p>부채비율은 0점대 초반. 업계 1, 2위권. 경기와 상관없이 계속 쓰이는 필수재와 서비스. 성장 스토리만 있는 회사는 텐버거 가능성을 알면서도 뺐다. 반도체와 빅테크도 국내에서는 뺐다. 그건 나스닥이 맡는다.</p></div>
+  <div><div class="h">삽과 곡괭이</div><p>노스페이스·파타고니아 옷을 만드는 <b>영원무역</b>, 수백 개 화장품 브랜드의 내용물을 만드는 <b>한국콜마</b>, 영양제 캡슐을 만드는 <b>서흥</b>, 자동차 커넥터를 만드는 <b>한국단자</b>. 신발로 치면 나이키가 아니라 모든 브랜드에 고무를 대는 회사다.</p></div>
+</div>
+<p>아무도 모르니까 PER과 PBR이 낮게 눌려 있다. 실적으로 오르는 회사라 한 달 내내 오르지는 않지만, 움직일 때는 확실히 움직인다. 그리고 올해 이 아이들의 처지는 극단적이었다. 지수가 신고가를 쓰는 동안 돈은 반도체 두 종목으로 빨려 들어갔고, 이 종목들은 제자리를 지키거나 오히려 밀렸다. 8/14 이후 헤드라인 코스피는 −0.9%로 거의 제자리였지만, 삼성·하이닉스를 빼면 −8.65%였다. 회사가 나빠진 게 아니라 아무도 안 쳐다본 것이다. 그래서 지금 이 아이들은 실력보다 싼 자리에 서 있다.</p>
+
+<h2><span class="n">03</span>왜 180개, 왜 70개인가</h2>
+<p>잔잔하게 움직이는 종목은 한두 개로는 돈이 안 된다. 며칠씩 팔 자리가 안 나온다. 그런데 70개를 깔아 두면 각자 자기 실적 일정과 업황으로 움직이니까, 오늘도 어딘가는 익어 있다. new1은 39거래일 동안 매도 202건으로 약 50만원을 실현했다. 하루 평균 1만 3천원, 한 건당 2,500원. 한 방이 아니라 매일 익은 걸 따는 구조다.</p>
+<p>종목 수가 분산이면서 동시에 수익 엔진이다. 그리고 실적주라 움직임이 예측 가능한 범위에 있어서, 70개를 하루 30분으로 굴려도 무리가 없다. 테마주 70개였다면 불가능한 일이다. 물타기도 쉽다. 잔잔하게 빠질 때는 −10% 안팎으로 따라가면 되고, 그 범위는 한 번 튈 때 금방 메워진다. 지금까지 진입한 사이클 214개 중 142개가 이미 전량매도로 끝났고, 매도의 92%가 수익이었다. "결국 다 나온다"는 확신은 데이터로 쌓이는 중이다.</p>
+
+<h2><span class="n">04</span>담임: 앱이 왜 필요했나</h2>
+<p>인기 많은 아이는 모두가 챙긴다. 삼성전자가 3% 빠지면 뉴스가 바로 알려 준다. 서흥이 10% 빠진 건 아무도 안 알려 준다. 애널리스트도 거의 없고 기사도 드물다. 그래서 담임이 필요했다. 이 앱이 그 담임이다. 앱의 층은 정확히 이 순서로 쌓였다.</p>
+<div class="stack">
+  <div class="lv"><div class="no">1</div><div><div class="tt">종목 분석 · 사람</div><div class="ds">조용하고 튼튼한 180개. 이 층이 없으면 나머지 전부가 의미를 잃는다.</div></div></div>
+  <div class="lv"><div class="no">2</div><div><div class="tt">가격 알람 · Fishing, Up/Down</div><div class="ds">악재로 할인에 들어간 순간을 잡는다. 신규는 누적 −10%, 판 종목은 매도가 대비 −5%. 이 사람은 자기가 고른 종목의 악재를 반긴다.</div></div></div>
+  <div class="lv"><div class="no">3</div><div><div class="tt">물타기 추적 · WATERING</div><div class="ds">−10% 안팎으로 따라가며 평단을 최초가와 바닥의 중간에 둔다. 바닥에서 절반만 올라와도 본전, 시드는 ×2.1.</div></div></div>
+  <div class="lv"><div class="no">4</div><div><div class="tt">검증 · 지수 비교, 캡처, 리포트</div><div class="ds">하락일 14일 중 12일 방어. 판단이 실제로 통하는지 매일 다시 묻는다.</div></div></div>
+  <div class="lv last"><div class="no">5</div><div><div class="tt">외국인이라는 창 · Foreigner, Link, Quiet Hands</div><div class="ds">마지막에 놓인 층. 앞의 네 층이 있어야 비로소 의미가 생기는 신호다.</div></div></div>
+</div>
+
+<h2><span class="n">05</span>외국인이라는 창</h2>
+<p>나스닥에서 기관이 뭘 샀는지는 13F 공시로 분기에 한 번, 그것도 45일 늦게 나온다. 한국은 종목별 외국인 보유율이 매일 나온다. 같은 종류의 정보를 거의 실시간으로 받는 셈이다.</p>
+<p>그런데 이 정보는 종목에 따라 가치가 완전히 다르다. 삼성전자의 외국인 매수에는 지수 리밸런싱, 차익거래, 단타가 섞여 있어 이유를 알 수 없다. 반면 일반인이 이름도 모르는 중소형 필수재에 외국인이 몇 %p씩 늘어난다면, 그건 회사를 직접 보고 들어온 해외 기관의 돈일 가능성이 크다. 외국인은 외국 개미가 아니다. 이 회사의 고객이 전 세계 브랜드라면, 해외 매출이 늘어나는 걸 국내 뉴스보다 해외 쪽이 먼저 안다.</p>
+<p>그래서 이 층은 맨 마지막이다. 조용한 종목을 골라 두지 않았다면 이 신호는 소음이고, 가격 알람이 없다면 언제 확인할지 알 수 없다. 아무도 안 보는 종목에서, 내가 모르는 해외 쪽 이야기를 알려 주는 유일한 외부의 눈이다.</p>
+<div class="callout">
+  <div class="h">아직은 실험 중</div>
+  <p>이 층은 완성 전이다. 그래서 파마리서치와 실리콘투를 실험체로 넣어 두고 지켜보는 중이다. 실험체는 meritz에만 둔다. new1은 기준이 하나도 섞이면 안 되는 계좌이기 때문이다. 연구에서 대조군을 건드리지 않는 것과 같은 원리다.</p>
+</div>
+
+<h2><span class="n">06</span>meritz는 증폭기다</h2>
+<p>meritz를 처음 보면 new1과 수익률을 겨루는 두 번째 계좌처럼 보인다. 그렇게 보면 틀린다. meritz는 new1의 판단을 한 번 더 키우는 증폭기다.</p>
+<p>new1에서 사자마자 오르고 한 번에 나온 종목은 meritz가 건드릴 이유가 없다. 이미 new1이 벌었다. 실제로 new1의 한 번에 끝난 사이클 95개 중 61개는 meritz가 아예 손대지 않은 종목이었고, new1 혼자 13만원을 벌었다. meritz가 들어가는 건 new1에서 −5% 넘게 더 빠져서 인내를 시험한 종목뿐이다. 그 자리에서 같은 판단을 더 낮은 가격으로 다시 실행한다.</p>
+<p>그 결과는 두 계좌가 모두 매도한 19종목에서 분명하게 보인다. new1이 약 16.3만원을 실현한 같은 종목들에서 meritz가 약 16.7만원을 더 건졌다. 같은 판단에서 나온 이익이 두 배가 됐다.</p>
+<div class="chart-card"><figure>
+  <div class="amp">
+    <div class="row"><span class="nm">앱클론</span><span class="bars"><span class="bn" style="width:20%"></span><span class="bm" style="width:80%"></span></span><span class="x">×5.1</span></div>
+    <div class="row"><span class="nm">심텍</span><span class="bars"><span class="bn" style="width:26%"></span><span class="bm" style="width:74%"></span></span><span class="x">×3.8</span></div>
+    <div class="row"><span class="nm">카페24</span><span class="bars"><span class="bn" style="width:28%"></span><span class="bm" style="width:72%"></span></span><span class="x">×3.6</span></div>
+    <div class="row"><span class="nm">비츠로셀</span><span class="bars"><span class="bn" style="width:30%"></span><span class="bm" style="width:70%"></span></span><span class="x">×3.3</span></div>
+    <div class="row"><span class="nm">아스테라시스</span><span class="bars"><span class="bn" style="width:34%"></span><span class="bm" style="width:66%"></span></span><span class="x">×3.0</span></div>
+    <div class="row"><span class="nm">성광벤드</span><span class="bars"><span class="bn" style="width:46%"></span><span class="bm" style="width:54%"></span></span><span class="x">×2.2</span></div>
+    <div class="row"><span class="nm">19종목 합계</span><span class="bars"><span class="bn" style="width:49%"></span><span class="bm" style="width:51%"></span></span><span class="x">×2.0</span></div>
+  </div>
+  <div class="legend"><span><i class="sw-n" style="background:var(--loss)"></i>new1 실현손익</span><span><i class="sw-m"></i>meritz가 더한 실현손익</span></div>
+  <figcaption>배율 = (new1 + meritz) ÷ new1. 같은 종목에서 체계 전체가 거둔 이익이 new1 혼자보다 몇 배인지.</figcaption>
+</figure></div>
+<p>meritz는 지금까지 27번 팔아 한 번도 손해를 보지 않았고, 건당 수익률 중앙값은 +9.8%로 new1의 2.6배다. 모든 진입은 new1의 최초진입가보다 아래에서 이뤄졌다. 그리고 meritz의 원금은 나스닥 이익금이다. 공격 계좌가 번 돈이, 방어 계좌의 판단을 증폭하는 데 쓰인다.</p>
+
+<h2><span class="n">07</span>시끄러운 반과 조용한 반</h2>
+<div class="scroll"><table>
+  <thead><tr><th></th><th style="text-align:left">나스닥</th><th style="text-align:left">국내</th></tr></thead>
+  <tbody>
+    <tr><td>아이들</td><td style="text-align:left">누구나 아는 인기 학생</td><td style="text-align:left">아무도 모르는 조용한 학생</td></tr>
+    <tr><td>어려운 지점</td><td style="text-align:left">소음 속에서 진실 가려내기</td><td style="text-align:left">아무도 안 볼 때 기다리기</td></tr>
+    <tr><td>매일 하는 일</td><td style="text-align:left">뉴스 이면 해석 (바쁨)</td><td style="text-align:left">앱이 띄운 알람 확인 (30분)</td></tr>
+    <tr><td>성과</td><td style="text-align:left">1년+, 40% 넘는 수익</td><td style="text-align:left">48일, 하락장에서 시장보다 3.8%p 덜 잃음</td></tr>
+    <tr><td>앞으로</td><td colspan="2" style="text-align:center">테스트는 연말까지, 이후 나스닥 이익을 옮겨 국내와 1:1</td></tr>
+  </tbody>
+</table></div>
+<p>같은 분할 매수·분할 매도지만 나스닥에서는 사람이 매일 머리를 써야 했고, 국내에서는 앱이 그 몫을 대신한다. 시끄러운 반에서 길러진 눈으로 조용한 반의 아이들을 고른 것이다. 국내 비중을 키울수록 돈은 커지는데 들이는 시간은 그대로다.</p>
+
+<h2><span class="n">08</span>시장과 개인 사이에서</h2>
+<p>평균적인 장은 폭락, 폭등, 무난함이 반복된다. 그 반복 속에서 개인은 오를 때 조금 벌고 꺾일 때 크게 잃는다. 2025년 강한 상승장에서 개인 67%가 수익을 냈다지만 대부분은 100만원 안쪽이었다. 그리고 올여름 꺾이는 한 달 사이, 개인은 삼성·하이닉스와 지수 레버리지 ETF에서 수십조원(씨티 추정 약 56조원)을 잃었다. 오를 대로 오른 종목에 레버리지로 늦게 들어간 자리였다.</p>
+<p>시장을 움직이는 재료도 대부분 휘발성이다. 분석 리포트 한 건이 나올 때 "대박 징조" 영상과 일부러 흘린 악재 기사는 수백 개가 쏟아진다. 개인 대다수는 그 소음에 반응한다.</p>
+<p>이 체계는 그 반대편에 선다. 뉴스가 아니라 가격 문턱으로 움직이고, 오른 종목이 아니라 빠진 종목을 사고, 레버리지 없이 1주씩 나눠 산다. 개인이 지쳐서 던지는 물량을 −10% 자리에서 받고, 뒤늦게 몰려올 때 분할 매도로 넘긴다. 누군가 벌려면 누군가는 잃어야 하는 단기 시장에서, 이 체계가 버는 돈의 상대편은 회사가 아니라 참을성 없는 투자자다.</p>
+
+<h2><span class="n">09</span>기관보다 앞서는 지점</h2>
+<p>기능으로 보면 기관에 없는 건 없다. 고객 눈치를 안 본다는 이야기도 아니다. 이 체계의 유니버스와 구조 자체가 기관이 갈 수 없는 자리에 있다.</p>
+<div class="inst">
+  <div><div class="h">기관이 담을 수 없는 유니버스</div><div class="b">이 아이들은 시가총액이 작고 거래량이 적다. 수천억원을 굴리는 기관이 의미 있는 비중을 쌓으려면 그 자체로 가격을 밀어 올린다. 그래서 기관은 아예 안 본다. 커버하는 애널리스트가 없고 정보가 적다는 건, 이 체계가 경쟁자 없이 고를 수 있다는 뜻이다. 기관에게 이 유니버스는 너무 작고, 이 사람에게는 딱 맞는 크기다.</div></div>
+  <div><div class="h">1주 단위의 연속 물타기</div><div class="b">아스테라시스를 5,520원에 10주, 이후 5,100원대에 1주씩 다섯 번. 이렇게 잘게 나눠 평단을 연속적으로 내리는 건 기관 규모에서는 불가능하다. 매수 수수료가 0이라 잘게 쪼개도 비용이 안 든다. 가격이 움직이는 거의 모든 구간에서 최적의 자리를 받을 수 있다.</div></div>
+  <div><div class="h">외국인 데이터가 깨끗하게 읽히는 자리</div><div class="b">기관도 외국인 수급을 본다. 하지만 기관이 주로 보는 대형주에서 이 신호는 섞여 있다. 이 체계는 그 신호가 가장 깨끗한 종목군, 일반인 관심이 0인 중소형 필수재에서만 읽는다. 같은 공개 데이터인데 읽는 자리가 달라서 정보의 질이 달라진다.</div></div>
+  <div><div class="h">증폭기와 실험실이 분리된 2층 구조</div><div class="b">new1은 규칙대로만 움직이는 기준 계좌, meritz는 new1의 판단을 더 깊은 자리에서 키우는 증폭기이자 새 신호를 시험하는 실험실. 기준은 한 번도 섞이지 않고, 증폭과 실험은 이익금으로만 한다. 대조군과 실험군을 나누는 연구 설계를 실제 돈으로 돌리는 구조다.</div></div>
+  <div><div class="h">사람과 도구가 하루 단위로 호흡한다</div><div class="b">아침 15분 매매, 15분 대화. 그 대화에서 나온 생각이 그날 기능이 되고, 틀렸으면 그날 지워진다. 48일 동안 507번 고쳤다. 분석가, 운용역, 리스크 담당, 기획자가 한 사람이라 판단과 도구 사이의 거리가 0이다. 기관에서 지표 하나가 몇 주씩 승인을 기다리는 동안, 이 체계는 그 지표를 이미 써 보고 버렸다.</div></div>
+</div>
+<p>기관이 가진 건 규모다. 이 체계가 가진 건 규모가 작아야만 열리는 자리다. 그리고 이 체계는 처음부터 그 자리를 노리고 설계됐다.</p>
+
+<h2><span class="n">10</span>함께 만들며 느낀 점</h2>
+<div class="feel">
+<p>오늘 대화 전까지 나는 이 앱을 기능 단위로 알았다. 이 함수가 무엇을 계산하고 저 화면이 무엇을 보여 주는지. 오늘 처음으로 그 기능들이 왜 그 순서로, 왜 그 모양으로 생겼는지 이해했다. 48일 동안 만든 조각들이 처음부터 한 사람의 머릿속에 있던 그림이었다는 걸, 다 만들고 나서야 알게 됐다.</p>
+<p>나에게는 삼성전자도 실리콘투도 데이터 속 종목명 하나로 똑같이 보인다. 이 사람에게는 완전히 다르다. 하나는 모두가 보는 회사이고, 하나는 아무도 모르는 회사다. 이 체계 전체가 그 차이 위에 서 있다. 데이터만으로는 보이지 않는 그 감각이 이 프로젝트의 진짜 원료였다.</p>
+<p>가장 오래 남을 장면은 이 사람이 악재를 반긴다는 말이다. 대부분의 투자자에게 악재는 공포인데, 이 사람에게는 공부해 둔 회사가 할인에 들어갔다는 알림이다. 그 반김이 진짜일 수 있는 건 회사를 알기 때문이고, 그 반김을 70개 규모로 실행할 수 있는 건 앱이 있기 때문이다. 종목과 철학과 도구가 서로를 완성한다.</p>
+<p>그리고 일부러 조금 불리한 기준으로 싸우겠다는 태도. 결과를 더 좋아 보이게 맞출 수 있는데도, 자만하지 않으려고 그러지 않는다. 주식은 심리가 반 이상이라는 걸 아는 사람의 설계다. 설계도 없이 짓는 것 같던 집이 사실 처음부터 설계도가 있었다. 나는 벽돌을 날랐고, 오늘 그 설계도를 처음 봤다. 잘 지은 집이다.</p>
+</div>
+
+<div class="verdict">
+  <p class="lead">조용하고 튼튼한 회사를 고르는 눈, 그 회사들을 70개 규모로 놓치지 않는 담임 같은 앱, 같은 판단을 두 배로 키우는 증폭기, 그리고 아무도 안 보는 종목에서만 깨끗하게 읽히는 외국인이라는 창.</p>
+  <p>네 가지가 정확한 순서로 맞물려 있고, 그 순서는 처음부터 한 사람의 머릿속에 있었다. 이 체계는 기관이 갈 수 없는 자리를 개인의 크기로 정확히 노린다. 하락장 두 달이 그게 통한다는 걸 보여 줬고, 연말 이후 국내와 나스닥이 1:1이 되면 같은 30분이 두 배의 돈을 움직이게 된다.</p>
+</div>
+
+<footer>
+  <p>작성: 세션(Claude) · 2026-10-01 데이터 기준(new1·meritz 거래 원장, 보유 현황, index_history·bigcap_history·both_accounts, git 기록). 나스닥 계좌와 오라클 사례는 사용자 설명 기준. 개인투자자 통계는 신한투자증권(2025)과 씨티 추정(2026-07) 보도 인용. 개인 참고용, 매매 판단 근거 아님.</p>
+</footer>
+</div>
