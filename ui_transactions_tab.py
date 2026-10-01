@@ -874,6 +874,10 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     else:
         sell_frac_map = compute_sell_fraction_map(tx)
         card_parts = []
+        # 매도를 위로(2026-10-01 사용자 요청) — 매도 → 매수 → 입금/출금, 같은 구분 안에선 입력순 유지
+        _order = day_tx["구분"].map({"매도": 0, "매수": 1}).fillna(2)
+        day_tx = day_tx.assign(_o=_order).sort_values("_o", kind="stable")
+        fee_rate = state.get("fee_rate", 0.0)
         for _, r in day_tx.iterrows():
             realized = r["실현손익"]
             right_html = ""
@@ -898,7 +902,12 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                 rv = float(realized)
                 trc = UP_COLOR if rv >= 0 else DOWN_COLOR
                 trs = "+" if rv >= 0 else ""
-                right_html = f'<span style="color:{trc}">{trs}{rv:,.0f}원</span>'
+                # 수익률 = 실현손익 ÷ 매도분 원가(평단가×수량). 원가 = 매도금액 − 세금 − 실현손익
+                # (apply_transaction: realized = (매도가−평단가)×수량 − 매도금액×fee_rate 의 역산)
+                proceeds = float(r["수량"]) * float(r["단가"])
+                cost = proceeds * (1 - fee_rate) - rv
+                pct_html = f" ({trs}{rv / cost * 100:.1f}%)" if cost > 0 else ""
+                right_html = f'<span style="color:{trc}">{trs}{rv:,.0f}원{pct_html}</span>'
                 frac = sell_frac_map.get(r["id"])
                 if frac:
                     sold_qty, held_before = frac
