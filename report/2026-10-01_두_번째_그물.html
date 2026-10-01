@@ -1,0 +1,276 @@
+<title>두 번째 그물</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:780px; margin:0 auto; padding:56px 24px 96px}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:14px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.5rem; line-height:1.18; letter-spacing:-.01em; margin:0 0 18px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:22px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-size:1.02rem; font-weight:700; letter-spacing:.01em; margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent); font-weight:500}
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent); border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow)}
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+  .flag{background:var(--warn-wash); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:22px 0; font-size:13.5px}
+  .flag .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--warn); margin-bottom:8px}
+  .flag ol{margin:6px 0 0; padding-left:20px}
+  .flag li{margin:8px 0}
+
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:13.5px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:8px 11px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12px; letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  td .sub{display:block; font-size:11px; color:var(--ink-faint)}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; box-shadow:var(--shadow)}
+  .stat .k{font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; margin-top:3px}
+  .stat .c{font-size:12px; color:var(--ink-soft); margin-top:2px}
+
+  .chart-card{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:18px 18px 14px; margin:22px 0; box-shadow:var(--shadow)}
+  figure{margin:0}
+  figcaption{font-size:12px; color:var(--ink-faint); text-align:left; padding-top:10px}
+
+  .bar-row{display:flex; align-items:center; gap:10px; margin:10px 0}
+  .bar-label{width:96px; font-size:12.5px; color:var(--ink-soft); flex-shrink:0}
+  .bar-track{flex:1; height:20px; background:var(--rule-soft); border-radius:5px; overflow:hidden; position:relative}
+  .bar-fill{height:100%; border-radius:5px 0 0 5px}
+  .bar-val{width:64px; text-align:right; font-family:"IBM Plex Mono",monospace; font-size:12.5px; flex-shrink:0}
+
+  .tier{border-left:3px solid var(--rule); padding:2px 0 2px 16px; margin:16px 0}
+  .tier.pass{border-color:var(--accent)}
+  .tier.grey{border-color:var(--warn)}
+  .tier .tl{font-weight:600; font-size:13px; margin-bottom:2px}
+  .tier .bd{font-size:13px; color:var(--ink-soft)}
+
+  code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--rule-soft); padding:.1em .35em; border-radius:4px}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+    .bar-label{width:72px}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table,.stat,.flag,.chart-card{box-shadow:none}
+    h2{break-after:avoid} table,.verdict,.stat-grid,.flag,.chart-card{break-inside:avoid}
+  }
+  .bar-row .bar-label{width:110px}
+  .pair{display:flex; flex-direction:column; gap:4px; margin:14px 0}
+  .pair .bar-row{margin:0}
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--ink-faint); margin-top:6px}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px}
+  .sw-n{background:var(--gain)} .sw-m{background:var(--accent)}
+</style>
+<div class="wrap">
+
+<header>
+  <div class="kicker">관찰 리포트 · new1 × meritz</div>
+  <h1>두 번째 그물</h1>
+  <p class="dek">meritz는 new1이 먼저 던진 그물에서 빠져나와 더 깊이 가라앉은 종목을 한 번 더 건져 올리는 계좌다. 이 리포트는 그 연결이 실제 거래 기록에서 어떻게 작동하고 있는지를 숫자로 확인한다.</p>
+  <div class="meta"><span>2026-10-01 장중 기준</span><span>new1 거래 666건 · meritz 거래 225건</span><span>계좌 비교 구간 8/14 ~ 10/1 (31거래일)</span></div>
+</header>
+
+<div class="verdict">
+  <p class="lead">연결은 설계대로 작동한다. meritz의 모든 진입은 new1의 최초진입가보다 아래에서 이뤄졌고, 그 결과 하락일 손실은 new1의 3분의 1로 줄었다.</p>
+  <p>다만 "new1 −5%"라는 진입 문턱은 첫 매수 기준으로는 절반만 지켜지고 있고, 9월 들어 조금 얕아졌다. 그리고 new1이 거의 안 움직인 날에 meritz가 따로 조금씩 빠지면서, 하락일에 번 방어 효과의 대부분을 돌려주고 있다. 두 계좌의 8/14 이후 누적 성과가 거의 같은 이유가 여기에 있다.</p>
+</div>
+
+<div class="stat-grid">
+  <div class="stat"><div class="k">meritz 보유 중 new1과 겹치는 종목</div><div class="v">42 / 43</div><div class="c">평가금액 기준 95%가 new1과 같은 종목</div></div>
+  <div class="stat"><div class="k">meritz 평단가가 더 낮은 종목</div><div class="v">42 / 42</div><div class="c">중앙값 −4.1%</div></div>
+  <div class="stat"><div class="k">하락일 손실 흡수율</div><div class="v">33%</div><div class="c">new1 하락일 평균 −0.66% → meritz −0.22%</div></div>
+  <div class="stat"><div class="k">8/14 이후 누적</div><div class="v">−1.67% / −1.54%</div><div class="c">Orchestra(new1) / Orchestration(meritz)</div></div>
+</div>
+
+<h2><span class="n">01</span>설계: 같은 종목, 다른 문턱</h2>
+<p>meritz의 규칙은 단순하다. 종목을 직접 고르지 않고, new1이 이미 들고 있는 종목 중 −5% 이상 손실이 난 것만 얕게 따라 들어간다. 그래서 meritz에는 Fishing이나 Up/Down 같은 발굴 도구가 없다. new1의 보유 목록이 곧 meritz의 후보 목록이다.</p>
+<p>이 구조가 맞다면 거래 기록에서 세 가지가 보여야 한다. 첫째, meritz는 new1보다 늦게, 더 낮은 가격에 들어간다. 둘째, meritz의 종목은 거의 전부 new1에도 있다. 셋째, 두 계좌는 같이 움직이되 meritz가 덜 빠진다. 아래에서 하나씩 확인한다.</p>
+
+<h2><span class="n">02</span>관문: 진입 규칙은 지켜지고 있나</h2>
+<p>meritz의 매수 사이클 65개 중 62개는 진입 당시 new1이 같은 종목을 보유 중이었다. 이 62개 모두 meritz의 첫 매수가가 new1의 최초진입가 이하였다. 단 하나도 new1보다 비싸게 들어간 경우가 없다. "new1보다 아래에서만 산다"는 규칙은 예외 없이 지켜졌다.</p>
+<p>문턱의 깊이는 다르다. 첫 매수 시점에 new1 최초진입가 대비 −5% 이상 빠져 있던 경우는 <strong>62개 중 30개(48%)</strong>다. 중앙값은 −4.9%로 문턱에 아슬아슬하게 걸친다. 기준을 new1의 그 시점 평단가로 바꿔도 결과는 비슷하다(61개 중 29개, 중앙값 −4.9%).</p>
+
+<div class="chart-card"><figure>
+  <div class="pair">
+    <div class="bar-row"><span class="bar-label">−10% 이하</span><span class="bar-track"><span class="bar-fill" style="display:block;width:27%;background:var(--warn)"></span></span><span class="bar-val">8 (13%)</span></div>
+    <div class="bar-row"><span class="bar-label"></span><span class="bar-track"><span class="bar-fill" style="display:block;width:100%;background:var(--accent)"></span></span><span class="bar-val">92 (47%)</span></div>
+  </div>
+  <div class="pair">
+    <div class="bar-row"><span class="bar-label">−5 ~ −10%</span><span class="bar-track"><span class="bar-fill" style="display:block;width:73%;background:var(--warn)"></span></span><span class="bar-val">22 (35%)</span></div>
+    <div class="bar-row"><span class="bar-label"></span><span class="bar-track"><span class="bar-fill" style="display:block;width:70%;background:var(--accent)"></span></span><span class="bar-val">64 (33%)</span></div>
+  </div>
+  <div class="pair">
+    <div class="bar-row"><span class="bar-label">−2.5 ~ −5%</span><span class="bar-track"><span class="bar-fill" style="display:block;width:83%;background:var(--warn)"></span></span><span class="bar-val">25 (40%)</span></div>
+    <div class="bar-row"><span class="bar-label"></span><span class="bar-track"><span class="bar-fill" style="display:block;width:34%;background:var(--accent)"></span></span><span class="bar-val">31 (16%)</span></div>
+  </div>
+  <div class="pair">
+    <div class="bar-row"><span class="bar-label">0 ~ −2.5%</span><span class="bar-track"><span class="bar-fill" style="display:block;width:23%;background:var(--warn)"></span></span><span class="bar-val">7 (11%)</span></div>
+    <div class="bar-row"><span class="bar-label"></span><span class="bar-track"><span class="bar-fill" style="display:block;width:8%;background:var(--accent)"></span></span><span class="bar-val">7 (4%)</span></div>
+  </div>
+  <div class="legend"><span><i style="background:var(--warn)"></i>meritz 첫 매수 (62건)</span><span><i class="sw-m"></i>meritz 전체 매수 (194건)</span></div>
+  <figcaption>new1 최초진입가 대비 meritz 매수가 위치. 막대 길이는 색깔별로 최댓값 기준.</figcaption>
+</figure></div>
+
+<p>첫 매수만 보면 문턱이 헐거워 보이지만, 전체 매수로 넓히면 그림이 달라진다. meritz의 매수 194건 중 <strong>80%가 −5% 아래</strong>에서 이뤄졌고, 거의 절반(47%)은 −10% 아래였다. 금액 기준으로도 72%가 −5% 아래다. 첫 매수는 발을 담그는 정도이고, 실제 돈은 더 깊은 곳에서 들어간다. 물타기 방식이 meritz에서도 그대로 작동하고 있다는 뜻이다.</p>
+
+<table>
+  <thead><tr><th>월</th><th>첫 매수 사이클</th><th>new1 최초진입가 대비 중앙값</th></tr></thead>
+  <tbody>
+    <tr><td>8월</td><td>35</td><td class="loss">−6.0%</td></tr>
+    <tr><td>9월</td><td>26</td><td class="loss">−4.5%</td></tr>
+    <tr><td>10월 (1일)</td><td>1</td><td class="loss">−12.5%</td></tr>
+  </tbody>
+</table>
+
+<div class="flag">
+  <div class="h">짚어볼 점</div>
+  <p>9월 들어 첫 진입이 8월보다 1.5%p 얕아졌다. 진입이 빨라진 건지, 문턱이 원래 "대략 −5%"라는 감각적 기준이었는지는 기록만으로 구분이 안 된다. 규칙을 "−5%"로 볼지 "new1 최초진입가 아래면 탐색 진입 가능"으로 볼지 한번 정해두면, 다음 리포트부터 이 숫자를 위반으로 읽을지 정상으로 읽을지가 분명해진다.</p>
+</div>
+
+<p>시차도 일정하다. meritz는 new1의 첫 매수 후 <strong>중앙값 7.5일</strong>(평균 10.7일) 뒤에 들어갔다. 같은 날 들어간 경우는 두산에너빌리티 하나뿐이다.</p>
+
+<div class="scroll"><table>
+  <thead><tr><th>가장 깊게 들어간 사이클</th><th>new1 진입</th><th>meritz 진입</th><th>시차</th><th>진입가 차이</th></tr></thead>
+  <tbody>
+    <tr><td>앱클론</td><td>8/27</td><td>9/07</td><td>11일</td><td class="loss">−21.8%</td></tr>
+    <tr><td>서흥</td><td>8/11</td><td>8/14</td><td>3일</td><td class="loss">−16.8%</td></tr>
+    <tr><td>JYP Ent.</td><td>8/10</td><td>8/18</td><td>8일</td><td class="loss">−15.6%</td></tr>
+    <tr><td>오스테오닉</td><td>8/04</td><td>8/24</td><td>20일</td><td class="loss">−14.8%</td></tr>
+    <tr><td>SGC에너지</td><td>9/17</td><td>10/01</td><td>14일</td><td class="loss">−12.5%</td></tr>
+    <tr><td>와이지-원</td><td>8/18</td><td>8/25</td><td>7일</td><td class="loss">−12.3%</td></tr>
+  </tbody>
+</table></div>
+
+<h2><span class="n">03</span>같은 종목, 다른 자리</h2>
+<p>현재 meritz는 43종목을 들고 있고, 그중 42종목이 new1에도 있다. meritz 평가금액의 95%가 new1과 겹치는 종목이다. 반대로 new1 쪽에서 보면 주식 평가금액의 78%가 meritz와 겹친다. new1에만 있는 30종목은 아직 −5%까지 안 빠졌거나 빠지기 전에 나온 종목들이다. 결측이 아니라 설계대로의 결과다.</p>
+<p>겹치는 42종목 전부에서 meritz의 평단가가 더 낮다. 중앙값으로 4.1% 싸게 들고 있다. 그래서 같은 종목 묶음인데도 평가손익이 다르다. 겹치는 종목만 놓고 보면 new1은 <span class="loss">−8.8%</span>, meritz는 <span class="loss">−4.8%</span>다.</p>
+
+<div class="scroll"><table>
+  <thead><tr><th>종목 (meritz 평가금액 순)</th><th>new1 평단</th><th>meritz 평단</th><th>차이</th><th>new1 손익</th><th>meritz 손익</th></tr></thead>
+  <tbody>
+    <tr><td>CJ제일제당</td><td>191,367</td><td>182,467</td><td class="loss">−4.7%</td><td class="loss">−7.0%</td><td class="loss">−2.7%</td></tr>
+    <tr><td>서흥</td><td>23,305</td><td>22,170</td><td class="loss">−4.9%</td><td class="loss">−14.0%</td><td class="loss">−9.3%</td></tr>
+    <tr><td>미스토홀딩스</td><td>40,611</td><td>39,538</td><td class="loss">−2.6%</td><td class="loss">−8.0%</td><td class="loss">−5.5%</td></tr>
+    <tr><td>영원무역</td><td>79,483</td><td>77,000</td><td class="loss">−3.1%</td><td class="loss">−13.4%</td><td class="loss">−10.6%</td></tr>
+    <tr><td>GS리테일</td><td>25,425</td><td>24,273</td><td class="loss">−4.5%</td><td class="loss">−13.1%</td><td class="loss">−9.4%</td></tr>
+    <tr><td>OCI홀딩스</td><td>232,000</td><td>204,500</td><td class="loss">−11.9%</td><td class="loss">−5.0%</td><td class="gain">+8.1%</td></tr>
+    <tr><td>오리온</td><td>126,400</td><td>123,150</td><td class="loss">−2.6%</td><td class="loss">−16.2%</td><td class="loss">−14.2%</td></tr>
+    <tr><td>와이지-원</td><td>13,909</td><td>13,149</td><td class="loss">−5.5%</td><td class="loss">−9.1%</td><td class="loss">−3.7%</td></tr>
+    <tr><td>NAVER</td><td>214,000</td><td>199,900</td><td class="loss">−6.6%</td><td class="loss">−10.5%</td><td class="loss">−4.2%</td></tr>
+    <tr><td>코오롱티슈진</td><td>18,975</td><td>18,673</td><td class="loss">−1.6%</td><td class="loss">−14.2%</td><td class="loss">−12.4%</td></tr>
+  </tbody>
+  <caption>평단 단위 원, 손익은 10/1 장중 현재가 기준.</caption>
+</table></div>
+
+<p>OCI홀딩스가 이 구조를 가장 잘 보여준다. 같은 종목이 new1에서는 −5.0% 손실인데 meritz에서는 +8.1% 이익이다. 반대로 오리온이나 코오롱티슈진처럼 평단 차이가 2% 안팎인 종목은 두 계좌 모두 깊은 손실이다. meritz가 충분히 늦게 들어가지 못하면 같이 물린다.</p>
+
+<h2><span class="n">04</span>같이 움직이는 정도</h2>
+<p>8/14 이후 31거래일 동안 두 계좌의 일간 수익률 상관계수는 <strong>0.56</strong>이다. 같은 방향으로 움직인 날은 77%다. new1이 1% 움직일 때 meritz는 평균 0.5% 움직였다. 종목이 95% 겹치는데도 상관이 0.56에 그치는 건, 같은 종목이라도 비중과 평단이 달라서 하루 손익의 모양이 꽤 다르기 때문이다.</p>
+<p>new1이 움직인 방향에 따라 31일을 세 묶음으로 나누면 연결의 성격이 분명해진다.</p>
+
+<div class="scroll"><table>
+  <thead><tr><th>new1 기준 날짜 구분</th><th>일수</th><th>new1 합계</th><th>meritz 합계</th><th>meritz − new1</th></tr></thead>
+  <tbody>
+    <tr><td>하락일 (−0.3% 미만)</td><td>9</td><td class="loss">−5.94%</td><td class="loss">−1.94%</td><td class="gain">+4.00%p</td></tr>
+    <tr><td>보합일 (±0.3% 이내)</td><td>16</td><td class="loss">−0.33%</td><td class="loss">−2.67%</td><td class="loss">−2.34%p</td></tr>
+    <tr><td>상승일 (+0.3% 초과)</td><td>6</td><td class="gain">+4.60%</td><td class="gain">+3.07%</td><td class="loss">−1.53%p</td></tr>
+    <tr><td><strong>합계</strong></td><td>31</td><td class="loss">−1.67%</td><td class="loss">−1.54%</td><td class="gain">+0.13%p</td></tr>
+  </tbody>
+  <caption>8/14 기준 리베이스 누적 수익률(both_accounts.csv)의 일간 차분 합계.</caption>
+</table></div>
+
+<p>하락일에 meritz는 new1 손실의 3분의 1만 받았다. 상승일에는 3분의 2를 따라갔다. 덜 빠지고 웬만큼 따라 오르는, 헷지 계좌가 원하는 비대칭 그대로다. 이 두 구간만 합치면 meritz가 2.5%p 앞선다.</p>
+<p>그 우위를 보합일이 거의 다 가져간다. new1이 ±0.3% 안에서 멈춰 있던 16일 동안 meritz는 혼자 2.3%p 빠졌다. 가장 큰 날은 9/10(new1 −0.06%, meritz −1.09%)과 8/27(−0.15% 대 −0.47%)이다. 매일은 작지만 횟수가 많아서 쌓인다.</p>
+
+<div class="callout">
+  <div class="h">왜 보합일에 meritz만 빠지나</div>
+  <p>가설은 집중도다. meritz는 new1이 들고 있는 72종목 중 가장 많이 빠진 43종목만 담고 있다. new1에서는 이 종목들이 빠지는 날 아직 버티는 나머지 30종목이 상쇄해 주지만, meritz에는 그 완충이 없다. 하락 추세가 이어지는 종목군만 모아 둔 구조라, 시장이 조용한 날에도 그 종목들의 잔여 하락이 그대로 드러난다. 이게 맞는다면 반등장에서는 반대로 meritz가 보합일에 더 많이 오르는 모습이 나와야 한다. 다음 상승 국면에서 이 표를 다시 보면 확인할 수 있다.</p>
+</div>
+
+<h2><span class="n">05</span>매도: 적게, 크게</h2>
+<p>매도 방식은 두 계좌가 확연히 다르다.</p>
+<div class="scroll"><table>
+  <thead><tr><th></th><th>new1</th><th>meritz</th></tr></thead>
+  <tbody>
+    <tr><td>매도 건수</td><td>202</td><td>27</td></tr>
+    <tr><td>매도 1건당 평균 실현손익</td><td>2,495원</td><td>7,047원</td></tr>
+    <tr><td>매도 1건 수익률 중앙값</td><td class="gain">+3.8%</td><td class="gain">+9.8%</td></tr>
+    <tr><td>수익으로 끝난 매도</td><td>92%</td><td>100%</td></tr>
+    <tr><td>누적 실현손익</td><td class="gain">+503,995원</td><td class="gain">+190,259원</td></tr>
+  </tbody>
+</table></div>
+<p>meritz는 27번 팔아서 한 번도 손해를 보지 않았고, 한 건당 수익률이 new1의 2.6배다. 낮은 곳에서 산 덕에 같은 반등에서도 수익 폭이 크다. 매도한 날의 절반(27건 중 14건)은 new1도 같은 날 같은 종목을 팔았다. 반등이 오면 두 계좌가 같이 정리하고, meritz가 더 큰 몫을 가져간다.</p>
+<p>매수 쪽에서도 같은 패턴이 보인다. meritz가 어떤 종목을 산 날의 40%(197건 중 79건)는 new1도 같은 날 같은 종목을 샀다. meritz가 따로 판단해서 움직인다기보다, 한 번의 판단을 두 계좌가 다른 깊이로 실행한다고 보는 게 정확하다.</p>
+
+<h2><span class="n">06</span>규칙 밖의 세 종목</h2>
+<div class="tier grey"><div class="tl">파마리서치 · meritz만 보유</div><div class="bd">new1이 한 번도 산 적 없는 종목을 meritz가 9/11에 342,000원에 샀다. 같은 날 이 종목이 Link 감시목록에 다이버전스 후보로 처음 올라갔다(가격 −10.6%, 외인비중 +3.31%p). new1을 거치지 않고 Link에서 meritz로 바로 가는 두 번째 경로가 생긴 셈이다. 의도한 경로라면 규칙에 추가해 둘 만하고, 일회성이었다면 예외로 기록해 두면 된다.</div></div>
+<div class="tier"><div class="tl">삼아알미늄 · 계좌 개설 첫날</div><div class="bd">meritz 첫 거래일(8/14)에 53,000원에 사서 8/18에 59,500원에 팔았다. 연결 구조가 자리 잡기 전의 초기 세팅 거래다.</div></div>
+<div class="tier"><div class="tl">한국콜마 · new1이 이미 판 뒤</div><div class="bd">meritz가 8/18에 들어갔을 때 new1은 이미 이 종목을 전량매도한 상태였다. new1 보유 중 −5%라는 기본 경로와는 다른 진입이다.</div></div>
+
+<h2><span class="n">07</span>정리</h2>
+<ul>
+  <li>"new1보다 아래에서만 산다"는 규칙은 62건 중 62건 지켜졌다. 이 연결의 뼈대는 튼튼하다.</li>
+  <li>"−5%"라는 숫자는 첫 매수 기준으로는 절반만 지켜진다. 대신 돈의 대부분은 −5%보다 깊은 곳에서 들어간다. 첫 매수를 탐색 진입으로 공식화할지 정해두면 좋겠다.</li>
+  <li>하락일 방어(손실의 3분의 1만 받음)는 확실하다. 하지만 보합일에 혼자 빠지는 몫이 그 이득을 거의 상쇄해서, 8/14 이후 누적은 두 계좌가 거의 같다.</li>
+  <li>meritz의 진짜 강점은 매도에서 나온다. 100% 수익 매도, 건당 수익률 +9.8%. 반등장이 오면 두 계좌의 누적 차이는 여기서 벌어질 가능성이 크다.</li>
+  <li>파마리서치는 Link에서 meritz로 바로 가는 새 경로를 보여준다. 규칙으로 둘지 예외로 둘지 정해둘 만하다.</li>
+</ul>
+
+<footer>
+  <p>작성: 세션(Claude) · 2026-10-01 장중 데이터 기준(new1·meritz transactions.csv, portfolio_data.csv, both_accounts.csv 실측). meritz 현재 보유는 전부 국내 종목. 개인 참고용, 매매 판단 근거 아님.</p>
+</footer>
+</div>
