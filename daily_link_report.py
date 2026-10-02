@@ -157,14 +157,22 @@ def svg_chart(ps: pd.DataFrame, fs: pd.DataFrame, live_price: float | None, toda
     return "".join(parts)
 
 
-def main():
-    today = datetime.now(core.KST).strftime("%Y-%m-%d") if hasattr(core, "KST") else core.today_kst_str()
+def load_data() -> dict:
+    """세 아침 리포트(액션/외인 샘플/CFG)가 같은 데이터를 쓰도록 한 번만 불러온다."""
+    today = datetime.now(core.KST).strftime("%Y-%m-%d")
     sec = tomllib.load(open(HERE / ".streamlit/secrets.toml", "rb"))["supabase"]
     url, key = sec["url"], sec.get("anon_key") or sec.get("key")
     ph = core.load_watchlist_history_db(url, key)
     fh = core.load_investor_flow_db(url, key)
     quotes, _ = core.fetch_quotes(list(ph["종목코드"].unique()))
     live = {c: v["price"] for c, v in quotes.items() if v.get("price")}
+    return {"today": today, "ph": ph, "fh": fh, "quotes": quotes, "live": live,
+            "asof": datetime.now(core.KST).strftime("%Y-%m-%d %H:%M")}
+
+
+def main(data: dict | None = None) -> dict:
+    data = data or load_data()
+    today, ph, fh, live = data["today"], data["ph"], data["fh"], data["live"]
     cand = core.compute_link_candidates(ph, fh, live_quotes=live)
 
     # 종목별 현재 상태 + 착시(고점 대비 반납) 계산
@@ -298,6 +306,7 @@ def main():
     print(f"[완료] {today} 명단 {len(today_df)}개 · 신규 {len(added)} · 탈락 {len(dropped)}")
     for _, r in today_df.iterrows():
         print(f"  {r['순위']:>2}. {r['종목명']} [{r['단계']}] P {r['P']:+.1f}% dF {r['dF']:+.2f}%p 반납 {r['반납률']:.0%}")
+    return {"stats": stats, "members": members, "roster": today_df}
 
 
 def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, dropped, track,
