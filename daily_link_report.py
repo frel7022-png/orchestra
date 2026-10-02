@@ -414,7 +414,7 @@ def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, droppe
     cpath = OUT / "comments" / f"{today}.html"
     comment = cpath.read_text(encoding="utf-8") if cpath.exists() else '<p class="note">아직 작성 전</p>'
     tiers_doc = " · ".join(f"{lab} 외인{b}%↑ 주가{p}%↓ +{d}%p↑ 또는 상대+{r}%↑" for lab, b, p, d, r in TIERS)
-    page = f"""<title>Link Sample</title>
+    page = f"""<title>Overture · Link</title>
 <style>
 :root{{--bg:#f6f7f9;--card:#fff;--ink:#191b21;--soft:#5b606b;--faint:#8b909c;--rule:#e0e3ea;
 --up:#c9313d;--dn:#2c5fc4;--fl:#15794c;--new:#15794c;--t0:#7a1f8f;--t1:#c9313d;--t3:#b4690e;--t5:#5b606b;--t8:#8b909c}}
@@ -443,7 +443,7 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 .nochart{{font-size:12px;color:var(--faint);padding:20px 0}}
 </style>
 <div class="wrap">
-<h1>Link Sample</h1>
+<h1>Overture · Link</h1>
 <p class="sub">{today} · 주가는 빠지는데 외국인은 모으는 종목 10 · 착시(외인 고점 대비 {GIVEBACK_LIMIT:.0%} 이상 반납)·꺾임 제외</p>
 
 <h2>오늘의 명단</h2>

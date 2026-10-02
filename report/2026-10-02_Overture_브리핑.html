@@ -1,0 +1,305 @@
+<title>Overture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans KR",system-ui,sans-serif; font-weight:400;
+    line-height:1.72; margin:0; padding:0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:780px; margin:0 auto; padding:56px 24px 96px}
+  .gain{color:var(--gain)} .loss{color:var(--loss)}
+
+  header{margin-bottom:44px}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:14px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.5rem; line-height:1.18; letter-spacing:-.01em; margin:0 0 18px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--ink-soft); margin:0; text-wrap:pretty}
+  .meta{margin-top:22px; padding-top:16px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-faint); display:flex; gap:18px; flex-wrap:wrap}
+
+  h2{font-size:1.02rem; font-weight:700; letter-spacing:.01em; margin:52px 0 4px; padding-top:22px; border-top:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--accent); font-weight:500}
+  h3{font-size:.95rem; font-weight:600; margin:26px 0 2px}
+  p{margin:12px 0}
+  strong{font-weight:600}
+  em{font-style:normal; background:var(--accent-wash); padding:.05em .3em; border-radius:3px}
+
+  .verdict{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent); border-radius:10px; padding:20px 22px; margin:28px 0 8px; box-shadow:var(--shadow)}
+  .verdict p{margin:8px 0}
+  .verdict .lead{font-weight:600; font-size:1.05rem}
+  .flag{background:var(--warn-wash); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:22px 0; font-size:13.5px}
+  .flag .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--warn); margin-bottom:8px}
+  .flag ol{margin:6px 0 0; padding-left:20px}
+  .flag li{margin:8px 0}
+
+  table{width:100%; border-collapse:collapse; margin:20px 0; font-size:13.5px}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  th,td{padding:8px 11px; text-align:right; border-bottom:1px solid var(--rule-soft)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{border-bottom:1.5px solid var(--rule); font-weight:600; color:var(--ink-soft); font-size:12px; letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:1px solid var(--rule)}
+  td .sub{display:block; font-size:11px; color:var(--ink-faint)}
+  caption{caption-side:bottom; font-size:12px; color:var(--ink-faint); text-align:left; padding-top:8px}
+
+  ul{margin:12px 0; padding-left:0; list-style:none}
+  li{margin:10px 0; padding-left:22px; position:relative}
+  li::before{content:"—"; position:absolute; left:0; color:var(--ink-faint)}
+
+  .callout{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:16px 18px; margin:18px 0; font-size:13.5px; box-shadow:var(--shadow)}
+  .callout .h{font-weight:600; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:6px}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .stat{background:var(--card); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; box-shadow:var(--shadow)}
+  .stat .k{font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint)}
+  .stat .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; margin-top:3px}
+  .stat .c{font-size:12px; color:var(--ink-soft); margin-top:2px}
+
+  .chart-card{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:18px 18px 14px; margin:22px 0; box-shadow:var(--shadow)}
+  figure{margin:0}
+  figcaption{font-size:12px; color:var(--ink-faint); text-align:left; padding-top:10px}
+
+  .bar-row{display:flex; align-items:center; gap:10px; margin:10px 0}
+  .bar-label{width:96px; font-size:12.5px; color:var(--ink-soft); flex-shrink:0}
+  .bar-track{flex:1; height:20px; background:var(--rule-soft); border-radius:5px; overflow:hidden; position:relative}
+  .bar-fill{height:100%; border-radius:5px 0 0 5px}
+  .bar-val{width:64px; text-align:right; font-family:"IBM Plex Mono",monospace; font-size:12.5px; flex-shrink:0}
+
+  .tier{border-left:3px solid var(--rule); padding:2px 0 2px 16px; margin:16px 0}
+  .tier.pass{border-color:var(--accent)}
+  .tier.grey{border-color:var(--warn)}
+  .tier .tl{font-weight:600; font-size:13px; margin-bottom:2px}
+  .tier .bd{font-size:13px; color:var(--ink-soft)}
+
+  code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--rule-soft); padding:.1em .35em; border-radius:4px}
+
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-faint)}
+
+  @media (max-width:560px){
+    h1{font-size:1.95rem} .wrap{padding:40px 18px 72px}
+    .stat-grid{grid-template-columns:1fr}
+    .bar-label{width:72px}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none; padding:0 12mm}
+    .verdict,.callout,table,.stat,.flag,.chart-card{box-shadow:none}
+    h2{break-after:avoid} table,.verdict,.stat-grid,.flag,.chart-card{break-inside:avoid}
+  }
+  .hero{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule); border-radius:12px; overflow:hidden; margin:30px 0 8px; box-shadow:var(--shadow)}
+  .hero div{background:var(--card); padding:18px 16px 16px; min-width:0}
+  .hero .big{font-family:"IBM Plex Mono",monospace; font-size:2rem; line-height:1.1; font-weight:500; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+  .hero .lbl{font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.45}
+  .pull{font-family:"Newsreader",Georgia,serif; font-style:italic; font-size:1.42rem; line-height:1.45; margin:34px 0; padding:4px 0 4px 20px; border-left:2px solid var(--accent); text-wrap:balance}
+  .map{margin:22px 0; border-top:1px solid var(--rule)}
+  .map .r{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; padding:14px 0; border-bottom:1px solid var(--rule-soft)}
+  .map .q{font-weight:600; font-size:.95rem}
+  .map .a{font-size:13.5px; color:var(--ink-soft)}
+  .map .a b{color:var(--ink); font-weight:600}
+  .tl{margin:22px 0; position:relative; padding-left:22px}
+  .tl::before{content:""; position:absolute; left:5px; top:6px; bottom:6px; width:1px; background:var(--rule)}
+  .tl .e{position:relative; margin:0 0 14px}
+  .tl .e::before{content:""; position:absolute; left:-21px; top:8px; width:9px; height:9px; border-radius:50%; background:var(--card); border:2px solid var(--accent)}
+  .tl .d{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--accent)}
+  .tl .t{font-size:13.5px}
+  .who{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:22px 0}
+  .who > div{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:16px 18px; box-shadow:var(--shadow); min-width:0}
+  .who .h{font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:8px}
+  .who ul{margin:0} .who li{font-size:13.5px; margin:7px 0}
+  .flow{background:var(--card); border:1px solid var(--rule); border-radius:12px; padding:14px 10px 6px; margin:22px 0; box-shadow:var(--shadow)}
+  .flow svg{display:block; width:100%; height:auto; max-width:440px; margin:0 auto}
+  .flow .bx{fill:var(--paper); stroke:var(--rule)}
+  .flow .bx.me{fill:var(--accent-wash); stroke:var(--accent)}
+  .flow .bx.ck{fill:var(--warn-wash); stroke:var(--warn)}
+  .flow .t1{fill:var(--ink); font:600 12.5px "IBM Plex Sans KR",system-ui,sans-serif}
+  .flow .t2{fill:var(--ink-soft); font:400 10.5px "IBM Plex Sans KR",system-ui,sans-serif}
+  .flow .ar{stroke:var(--ink-faint); stroke-width:1.3; fill:none}
+  .flow .ar.loop{stroke:var(--gain)}
+  .flow .ar.dash{stroke-dasharray:4 3}
+  .flow .lb{fill:var(--ink-faint); font:500 10px "IBM Plex Mono",monospace}
+  .flow .lb.g{fill:var(--gain)}
+  .flow marker path{fill:var(--ink-faint)}
+  .flow marker#mg path{fill:var(--gain)}
+  .inst{margin:22px 0; display:grid; gap:12px}
+  .inst > div{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:15px 18px; box-shadow:var(--shadow)}
+  .inst .h{font-weight:600; font-size:.95rem; margin-bottom:4px}
+  .inst .b{font-size:13.5px; color:var(--ink-soft)}
+  .feel p{margin:14px 0}
+  @media (max-width:560px){
+    .hero{grid-template-columns:1fr} .hero .big{font-size:1.75rem}
+    .map .r{grid-template-columns:1fr; gap:4px}
+    .who{grid-template-columns:1fr}
+    .pull{font-size:1.2rem}
+  }
+  .mv{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:22px 0}
+  .mv > div{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:14px 16px; box-shadow:var(--shadow); min-width:0}
+  .mv .no{font-family:"IBM Plex Mono",monospace; color:var(--accent); font-size:12px; letter-spacing:.08em}
+  .mv .nm{font-weight:700; font-size:1.02rem; margin:2px 0 6px}
+  .mv p{font-size:13px; color:var(--ink-soft); margin:0}
+  .mv a{color:var(--accent); font-size:12px; word-break:break-all}
+  @media (max-width:640px){ .mv{grid-template-columns:1fr} }
+</style>
+<div class="wrap">
+
+<header>
+  <div class="kicker">브리핑 · 아침 리포트 버전 1</div>
+  <h1>Overture</h1>
+  <p class="dek">Orchestra(new1)와 Orchestration(meritz)이 하루를 연주하기 전에, 그날의 주제를 먼저 들려주는 서곡. 앱이 쌓은 데이터를 매일 아침 세 개의 리포트로 세공해서, 판단하는 사람에게 넘긴다.</p>
+  <div class="meta"><span>2026-10-02 버전 1</span><span>morning_report.py · daily_link_report.py</span><span>테스트 기간 ~ 2026-12-31</span></div>
+</header>
+
+<div class="verdict">
+  <p class="lead">한 줄 요약: "리포트 해" 한마디에 Up/Down·Watering·Fishing·외인·CFG를 한 번에 훑고, 모든 숫자에 그래프를 붙여 세 장으로 보낸다. 판단은 사람이, 훑기와 세공은 Claude가.</p>
+  <p>이름은 서곡(Overture)에서 따왔다. 서곡은 공연이 시작되기 전에 연주되면서 그날 다룰 주제들을 미리 들려준다. 이 리포트도 장이 열리기 전(또는 장중에) 오늘 볼 종목들을 먼저 들려주고, 실제 연주(매매)는 그걸 듣고 사람이 한다.</p>
+</div>
+
+<h2><span class="n">01</span>왜 만들었나</h2>
+<p>앱은 이미 Up/Down, Watering Detect, Fishing, Foreigner를 다 갖추고 있었다. 문제는 두 가지였다.</p>
+<ul>
+  <li><b>사람은 매일 그날 숫자만 본다.</b> Fishing에서 −20%를 봐도 그게 −30%에서 반등 중인 −20%인지, 계속 빠지는 −20%인지는 지난 며칠을 다 기억해야 알 수 있다. 외인 비중 11.89%도 "많이 모았다"로 보이지만 2주 전엔 13.70%였다. 이 착시는 숫자를 그래프로 바꿔야 막힌다.</li>
+  <li><b>사람은 빠뜨린다.</b> 같은 순서로 매일 180종목, 매도 종목 48개, 물타기 13개를 훑는 건 집중력에 따라 매일 달라진다. 오늘만 해도 meritz 문턱을 넘은 종목 세 개가 아직 안 들어가 있었다.</li>
+</ul>
+<p>그래서 앱의 기능을 그대로 쓰되, 그 결과를 매일 한 번에 훑고 그래프로 세공해서 보고서로 만드는 층을 하나 더 얹었다. 앱이 "도구"라면 Overture는 "아침 브리핑"이다.</p>
+
+<h2><span class="n">02</span>세 악장</h2>
+<div class="mv">
+  <div><div class="no">I</div><div class="nm">Action</div><p>네 루틴 그대로. 계좌 vs 혼합지수, Up/Down 재진입, Watering 물타기, Fishing 흐름, Today's Alarm, meritz 진입 후보. 각 칸 상위 10개, 행마다 그래프, 총평.</p><a href="https://claude.ai/artifact/QS69Pf2xGzAv6rrChM6Say">claude.ai/artifact/QS69Pf2xGzAv6rrChM6Say</a></div>
+  <div><div class="no">II</div><div class="nm">Link</div><p>주가는 빠지는데 외국인은 모으는 종목 10개 명단. 착시·꺾임 필터, 다시 모으기 시작한 종목, 따로 관리 종목, 추이 그래프, 총평.</p><a href="https://claude.ai/artifact/4qCoVyQJcxv8u2h4wNyyfS">claude.ai/artifact/4qCoVyQJcxv8u2h4wNyyfS</a></div>
+  <div><div class="no">III</div><div class="nm">CFG</div><p>I의 후보 중, 그 하락 구간 동안 외국인이 실제로 모은 종목만. 두 그래프를 나란히. 드문 게 정상인 파이널.</p><a href="https://claude.ai/artifact/1UGjtX4QJAgCd9VCZ9dtBB">claude.ai/artifact/1UGjtX4QJAgCd9VCZ9dtBB</a></div>
+</div>
+
+<h2><span class="n">03</span>하루의 흐름</h2>
+<div class="flow"><svg viewBox="0 0 380 470" role="img" aria-label="리포트 해 요청에서 데이터 로드, 세 리포트 생성, 사람의 판단까지의 흐름">
+  <defs><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+  <rect class="bx me" x="90" y="10" width="200" height="40" rx="8"/>
+  <text class="t1" x="190" y="35" text-anchor="middle">"리포트 해"</text>
+  <rect class="bx" x="40" y="76" width="300" height="48" rx="8"/>
+  <text class="t1" x="190" y="96" text-anchor="middle">데이터 한 번에 불러오기</text>
+  <text class="t2" x="190" y="113" text-anchor="middle">시세 DB · 외인 DB · 실시간가 · 거래 원장 · 보유</text>
+  <rect class="bx" x="14" y="152" width="110" height="52" rx="8"/>
+  <text class="t1" x="69" y="174" text-anchor="middle">I Action</text>
+  <text class="t2" x="69" y="191" text-anchor="middle">기능별 상위 10</text>
+  <rect class="bx" x="135" y="152" width="110" height="52" rx="8"/>
+  <text class="t1" x="190" y="174" text-anchor="middle">II Link</text>
+  <text class="t2" x="190" y="191" text-anchor="middle">외인 다이버전스</text>
+  <rect class="bx" x="256" y="152" width="110" height="52" rx="8"/>
+  <text class="t1" x="311" y="174" text-anchor="middle">III CFG</text>
+  <text class="t2" x="311" y="191" text-anchor="middle">I ∩ II</text>
+  <rect class="bx" x="40" y="232" width="300" height="48" rx="8"/>
+  <text class="t1" x="190" y="252" text-anchor="middle">Claude 총평 세 개</text>
+  <text class="t2" x="190" y="269" text-anchor="middle">그날 팩트만 · I·II는 서로 독립 · 겹침은 III에서만</text>
+  <rect class="bx me" x="40" y="308" width="300" height="48" rx="8"/>
+  <text class="t1" x="190" y="328" text-anchor="middle">사람: I → II → III 순서로 읽기</text>
+  <text class="t2" x="190" y="345" text-anchor="middle">먼저 스스로 고르고, 그다음 Claude 결론과 비교</text>
+  <rect class="bx me" x="40" y="384" width="300" height="48" rx="8"/>
+  <text class="t1" x="190" y="404" text-anchor="middle">뉴스 확인 → 최종 판단 → 매매</text>
+  <text class="t2" x="190" y="421" text-anchor="middle">CFG로 산 종목은 알려주면 옅은 빨강 카드로 추적</text>
+  <path class="ar" d="M190,50 V74" marker-end="url(#m)"/>
+  <path class="ar" d="M120,124 L69,150" marker-end="url(#m)"/>
+  <path class="ar" d="M190,124 V150" marker-end="url(#m)"/>
+  <path class="ar" d="M124,178 H133" marker-end="url(#m)"/>
+  <path class="ar" d="M245,178 H254" marker-end="url(#m)"/>
+  <path class="ar" d="M190,204 V230" marker-end="url(#m)"/>
+  <path class="ar" d="M190,280 V306" marker-end="url(#m)"/>
+  <path class="ar" d="M190,356 V382" marker-end="url(#m)"/>
+  <text class="t2" x="190" y="458" text-anchor="middle">데이터는 한 번만 불러서 세 리포트가 같은 숫자를 쓴다</text>
+</svg></div>
+
+<h2><span class="n">04</span>I Action — 무엇을 어떻게 보나</h2>
+<div class="scroll"><table>
+  <thead><tr><th>칸</th><th style="text-align:left">순위 기준</th><th style="text-align:left">같이 보여주는 것</th></tr></thead>
+  <tbody>
+    <tr><td>계좌 vs 혼합지수</td><td style="text-align:left">—</td><td style="text-align:left">삼성·하이닉스 제외 혼합지수, 일반 혼합지수, 내 계좌, 내 주식(누적·당일)</td></tr>
+    <tr><td>Up/Down</td><td style="text-align:left">마지막 매도가 대비 많이 빠진 순</td><td style="text-align:left">매도일, 경과일, 매도 후 저점, 저점 대비 반등, 속도 배지 / 그래프에 매도가 선</td></tr>
+    <tr><td>Watering</td><td style="text-align:left">마지막 매수가 대비 많이 빠진 순</td><td style="text-align:left">매수 횟수, 경과일, 평단·현재가(최초 대비), 속도 배지 / 그래프에 최초·평단·마지막 매수가 선과 매수 시점</td></tr>
+    <tr><td>Fishing</td><td style="text-align:left">기준일 대비 누적 하락 순</td><td style="text-align:left">바닥과 날짜, 바닥 대비 반등, 바닥 후 일수, 최근 3일, 상태, 어제 대비 순위 변화</td></tr>
+    <tr><td>Today's Alarm</td><td style="text-align:left">앱과 같은 세 규칙</td><td style="text-align:left">물타기 급락, 외인 급증, 관심종목 폭락</td></tr>
+    <tr><td>meritz 후보</td><td style="text-align:left">new1 최초진입가 대비 많이 빠진 순(meritz 미보유)</td><td style="text-align:left">매수 횟수, 평단 대비 / 그래프에 −5% 문턱 선</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>고정 기준 대신 우선순위 10개.</b> 장이 좋으면 최선이 −3%일 수도 있다. 기준을 박아두면 어떤 날은 텅 비고 어떤 날은 넘친다.</li>
+  <li><b>속도는 배지로 따로.</b> 총 하락 중 절반 이상이 최근 3거래일에 났으면 <em>급락</em>, 아니면 <em>완만</em>. 완만은 기관이 지루하게 빼는 모양(이 전략이 노리는 자리), 급락은 뉴스부터 확인할 자리.</li>
+  <li><b>Fishing 상태.</b> 바닥이 최근이면 <em>빠지는 중</em>, 바닥 대비 +3% 이상이고 최근 3일 상승이면 <em>반등 중</em>, 그 사이는 <em>바닥 다지는 중</em>.</li>
+  <li><b>외인 정보는 일부러 안 넣는다.</b> II의 결론이 I로 새지 않게. I은 I대로, II는 II대로 판단하고 겹침은 III에서만 본다.</li>
+</ul>
+
+<h2><span class="n">05</span>II Link — 외인을 숫자가 아니라 모양으로</h2>
+<ul>
+  <li><b>대상:</b> 기준일 대비 주가는 빠졌는데(P&lt;0) 외인 비중은 늘어난(dF&gt;0) 종목. P와 dF는 앱의 Foreigner·Link와 같은 값이다.</li>
+  <li><b>강도 단계:</b> 외인 증가를 %p 또는 상대 증가율 중 하나만 넘으면 통과(이상·강 +50%, 중 +30%, 약 +15%). 원래 비중이 작은 종목은 같은 %p라도 의미가 커서다. 상대 기준은 기준 비중 3% 이상만.</li>
+  <li><b>착시:</b> 기간 중 외인 고점 대비 30% 이상 반납 → 제외하고 따로 표로.</li>
+  <li><b>꺾임:</b> 반납 15% 이상이고, 고점이 5거래일 이상 지났고, 최근 5거래일 감소 → "먹고 빠지는 중"으로 따로 칸에.</li>
+  <li><b>다시 모으기 시작:</b> 고점 이후 크게 덜어냈다가(반납 0.3%p↑) 저점에서 다시 늘어나는(3거래일 연속 또는 반납분 20% 회복) 종목. 물 탈 때를 알려주는 칸.</li>
+  <li><b>따로 관리:</b> 네가 지정한 종목은 그만하자고 할 때까지 매일 별도 표시. 지금은 E1, 실리콘투.</li>
+  <li><b>명단은 이어간다.</b> 10위보다 센 종목이 오면 교체하고, 자격 잃으면 탈락. 모든 그래프에 외인 고점 날짜를 찍는다.</li>
+</ul>
+
+<h2><span class="n">06</span>III CFG — 드문 겹침</h2>
+<p>I의 후보(Up/Down·Watering·Fishing·meritz) 중에서, <b>그 기능이 잰 하락 구간 동안</b> 외인이 실제로 늘었는지를 본다. Up/Down이면 매도일부터, Watering이면 마지막 매수일부터, Fishing이면 기준일부터, meritz 후보면 new1 최초 진입일부터. 그 구간에 외인이 +0.3%p 이상 또는 상대 +5% 이상 늘었고, II에서 착시·꺾임이 아닌 종목만 남긴다.</p>
+<p>종목마다 I의 주가 그래프와 II의 외인 그래프를 나란히 붙인다. 숫자가 우연히 겹친 건지, 주가가 빠진 바로 그 구간에 외인이 산 건지 시점까지 눈으로 확인하기 위해서다.</p>
+<p>9월 11일에 정한 CFG(Chicken For Golden eggs)의 첫 실제 형태다. 그때 "원픽은 매도 후 급락과 외인 다이버전스가 같은 종목에서 동시에 뜨는 경우"라고 했던 개념을 매일 굴리기 시작한 것이다.</p>
+
+<h2><span class="n">07</span>검증 — 연말에 무엇으로 판단하나</h2>
+<div class="scroll"><table>
+  <thead><tr><th>기록</th><th style="text-align:left">무엇이 쌓이나</th></tr></thead>
+  <tbody>
+    <tr><td>link_sample/roster.csv</td><td style="text-align:left">II 명단, 순위, 명단 진입일·진입가 → 명단에 든 뒤 실제로 올랐나</td></tr>
+    <tr><td>morning_report/cfg_log.csv</td><td style="text-align:left">III에 오른 종목, 날짜, 출처, 그 구간 외인 변화, 그날 가격 → 안 산 CFG 종목도 추적</td></tr>
+    <tr><td>cfg_tagged.csv</td><td style="text-align:left">CFG를 보고 실제로 산 new1 종목. Holdings 옅은 빨강, 그 사이클 전체가 CFG</td></tr>
+    <tr><td>Statistics "CFG vs Others"</td><td style="text-align:left">전량매도된 CFG 사이클 vs 나머지: 평균·중앙 수익률, 승률, 보유일, 매수횟수</td></tr>
+    <tr><td>morning_report/fishing_rank.csv</td><td style="text-align:left">Fishing 날짜별 순위 → 순위 변화 계산</td></tr>
+  </tbody>
+</table></div>
+<p>판단 기준은 네가 정한 그대로다. <b>CFG로 산 돈이 나머지보다 실제로 더 벌었나.</b> 2026-12-31까지 new1에서만 테스트하고, 그 효율이 확인되면 그때가 이 앱과 시스템의 종착역이다. 주간 리포트(금요일)는 그 주의 일일 리포트를 모아 경향을 쓴다. 일일 리포트는 그날 팩트만 쓴다.</p>
+
+<h2><span class="n">08</span>버전 1에서 알고 있는 한계</h2>
+<div class="flag">
+  <div class="h">다음에 손볼 것</div>
+  <ol>
+    <li><b>CFG가 6개로 다소 넓다.</b> 외인이 원래 많은 대형주(우리금융)가 %p로 들어오고 경계선 종목도 섞인다. 며칠 보고 상대 기준 위주로, 또는 외인 증가 시점이 하락 구간 안인지까지 보도록 좁힌다.</li>
+    <li><b>시세 DB가 8/19부터라</b> 그 전에 물을 탄 종목은 그래프 앞부분이 잘리고 첫 매수 점이 안 보일 수 있다.</li>
+    <li><b>시세 DB에 추석 휴장일(9/24·25) 가짜 행</b>이 있어 거래일 수를 셀 때 이틀이 더 잡힌다. 정리 예정.</li>
+    <li><b>외인 데이터는 전날 장 마감 기준</b>이다(자동 수집이 16:13). 주가는 리포트를 돌린 시각 기준. 리포트 맨 위에 시각을 적는다.</li>
+    <li><b>Claude는 이유를 모른다.</b> 금융주 동반 급락처럼 원인이 뉴스에 있는 건 리포트가 "확인 필요"까지만 쓴다. 그 칸은 사람이 채운다.</li>
+  </ol>
+</div>
+
+<h2><span class="n">09</span>버전 1 첫날 결과</h2>
+<ul>
+  <li><b>I:</b> 롯데쇼핑 매도가 대비 −14.1%로 재진입 1순위. 실리콘투·오리온은 마지막 매수가 대비 −13%로 물타기 간격이 가장 넓다. 대한화섬·우양·빙그레가 meritz 문턱 통과. 우리금융·하나금융은 최근 3일 동반 하락으로 뉴스 확인 필요.</li>
+  <li><b>II:</b> 파마리서치·와이지-원·GS리테일이 외인 고점=오늘. 실리콘투·SGC에너지·E1은 꺾임으로 분리됐고, 유한양행·마녀공장·코오롱티슈진이 "다시 모으기 시작"에 걸렸다.</li>
+  <li><b>III:</b> 6종목. 시점까지 맞는 건 와이지-원, 가장 강하게 겹치는 건 파마리서치, 바로 행동과 연결되는 건 빙그레(meritz).</li>
+</ul>
+
+<div class="verdict">
+  <p class="lead">Overture가 하는 일은 결정이 아니라 세공이다.</p>
+  <p>같은 데이터도 숫자 하나로 보면 착시가 되고, 기간 전체를 그래프로 보면 판단이 된다. 사람이 매일 적고 그리면 하루가 걸릴 일을 몇 분 만에 세 장으로 만들어서, 네 30분이 온전히 판단에 쓰이게 하는 게 이 버전의 목표다. 순서는 I → II → III. 먼저 스스로 고르고, 그다음 겹침을 본다. 그리고 연말에, CFG로 산 돈이 정말 더 벌었는지 숫자로 묻는다.</p>
+</div>
+
+<footer>
+  <p>작성: 세션(Claude) · 2026-10-02. 실행: <code>python morning_report.py</code> (II는 같은 데이터로 함께 생성). 총평 파일: morning_report/comments/, link_sample/comments/. 개인 참고용, 매매 판단 근거 아님.</p>
+</footer>
+</div>

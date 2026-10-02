@@ -451,7 +451,7 @@ def write_action(res, ph):
 <div class="cm">{comment(f"{today}_action.html")}</div>
 <p class="note">속도 배지: 총 하락 중 절반 이상이 최근 3거래일에 났으면 급락, 아니면 완만. N = new1 보유 · M = meritz 보유. 외인 정보는 일부러 넣지 않음(② 외인 리포트에서 독립적으로 보기 위해).</p>
 """
-    html_ = page("Morning Action", f"{today} · 주가 {res['asof']} 기준 · ① 액션 리포트", body)
+    html_ = page("Overture · Action", f"{today} · 주가 {res['asof']} 기준 · ① 액션 리포트", body)
     (OUT / "action").mkdir(parents=True, exist_ok=True)
     (OUT / "action" / f"{today}.html").write_text(html_, encoding="utf-8")
     (OUT / "latest_action.html").write_text(html_, encoding="utf-8")
@@ -480,7 +480,7 @@ def write_cfg(res, data):
 <h2>총평</h2>
 <div class="cm">{comment(f"{today}_cfg.html")}</div>
 """
-    html_ = page("CFG Final", f"{today} · 주가 {res['asof']} 기준 · ③ 두 신호가 겹치는 종목", body)
+    html_ = page("Overture · CFG", f"{today} · 주가 {res['asof']} 기준 · ③ 두 신호가 겹치는 종목", body)
     (OUT / "cfg").mkdir(parents=True, exist_ok=True)
     (OUT / "cfg" / f"{today}.html").write_text(html_, encoding="utf-8")
     (OUT / "latest_cfg.html").write_text(html_, encoding="utf-8")
@@ -492,6 +492,15 @@ def main():
     res = build(data, link_res)
     write_action(res, data["ph"])
     write_cfg(res, data)
+    # CFG에 오른 종목 기록(보조 자료 — 안 산 CFG 종목이 나중에 어떻게 됐는지도 보려고).
+    log = OUT / "cfg_log.csv"
+    old = pd.read_csv(log, dtype={"코드": str}) if log.exists() else pd.DataFrame()
+    rows = [{"날짜": res["today"], "코드": x["코드"], "종목명": x["종목명"], "출처": "|".join(sorted(x["출처들"])),
+             "하락": round(x["pct"], 2), "구간외인": round(x["fw"]["d"], 2), "구간외인상대": round(x["fw"]["rel"], 2),
+             "현재가": data["live"].get(x["코드"])} for x in res["cfg"]]
+    if not old.empty:
+        old = old[old["날짜"] != res["today"]]
+    pd.concat([old, pd.DataFrame(rows)], ignore_index=True).to_csv(log, index=False, encoding="utf-8-sig")
     print(f"[완료] {res['today']} ① Up/Down {len(res['updown'])} · Watering {len(res['watering'])} · "
           f"Fishing {len(res['fishing'])} · meritz {len(res['meritz'])} / ③ CFG {len(res['cfg'])}")
     for x in res["cfg"]:
