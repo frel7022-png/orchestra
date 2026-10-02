@@ -253,7 +253,7 @@ def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, droppe
         chart = svg_chart(price_series(ph, c, s["기준일"]), foreign_series(fh, c, s["기준일"]), live.get(c), today)
         cards.append(
             f'<div class="card"><div class="ch"><span class="rk2">{r["순위"]}</span> {esc(r["종목명"])}'
-            f'<span class="meta">기준일 {s["기준일"][5:]} · 외인 고점 +{r["고점dF"]:.2f}%p → 지금 {r["dF"]:+.2f}%p</span></div>'
+            f'<span class="meta">기준일 {s["기준일"][5:]} · 외인 {r["기준외인비중"]:.2f}% → 고점 {r["기준외인비중"] + r["고점dF"]:.2f}% → 지금 {r["현재외인비중"]:.2f}%</span></div>'
             f'{chart}</div>')
 
     ev = []
@@ -276,8 +276,9 @@ def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, droppe
 
     ill = "".join(
         f'<tr><td class="nm">{esc(v["종목명"])}</td><td>{sign(v["P"])}</td>'
-        f'<td>+{v["고점dF"]:.2f}%p</td><td>{sign(v["dF"], 2, "%p")}</td><td>{v["반납률"]:.0%}</td></tr>'
-        for v in illusion) or '<tr><td class="nm mut" colspan="5">없음</td></tr>'
+        f'<td>{v["기준외인비중"]:.2f} → <b>{v["기준외인비중"] + v["고점dF"]:.2f}</b> → {v["현재외인비중"]:.2f}</td>'
+        f'<td>{v["반납률"]:.0%}</td></tr>'
+        for v in illusion) or '<tr><td class="nm mut" colspan="4">없음</td></tr>'
     tiers_doc = " · ".join(f"{lab} 외인{b}%↑ 주가{p}%↓ +{d}%p↑" for lab, b, p, d in TIERS)
     page = f"""<title>Link Sample</title>
 <style>
@@ -326,7 +327,7 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 <h2>착시로 걸러진 종목</h2>
 <p class="note">지금 숫자만 보면 외국인이 모은 것 같지만, 기간 중 고점에서 이미 {GIVEBACK_LIMIT:.0%} 넘게 덜어낸 종목.</p>
 <div class="scroll"><table>
-<thead><tr><th class="nm">종목</th><th>주가</th><th>외인 고점</th><th>지금</th><th>반납</th></tr></thead>
+<thead><tr><th class="nm">종목</th><th>주가</th><th>외인 비중 (기준 → <b>고점</b> → 지금)</th><th>고점 대비 반납</th></tr></thead>
 <tbody>{ill}</tbody></table></div>
 
 <h2>추적: 명단에 들어온 뒤 주가</h2>
