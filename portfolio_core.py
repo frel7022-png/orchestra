@@ -870,7 +870,10 @@ def load_watchlist_history_db(supabase_url: str, supabase_key: str) -> pd.DataFr
         while True:
             r = requests.get(
                 f"{supabase_url}/rest/v1/price_history?select=stock_code,trade_date,close_price,change_pct"
-                f"&order=trade_date&limit={page}&offset={offset}",
+                # 같은 날짜에 ~180종목이라 trade_date만으로는 페이지 경계 순서가 요청마다 달라져
+                # 행이 중복/누락됨(2026-10-02 실측: price_history 37행, investor_flow 105행).
+                # stock_code로 2차 정렬해 순서를 고정한다.
+                f"&order=trade_date,stock_code&limit={page}&offset={offset}",
                 headers=headers, timeout=20)
             r.raise_for_status()
             batch = r.json()
@@ -942,7 +945,8 @@ def load_investor_flow_db(supabase_url: str, supabase_key: str) -> pd.DataFrame:
         while True:
             r = requests.get(
                 f"{supabase_url}/rest/v1/investor_flow?select=stock_code,trade_date,volume,"
-                f"institution_net,foreign_net,foreign_pct&order=trade_date&limit={page}&offset={offset}",
+                # trade_date만으로 정렬하면 페이지 경계에서 행이 중복/누락됨 — load_watchlist_history_db 참고.
+                f"institution_net,foreign_net,foreign_pct&order=trade_date,stock_code&limit={page}&offset={offset}",
                 headers=headers, timeout=20)
             r.raise_for_status()
             batch = r.json()

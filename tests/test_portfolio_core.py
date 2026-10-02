@@ -2087,3 +2087,35 @@ def test_compute_sell_fraction_map_ignores_deposit_withdraw_rows():
 
 def test_compute_sell_fraction_map_empty_input():
     assert core.compute_sell_fraction_map(pd.DataFrame()) == {}
+
+
+def test_db_loaders_paginate_with_stable_order(monkeypatch):
+    """price_history/investor_flow 로더는 페이지를 나눠 받으므로 정렬이 날짜만이면 같은 날짜
+    (~180종목) 안 순서가 요청마다 바뀌어 페이지 경계에서 행이 중복/누락된다(2026-10-02 실측:
+    파마리서치 8/19 외인 행 누락으로 기준일 값이 8/20으로 밀림). stock_code 2차 정렬을 고정."""
+    import portfolio_core as core
+
+    urls = []
+
+    class _Resp:
+        def __init__(self, data):
+            self._d = data
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._d
+
+    def fake_get(url, headers=None, timeout=None, **kw):
+        urls.append(url)
+        if "watchlist" in url:
+            return _Resp([{"stock_code": "000001", "stock_name": "A", "sector": "식품"}])
+        return _Resp([])
+
+    monkeypatch.setattr(core.requests, "get", fake_get)
+    core.load_watchlist_history_db("https://x", "k")
+    core.load_investor_flow_db("https://x", "k")
+    paged = [u for u in urls if "offset=" in u]
+    assert len(paged) == 2
+    assert all("order=trade_date,stock_code" in u for u in paged)
