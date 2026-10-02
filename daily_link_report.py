@@ -157,25 +157,9 @@ def svg_chart(ps: pd.DataFrame, fs: pd.DataFrame, live_price: float | None, toda
     return "".join(parts)
 
 
-def load_data() -> dict:
-    """세 아침 리포트(액션/외인 샘플/CFG)가 같은 데이터를 쓰도록 한 번만 불러온다."""
-    today = datetime.now(core.KST).strftime("%Y-%m-%d")
-    sec = tomllib.load(open(HERE / ".streamlit/secrets.toml", "rb"))["supabase"]
-    url, key = sec["url"], sec.get("anon_key") or sec.get("key")
-    ph = core.load_watchlist_history_db(url, key)
-    fh = core.load_investor_flow_db(url, key)
-    quotes, _ = core.fetch_quotes(list(ph["종목코드"].unique()))
-    live = {c: v["price"] for c, v in quotes.items() if v.get("price")}
-    return {"today": today, "ph": ph, "fh": fh, "quotes": quotes, "live": live,
-            "asof": datetime.now(core.KST).strftime("%Y-%m-%d %H:%M")}
-
-
-def main(data: dict | None = None) -> dict:
-    data = data or load_data()
-    today, ph, fh, live = data["today"], data["ph"], data["fh"], data["live"]
-    cand = core.compute_link_candidates(ph, fh, live_quotes=live)
-
-    # 종목별 현재 상태 + 착시(고점 대비 반납) 계산
+def compute_stats(cand: pd.DataFrame, fh: pd.DataFrame) -> dict:
+    """종목별 외인 상태(단계·착시·꺾임·재매집 등). 일일 리포트와 매수 전 경고(check_picks.py)가
+    같은 판정을 쓰도록 한 곳에 둔다."""
     stats = {}
     for _, r in cand.iterrows():
         fs = foreign_series(fh, r["종목코드"], r["기준일"])
@@ -221,6 +205,29 @@ def main(data: dict | None = None) -> dict:
         stats[r["종목코드"]].update({
             "자격": div and not illusion and not turning, "착시": illusion, "꺾임": turning,
         })
+
+    return stats
+
+
+def load_data() -> dict:
+    """세 아침 리포트(액션/외인 샘플/CFG)가 같은 데이터를 쓰도록 한 번만 불러온다."""
+    today = datetime.now(core.KST).strftime("%Y-%m-%d")
+    sec = tomllib.load(open(HERE / ".streamlit/secrets.toml", "rb"))["supabase"]
+    url, key = sec["url"], sec.get("anon_key") or sec.get("key")
+    ph = core.load_watchlist_history_db(url, key)
+    fh = core.load_investor_flow_db(url, key)
+    quotes, _ = core.fetch_quotes(list(ph["종목코드"].unique()))
+    live = {c: v["price"] for c, v in quotes.items() if v.get("price")}
+    return {"today": today, "ph": ph, "fh": fh, "quotes": quotes, "live": live,
+            "asof": datetime.now(core.KST).strftime("%Y-%m-%d %H:%M")}
+
+
+def main(data: dict | None = None) -> dict:
+    data = data or load_data()
+    today, ph, fh, live = data["today"], data["ph"], data["fh"], data["live"]
+    cand = core.compute_link_candidates(ph, fh, live_quotes=live)
+
+    stats = compute_stats(cand, fh)
 
     def strength(code):
         s = stats[code]
