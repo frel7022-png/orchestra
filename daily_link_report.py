@@ -85,6 +85,16 @@ def price_series(ph: pd.DataFrame, code: str, base_date: str) -> pd.DataFrame:
     return g[["날짜", "종가"]].dropna()
 
 
+def _peak_anchor(x, left, right):
+    return "end" if x > right - 40 else ("start" if x < left + 40 else "middle")
+
+
+def _peak_label_pos(x, y, left, right, top):
+    a = _peak_anchor(x, left, right)
+    dx = -6 if a == "end" else (6 if a == "start" else 0)
+    return x + dx, max(y - 6, top + 8)
+
+
 def svg_chart(ps: pd.DataFrame, fs: pd.DataFrame, live_price: float | None, today: str) -> str:
     """주가(기준일 대비 %, 왼쪽 축)와 외인 보유율(%, 오른쪽 축) 두 축 선 그래프. 외인 고점에 점."""
     if ps.empty or fs.empty:
@@ -124,6 +134,8 @@ def svg_chart(ps: pd.DataFrame, fs: pd.DataFrame, live_price: float | None, toda
         f'<polyline class="pl" points="{p_pts}"/>',
         f'<polyline class="fl" points="{f_pts}"/>',
         f'<circle class="pk" cx="{sx(pk["날짜"]):.1f}" cy="{sf(pk["외국인보유율"]):.1f}" r="3.2"/>',
+        lab(*_peak_label_pos(sx(pk["날짜"]), sf(pk["외국인보유율"]), L, W - R, T),
+            f'고점 {pk["날짜"][5:]}', _peak_anchor(sx(pk["날짜"]), L, W - R), "ax f"),
         lab(L - 4, T + 8, f"{phi:+.0f}%", "end", "ax p"),
         lab(L - 4, zero + 3, "0%", "end", "ax p"),
         lab(L - 4, T + ih, f"{plo:+.0f}%", "end", "ax p"),
@@ -154,7 +166,9 @@ def main():
             continue
         peak = float(fs["외국인보유율"].max() - r["기준외인비중"])
         vals = fs["외국인보유율"].tolist()
-        days_since_peak = len(vals) - 1 - max(i for i, v in enumerate(vals) if v == max(vals))
+        peak_idx = max(i for i, v in enumerate(vals) if v == max(vals))
+        days_since_peak = len(vals) - 1 - peak_idx
+        peak_date = fs["날짜"].iloc[peak_idx]
         recent_drop = len(vals) > TURN_MIN_DAYS and vals[-1] < vals[-1 - TURN_MIN_DAYS]
         cur = float(r["dF"])
         give = (peak - cur) / peak if peak > 0 else 0.0
@@ -162,7 +176,7 @@ def main():
         stats[r["종목코드"]] = {
             **r.to_dict(), "고점dF": peak, "반납률": give, "단계번호": ti, "단계": tl,
             "상대증가": cur / r["기준외인비중"] * 100 if r["기준외인비중"] else None,
-            "고점경과": days_since_peak,
+            "고점경과": days_since_peak, "고점일": peak_date, "외인최신일": fs["날짜"].iloc[-1],
         }
         div = (r["P"] < 0) and (cur > 0)
         illusion = div and give >= GIVEBACK_LIMIT
@@ -310,8 +324,9 @@ def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, droppe
     ill = "".join(
         f'<tr><td class="nm">{esc(v["종목명"])}</td><td>{sign(v["P"])}</td>'
         f'<td>{v["기준외인비중"]:.2f} → <b>{v["기준외인비중"] + v["고점dF"]:.2f}</b> → {v["현재외인비중"]:.2f}</td>'
+        f'<td>{v["기준일"][5:]} → <b>{v["고점일"][5:]}</b> → {v["외인최신일"][5:]}</td>'
         f'<td>{v["반납률"]:.0%}</td></tr>'
-        for v in illusion) or '<tr><td class="nm mut" colspan="4">없음</td></tr>'
+        for v in illusion) or '<tr><td class="nm mut" colspan="5">없음</td></tr>'
     turn_cards = "".join(
         f'<div class="card"><div class="ch">{esc(v["종목명"])}'
         f'<span class="meta">주가 {v["P"]:+.1f}% · 외인 {v["기준외인비중"]:.2f}% → 고점 {v["기준외인비중"] + v["고점dF"]:.2f}% '
@@ -333,6 +348,14 @@ def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, droppe
             f'기준일 대비 주가 {v["P"]:+.1f}% · 외인 고점 {v["기준외인비중"] + v["고점dF"]:.2f}% ({v["고점경과"]}거래일 전), 반납 {v["반납률"]:.0%}</span></div>'
             f'{svg_chart(price_series(ph, pr["종목코드"], v["기준일"]), foreign_series(fh, pr["종목코드"], v["기준일"]), px, today)}</div>')
     pin_html = "".join(pin_cards) or '<p class="note">없음</p>'
+    ill_cards = "".join(
+        f'<div class="card"><div class="ch">{esc(v["종목명"])}'
+        f'<span class="meta">외인 {v["기준외인비중"]:.2f}% ({v["기준일"][5:]}) → 고점 {v["기준외인비중"] + v["고점dF"]:.2f}% ({v["고점일"][5:]}) '
+        f'→ 지금 {v["현재외인비중"]:.2f}% ({v["외인최신일"][5:]}) · 반납 {v["반납률"]:.0%}</span></div>'
+        f'{svg_chart(price_series(ph, v["종목코드"], v["기준일"]), foreign_series(fh, v["종목코드"], v["기준일"]), live.get(v["종목코드"]), today)}</div>'
+        for v in illusion)
+    cpath = OUT / "comments" / f"{today}.html"
+    comment = cpath.read_text(encoding="utf-8") if cpath.exists() else '<p class="note">아직 작성 전</p>'
     tiers_doc = " · ".join(f"{lab} 외인{b}%↑ 주가{p}%↓ +{d}%p↑ 또는 상대+{r}%↑" for lab, b, p, d, r in TIERS)
     page = f"""<title>Link Sample</title>
 <style>
@@ -359,6 +382,7 @@ svg{{width:100%;height:auto;display:block}} .pl{{fill:none;stroke:var(--dn);stro
 .pk{{fill:var(--fl)}} .grid{{stroke:var(--rule);stroke-dasharray:3 3}} .ax{{font-size:9.5px;fill:var(--faint)}} .ax.p{{fill:var(--dn)}} .ax.f{{fill:var(--fl)}}
 .legend{{font-size:12px;color:var(--soft);margin:4px 0 10px}} .legend i{{display:inline-block;width:14px;height:3px;vertical-align:middle;margin:0 4px 0 10px}}
 ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint)}}
+.cm{{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:6px 16px;font-size:14px}} .cm h3{{font-size:13px;color:var(--soft);margin:12px 0 2px}} .cm p{{margin:6px 0}}
 .nochart{{font-size:12px;color:var(--faint);padding:20px 0}}
 </style>
 <div class="wrap">
@@ -389,13 +413,18 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 <h2>착시로 걸러진 종목</h2>
 <p class="note">지금 숫자만 보면 외국인이 모은 것 같지만, 기간 중 고점에서 이미 {GIVEBACK_LIMIT:.0%} 넘게 덜어낸 종목.</p>
 <div class="scroll"><table>
-<thead><tr><th class="nm">종목</th><th>주가</th><th>외인 비중 (기준 → <b>고점</b> → 지금)</th><th>고점 대비 반납</th></tr></thead>
+<thead><tr><th class="nm">종목</th><th>주가</th><th>외인 비중 (기준 → <b>고점</b> → 지금)</th><th>날짜 (기준 → <b>고점</b> → 최신)</th><th>고점 대비 반납</th></tr></thead>
 <tbody>{ill}</tbody></table></div>
+
+<div class="grid2" style="margin-top:10px">{ill_cards}</div>
 
 <h2>추적: 명단에 들어온 뒤 주가</h2>
 <div class="scroll"><table>
 <thead><tr><th class="nm">종목</th><th>진입일</th><th>진입가</th><th>지금</th><th>변화</th></tr></thead>
 <tbody>{tr}</tbody></table></div>
+
+<h2>오늘의 평가</h2>
+<div class="cm">{comment}</div>
 
 <p class="note">단계: {esc(tiers_doc)} · 보충 = P&lt;0, 외인&gt;0이지만 위 단계 미달(명단 채우기용)</p>
 </div>
