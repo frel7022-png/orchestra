@@ -28,6 +28,9 @@ import portfolio_core as core
 HERE = Path(__file__).parent
 OUT = HERE / "link_sample"
 ROSTER = OUT / "roster.csv"
+# 사용자가 "따로 관리"하라고 지정한 종목(그만하자고 할 때까지 매일 추세를 따로 표시).
+# 세션이 사용자 요청을 받아 행을 추가/삭제한다. 컬럼: 종목코드,종목명,고정일,고정가,고정외인,메모
+PINNED = OUT / "pinned.csv"
 ROSTER_SIZE = 10
 GIVEBACK_LIMIT = 0.30
 # 꺾임: 반납률은 착시 기준(30%) 아래여도, 외인 고점이 TURN_MIN_DAYS 거래일 이상 지났고
@@ -238,17 +241,20 @@ def main():
                           (float(now_px) / float(first["진입가"]) - 1) * 100, c in members))
     track.sort(key=lambda t: t[1])
 
+    pinned = pd.read_csv(PINNED, dtype={"종목코드": str}) if PINNED.exists() else pd.DataFrame()
     illusion = sorted((v for v in stats.values() if v["착시"]), key=lambda v: -v["고점dF"])[:8]
-    turning = sorted((v for v in stats.values() if v["꺾임"]), key=lambda v: -v["dF"])
+    pinned_codes = set(pinned["종목코드"]) if not pinned.empty else set()
+    turning = sorted((v for v in stats.values() if v["꺾임"] and v["종목코드"] not in pinned_codes),
+                     key=lambda v: -v["dF"])  # 따로 관리 중인 종목은 위 칸에만
     write_html(today, today_df, stats, ph, fh, live, prev_rank, added, swapped, dropped,
-               track, holds_n, holds_m, len(prev_dates) == 0, illusion, turning)
+               track, holds_n, holds_m, len(prev_dates) == 0, illusion, turning, pinned)
     print(f"[완료] {today} 명단 {len(today_df)}개 · 신규 {len(added)} · 탈락 {len(dropped)}")
     for _, r in today_df.iterrows():
         print(f"  {r['순위']:>2}. {r['종목명']} [{r['단계']}] P {r['P']:+.1f}% dF {r['dF']:+.2f}%p 반납 {r['반납률']:.0%}")
 
 
 def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, dropped, track,
-               holds_n, holds_m, first_run, illusion, turning):
+               holds_n, holds_m, first_run, illusion, turning, pinned):
     esc = html.escape
     def sign(v, d=1, unit="%"):
         cls = "up" if v > 0 else ("dn" if v < 0 else "")
@@ -312,6 +318,21 @@ def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, droppe
         f'({v["고점경과"]}거래일 전) → 지금 {v["현재외인비중"]:.2f}% · 반납 {v["반납률"]:.0%}</span></div>'
         f'{svg_chart(price_series(ph, v["종목코드"], v["기준일"]), foreign_series(fh, v["종목코드"], v["기준일"]), live.get(v["종목코드"]), today)}</div>'
         for v in turning) or '<p class="note">없음</p>'
+    pin_cards = []
+    for _, pr in pinned.iterrows():
+        v = stats.get(pr["종목코드"])
+        if v is None:
+            continue
+        state = ("명단 안" if pr["종목코드"] in df["종목코드"].values else
+                 "꺾임" if v["꺾임"] else "착시" if v["착시"] else "다이버전스" if v["자격"] else "조건 밖")
+        px = live.get(pr["종목코드"]) or v["현재가"]
+        pin_cards.append(
+            f'<div class="card"><div class="ch">{esc(v["종목명"])} <span class="tier t5">{state}</span>'
+            f'<span class="meta">{pr["고정일"][5:]}부터 관리 · 그 뒤 주가 {sign((px / pr["고정가"] - 1) * 100)} · '
+            f'외인 {pr["고정외인"]:.2f}% → {v["현재외인비중"]:.2f}% ({sign(v["현재외인비중"] - pr["고정외인"], 2, "%p")})<br>'
+            f'기준일 대비 주가 {v["P"]:+.1f}% · 외인 고점 {v["기준외인비중"] + v["고점dF"]:.2f}% ({v["고점경과"]}거래일 전), 반납 {v["반납률"]:.0%}</span></div>'
+            f'{svg_chart(price_series(ph, pr["종목코드"], v["기준일"]), foreign_series(fh, pr["종목코드"], v["기준일"]), px, today)}</div>')
+    pin_html = "".join(pin_cards) or '<p class="note">없음</p>'
     tiers_doc = " · ".join(f"{lab} 외인{b}%↑ 주가{p}%↓ +{d}%p↑ 또는 상대+{r}%↑" for lab, b, p, d, r in TIERS)
     page = f"""<title>Link Sample</title>
 <style>
@@ -356,6 +377,10 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 <h2>추이</h2>
 <div class="legend"><i style="background:var(--dn)"></i>주가(기준일 대비 %, 왼쪽) <i style="background:var(--fl)"></i>외인 보유율(%, 오른쪽) · 점 = 외인 고점</div>
 <div class="grid2">{''.join(cards)}</div>
+
+<h2>따로 관리 중</h2>
+<p class="note">추세를 보려고 따로 지정한 종목. 그만하자고 할 때까지 매일 표시.</p>
+<div class="grid2">{pin_html}</div>
 
 <h2>따로 볼 종목: 외인이 먹고 빠지는 중</h2>
 <p class="note">반납은 {GIVEBACK_LIMIT:.0%} 미만이라 숫자만 보면 고를 수 있지만, 외인 고점이 {TURN_MIN_DAYS}거래일 이상 지났고 최근 {TURN_MIN_DAYS}거래일 동안 줄고 있는 종목.</p>
