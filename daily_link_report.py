@@ -39,6 +39,15 @@ GIVEBACK_LIMIT = 0.30
 # 명단에서 빼서 "따로 볼 종목"에 모은다.
 TURN_GIVEBACK = 0.15
 TURN_MIN_DAYS = 5
+# 재매집: 외인 고점 이후 많이 덜어냈다가(고점→저점 반납이 증가분의 REACC_MIN_GIVEBACK 이상) 저점에서
+# 다시 늘어나는 종목 — 최근 REACC_STREAK거래일 연속 증가(보합 포함, 최소 1번은 증가) 또는 저점 대비
+# 반납분의 REACC_RECOVER 이상 회복. 주가는 기준일보다 아래. "물 탈 때"를 알려주는 칸
+# (유한양행·마녀공장 사례, 2026-10-02 사용자 확정).
+REACC_MIN_GIVEBACK = 0.30
+REACC_STREAK = 3
+REACC_RECOVER = 0.20
+REACC_MIN_DROP = 0.30   # 고점→저점 반납이 이 %p 미만이면 잡음으로 봄(정다운 1.91→1.84 같은 경우)
+REACC_MIN_RISE = 0.15   # 저점→지금 회복이 이 %p 미만이면 잡음
 
 # (라벨, 기준외인비중 이상, 주가 이하(%), 외인 증가 이상(%p), 또는 상대 증가 이상(%)) — 위일수록 셈.
 # 외인 증가는 %p 기준 "또는" 상대 증가율 기준 중 하나만 넘으면 통과(2026-10-02 사용자 확정) —
@@ -173,10 +182,30 @@ def main():
         cur = float(r["dF"])
         give = (peak - cur) / peak if peak > 0 else 0.0
         ti, tl = tier_of(r)
+        after = vals[peak_idx:]
+        tr_rel = min(range(len(after)), key=lambda i: after[i]) if after else 0
+        trough_idx = peak_idx + tr_rel
+        trough = vals[trough_idx]
+        peak_v, base_v = vals[peak_idx], float(r["기준외인비중"])
+        dropout = (peak_v - trough) / (peak_v - base_v) if peak_v > base_v else 0.0
+        recover = (vals[-1] - trough) / (peak_v - trough) if peak_v > trough else 0.0
+        tail = vals[trough_idx:]
+        streak = 0
+        for a, b2 in zip(tail[::-1][1:], tail[::-1][:-1]):
+            if b2 >= a:
+                streak += 1
+            else:
+                break
+        rose = trough_idx < len(vals) - 1 and vals[-1] > trough
+        reacc = (r["P"] < 0 and dropout >= REACC_MIN_GIVEBACK and rose
+                 and peak_v - trough >= REACC_MIN_DROP and vals[-1] - trough >= REACC_MIN_RISE
+                 and (streak >= REACC_STREAK or recover >= REACC_RECOVER))
         stats[r["종목코드"]] = {
             **r.to_dict(), "고점dF": peak, "반납률": give, "단계번호": ti, "단계": tl,
             "상대증가": cur / r["기준외인비중"] * 100 if r["기준외인비중"] else None,
             "고점경과": days_since_peak, "고점일": peak_date, "외인최신일": fs["날짜"].iloc[-1],
+            "저점": trough, "저점일": fs["날짜"].iloc[trough_idx], "회복률": recover, "연속증가": streak,
+            "재매집": reacc,
         }
         div = (r["P"] < 0) and (cur > 0)
         illusion = div and give >= GIVEBACK_LIMIT
@@ -256,19 +285,23 @@ def main():
     track.sort(key=lambda t: t[1])
 
     pinned = pd.read_csv(PINNED, dtype={"종목코드": str}) if PINNED.exists() else pd.DataFrame()
+    reacc = sorted((v for v in stats.values() if v["재매집"] and v["종목코드"] not in members),
+                   key=lambda v: -v["회복률"])
+    hn = core.load_holdings().set_index("종목명")["평단가"].to_dict()
+    hm = pd.read_csv(mp).set_index("종목명")["평단가"].to_dict() if mp.exists() else {}
     illusion = sorted((v for v in stats.values() if v["착시"]), key=lambda v: -v["고점dF"])[:8]
     pinned_codes = set(pinned["종목코드"]) if not pinned.empty else set()
     turning = sorted((v for v in stats.values() if v["꺾임"] and v["종목코드"] not in pinned_codes),
                      key=lambda v: -v["dF"])  # 따로 관리 중인 종목은 위 칸에만
     write_html(today, today_df, stats, ph, fh, live, prev_rank, added, swapped, dropped,
-               track, holds_n, holds_m, len(prev_dates) == 0, illusion, turning, pinned)
+               track, holds_n, holds_m, len(prev_dates) == 0, illusion, turning, pinned, reacc, hn, hm)
     print(f"[완료] {today} 명단 {len(today_df)}개 · 신규 {len(added)} · 탈락 {len(dropped)}")
     for _, r in today_df.iterrows():
         print(f"  {r['순위']:>2}. {r['종목명']} [{r['단계']}] P {r['P']:+.1f}% dF {r['dF']:+.2f}%p 반납 {r['반납률']:.0%}")
 
 
 def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, dropped, track,
-               holds_n, holds_m, first_run, illusion, turning, pinned):
+               holds_n, holds_m, first_run, illusion, turning, pinned, reacc, hn, hm):
     esc = html.escape
     def sign(v, d=1, unit="%"):
         cls = "up" if v > 0 else ("dn" if v < 0 else "")
@@ -333,6 +366,21 @@ def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, droppe
         f'({v["고점경과"]}거래일 전) → 지금 {v["현재외인비중"]:.2f}% · 반납 {v["반납률"]:.0%}</span></div>'
         f'{svg_chart(price_series(ph, v["종목코드"], v["기준일"]), foreign_series(fh, v["종목코드"], v["기준일"]), live.get(v["종목코드"]), today)}</div>'
         for v in turning) or '<p class="note">없음</p>'
+    re_cards = []
+    for v in reacc:
+        px = live.get(v["종목코드"]) or v["현재가"]
+        own = []
+        for lab, mp_ in (("new1", hn), ("meritz", hm)):
+            if v["종목명"] in mp_ and mp_[v["종목명"]]:
+                own.append(f'{lab} 평단 대비 {sign((px / mp_[v["종목명"]] - 1) * 100)}')
+        own_txt = " · ".join(own) if own else "미보유"
+        re_cards.append(
+            f'<div class="card"><div class="ch">{esc(v["종목명"])}'
+            f'<span class="meta">외인 고점 {v["기준외인비중"] + v["고점dF"]:.2f}% ({v["고점일"][5:]}) → 저점 {v["저점"]:.2f}% ({v["저점일"][5:]}) '
+            f'→ 지금 {v["현재외인비중"]:.2f}% · 반납분 {v["회복률"]:.0%} 회복 · {v["연속증가"]}거래일 연속 증가<br>'
+            f'주가 기준일 대비 {v["P"]:+.1f}% · {own_txt}</span></div>'
+            f'{svg_chart(price_series(ph, v["종목코드"], v["기준일"]), foreign_series(fh, v["종목코드"], v["기준일"]), px, today)}</div>')
+    re_html = "".join(re_cards) or '<p class="note">없음</p>'
     pin_cards = []
     for _, pr in pinned.iterrows():
         v = stats.get(pr["종목코드"])
@@ -401,6 +449,10 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 <h2>추이</h2>
 <div class="legend"><i style="background:var(--dn)"></i>주가(기준일 대비 %, 왼쪽) <i style="background:var(--fl)"></i>외인 보유율(%, 오른쪽) · 점 = 외인 고점</div>
 <div class="grid2">{''.join(cards)}</div>
+
+<h2>다시 모으기 시작한 종목: 물 탈 때</h2>
+<p class="note">외인이 고점 이후 많이 덜어냈다가, 저점에서 다시 늘어나는 종목. 최근 {REACC_STREAK}거래일 이상 연속 증가했거나 반납분의 {REACC_RECOVER:.0%} 이상을 회복. 주가는 기준일보다 아래.</p>
+<div class="grid2">{re_html}</div>
 
 <h2>따로 관리 중</h2>
 <p class="note">추세를 보려고 따로 지정한 종목. 그만하자고 할 때까지 매일 표시.</p>
