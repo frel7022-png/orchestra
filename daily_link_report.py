@@ -30,18 +30,28 @@ OUT = HERE / "link_sample"
 ROSTER = OUT / "roster.csv"
 ROSTER_SIZE = 10
 GIVEBACK_LIMIT = 0.30
+# 꺾임: 반납률은 착시 기준(30%) 아래여도, 외인 고점이 TURN_MIN_DAYS 거래일 이상 지났고
+# 최근 TURN_MIN_DAYS 거래일 동안 외인 비중이 줄었으면 "먹고 빠지는 중"으로 본다(E1 사례,
+# 2026-10-02 사용자 지적 — 오늘 숫자만 보면 고를 수 있지만 그래프로 보면 이미 빠지는 그림).
+# 명단에서 빼서 "따로 볼 종목"에 모은다.
+TURN_GIVEBACK = 0.15
+TURN_MIN_DAYS = 5
 
-# (라벨, 기준외인비중 이상, 주가 이하(%), 외인 증가 이상(%p)) — 위일수록 셈
+# (라벨, 기준외인비중 이상, 주가 이하(%), 외인 증가 이상(%p), 또는 상대 증가 이상(%)) — 위일수록 셈.
+# 외인 증가는 %p 기준 "또는" 상대 증가율 기준 중 하나만 넘으면 통과(2026-10-02 사용자 확정) —
+# 원래 비중이 작은 종목은 같은 %p라도 의미가 크기 때문. 단 기준 비중 REL_MIN_BASE 미만은 몇 주만
+# 사도 상대값이 튀어서 상대 기준을 안 쓴다.
 TIERS = [
-    ("이상", 10, -15, 5.0),
-    ("강", 5, -15, 5.0),
-    ("강", 10, -10, 3.0),
-    ("중", 5, -10, 3.0),
-    ("중", 5, -10, 2.0),
-    ("약", 3, -7, 1.5),
-    ("약", 3, -5, 1.0),
-    ("약", 3, -5, 0.5),
+    ("이상", 10, -15, 5.0, 50),
+    ("강", 5, -15, 5.0, 50),
+    ("강", 10, -10, 3.0, 50),
+    ("중", 5, -10, 3.0, 30),
+    ("중", 5, -10, 2.0, 30),
+    ("약", 3, -7, 1.5, 15),
+    ("약", 3, -5, 1.0, 15),
+    ("약", 3, -5, 0.5, 15),
 ]
+REL_MIN_BASE = 3.0  # 이 미만은 몇 주만 사도 상대값이 튐
 FILL = ("보충", None, None, None)  # 위 단계에 못 걸렸지만 P<0, dF>0인 종목(명단 채우기용)
 
 ROSTER_COLS = ["날짜", "순위", "종목코드", "종목명", "단계", "단계번호", "P", "기준외인비중",
@@ -49,8 +59,15 @@ ROSTER_COLS = ["날짜", "순위", "종목코드", "종목명", "단계", "단�
 
 
 def tier_of(row) -> tuple[int, str]:
-    for i, (lab, base, p, d) in enumerate(TIERS):
-        if row["기준외인비중"] >= base and row["P"] <= p and row["dF"] >= d:
+    b = row["기준외인비중"]
+    rel = row["dF"] / b * 100 if b else 0
+    for i, (lab, base, p, d, r) in enumerate(TIERS):
+        # %p 경로는 그 단계의 기준 비중 하한을, 상대 경로는 REL_MIN_BASE만 요구한다 —
+        # 원래 비중이 작아서 단계 하한(5%, 10%)에 못 미쳐도 상대적으로 크게 늘었으면 인정
+        # (SGC에너지 3.37%→5.12%, 상대 +52%가 "약"에 묶여 있던 것을 보고 2026-10-02 조정).
+        abs_ok = b >= base and row["dF"] >= d
+        rel_ok = b >= REL_MIN_BASE and rel >= r
+        if row["P"] <= p and (abs_ok or rel_ok):
             return i, lab
     return len(TIERS), FILL[0]
 
@@ -133,15 +150,23 @@ def main():
         if fs.empty:
             continue
         peak = float(fs["외국인보유율"].max() - r["기준외인비중"])
+        vals = fs["외국인보유율"].tolist()
+        days_since_peak = len(vals) - 1 - max(i for i, v in enumerate(vals) if v == max(vals))
+        recent_drop = len(vals) > TURN_MIN_DAYS and vals[-1] < vals[-1 - TURN_MIN_DAYS]
         cur = float(r["dF"])
         give = (peak - cur) / peak if peak > 0 else 0.0
         ti, tl = tier_of(r)
         stats[r["종목코드"]] = {
             **r.to_dict(), "고점dF": peak, "반납률": give, "단계번호": ti, "단계": tl,
             "상대증가": cur / r["기준외인비중"] * 100 if r["기준외인비중"] else None,
-            "자격": (r["P"] < 0) and (cur > 0) and (give < GIVEBACK_LIMIT),
-            "착시": (r["P"] < 0) and (cur > 0) and (give >= GIVEBACK_LIMIT),
+            "고점경과": days_since_peak,
         }
+        div = (r["P"] < 0) and (cur > 0)
+        illusion = div and give >= GIVEBACK_LIMIT
+        turning = div and not illusion and give >= TURN_GIVEBACK and days_since_peak >= TURN_MIN_DAYS and recent_drop
+        stats[r["종목코드"]].update({
+            "자격": div and not illusion and not turning, "착시": illusion, "꺾임": turning,
+        })
 
     def strength(code):
         s = stats[code]
@@ -162,7 +187,8 @@ def main():
         c = r["종목코드"]
         s = stats.get(c)
         if s is None or not s["자격"]:
-            reason = "착시(외인 고점 대비 반납)" if s and s["착시"] else "자격 상실(주가 반등 또는 외인 감소)"
+            reason = ("착시(외인 고점 대비 반납)" if s and s["착시"] else
+                      "꺾임(외인 고점 이후 감소 중)" if s and s["꺾임"] else "자격 상실(주가 반등 또는 외인 감소)")
             dropped.append((r["종목명"], reason))
         else:
             members.append(c)
@@ -213,15 +239,16 @@ def main():
     track.sort(key=lambda t: t[1])
 
     illusion = sorted((v for v in stats.values() if v["착시"]), key=lambda v: -v["고점dF"])[:8]
+    turning = sorted((v for v in stats.values() if v["꺾임"]), key=lambda v: -v["dF"])
     write_html(today, today_df, stats, ph, fh, live, prev_rank, added, swapped, dropped,
-               track, holds_n, holds_m, len(prev_dates) == 0, illusion)
+               track, holds_n, holds_m, len(prev_dates) == 0, illusion, turning)
     print(f"[완료] {today} 명단 {len(today_df)}개 · 신규 {len(added)} · 탈락 {len(dropped)}")
     for _, r in today_df.iterrows():
         print(f"  {r['순위']:>2}. {r['종목명']} [{r['단계']}] P {r['P']:+.1f}% dF {r['dF']:+.2f}%p 반납 {r['반납률']:.0%}")
 
 
 def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, dropped, track,
-               holds_n, holds_m, first_run, illusion):
+               holds_n, holds_m, first_run, illusion, turning):
     esc = html.escape
     def sign(v, d=1, unit="%"):
         cls = "up" if v > 0 else ("dn" if v < 0 else "")
@@ -279,7 +306,13 @@ def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, droppe
         f'<td>{v["기준외인비중"]:.2f} → <b>{v["기준외인비중"] + v["고점dF"]:.2f}</b> → {v["현재외인비중"]:.2f}</td>'
         f'<td>{v["반납률"]:.0%}</td></tr>'
         for v in illusion) or '<tr><td class="nm mut" colspan="4">없음</td></tr>'
-    tiers_doc = " · ".join(f"{lab} 외인{b}%↑ 주가{p}%↓ +{d}%p↑" for lab, b, p, d in TIERS)
+    turn_cards = "".join(
+        f'<div class="card"><div class="ch">{esc(v["종목명"])}'
+        f'<span class="meta">주가 {v["P"]:+.1f}% · 외인 {v["기준외인비중"]:.2f}% → 고점 {v["기준외인비중"] + v["고점dF"]:.2f}% '
+        f'({v["고점경과"]}거래일 전) → 지금 {v["현재외인비중"]:.2f}% · 반납 {v["반납률"]:.0%}</span></div>'
+        f'{svg_chart(price_series(ph, v["종목코드"], v["기준일"]), foreign_series(fh, v["종목코드"], v["기준일"]), live.get(v["종목코드"]), today)}</div>'
+        for v in turning) or '<p class="note">없음</p>'
+    tiers_doc = " · ".join(f"{lab} 외인{b}%↑ 주가{p}%↓ +{d}%p↑ 또는 상대+{r}%↑" for lab, b, p, d, r in TIERS)
     page = f"""<title>Link Sample</title>
 <style>
 :root{{--bg:#f6f7f9;--card:#fff;--ink:#191b21;--soft:#5b606b;--faint:#8b909c;--rule:#e0e3ea;
@@ -309,7 +342,7 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 </style>
 <div class="wrap">
 <h1>Link Sample</h1>
-<p class="sub">{today} · 주가는 빠지는데 외국인은 모으는 종목 10 · 착시(외인 고점 대비 {GIVEBACK_LIMIT:.0%} 이상 반납) 제외</p>
+<p class="sub">{today} · 주가는 빠지는데 외국인은 모으는 종목 10 · 착시(외인 고점 대비 {GIVEBACK_LIMIT:.0%} 이상 반납)·꺾임 제외</p>
 
 <h2>오늘의 명단</h2>
 <div class="scroll"><table>
@@ -323,6 +356,10 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 <h2>추이</h2>
 <div class="legend"><i style="background:var(--dn)"></i>주가(기준일 대비 %, 왼쪽) <i style="background:var(--fl)"></i>외인 보유율(%, 오른쪽) · 점 = 외인 고점</div>
 <div class="grid2">{''.join(cards)}</div>
+
+<h2>따로 볼 종목: 외인이 먹고 빠지는 중</h2>
+<p class="note">반납은 {GIVEBACK_LIMIT:.0%} 미만이라 숫자만 보면 고를 수 있지만, 외인 고점이 {TURN_MIN_DAYS}거래일 이상 지났고 최근 {TURN_MIN_DAYS}거래일 동안 줄고 있는 종목.</p>
+<div class="grid2">{turn_cards}</div>
 
 <h2>착시로 걸러진 종목</h2>
 <p class="note">지금 숫자만 보면 외국인이 모은 것 같지만, 기간 중 고점에서 이미 {GIVEBACK_LIMIT:.0%} 넘게 덜어낸 종목.</p>
