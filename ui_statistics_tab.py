@@ -17,6 +17,7 @@ import streamlit as st
 
 from constants import UP_COLOR, DOWN_COLOR
 from portfolio_core import (
+    compare_cfg_cycles,
     price_bracket_distribution, holdings_price_bracket_distribution, top_traded_stocks,
 )
 
@@ -82,6 +83,34 @@ def _render_top_traded_cards(rows, T: dict) -> None:
     st.markdown("".join(cards), unsafe_allow_html=True)
 
 
+def _render_cfg_compare(cmp: dict, T) -> None:
+    """CFG로 산 사이클(옅은 빨강) vs 나머지, 전량매도된 사이클끼리 비교(2026-10-02 신설,
+    new1 전용 테스트 — 2026-12-31까지 쌓아서 CFG가 실제로 더 버는지 본다)."""
+    c, r = cmp["cfg"], cmp["rest"]
+    if c.get("n", 0) == 0:
+        st.caption(f"전량매도된 CFG 사이클이 아직 없어요. 진행 중인 CFG 사이클 {cmp['open_cfg']}개.")
+        if r.get("n", 0) == 0:
+            return
+
+    def cell(d, k, fmt):
+        return fmt.format(d[k]) if d.get("n", 0) and k in d else "-"
+
+    rows = [("사이클 수", "{:.0f}", "n"), ("평균 수익률", "{:+.2f}%", "평균수익률"),
+            ("중앙 수익률", "{:+.2f}%", "중앙수익률"), ("승률", "{:.0f}%", "승률"),
+            ("평균 보유일", "{:.1f}일", "평균보유일"), ("평균 매수횟수", "{:.1f}회", "평균매수횟수"),
+            ("실현손익 합계", "{:+,.0f}원", "실현합계")]
+    body = "".join(
+        f'<tr><td style="text-align:left;padding:5px 8px">{lab}</td>'
+        f'<td style="text-align:right;padding:5px 8px;color:{UP_COLOR}">{cell(c, k, fmt)}</td>'
+        f'<td style="text-align:right;padding:5px 8px">{cell(r, k, fmt)}</td></tr>'
+        for lab, fmt, k in rows)
+    st.markdown(
+        f'<table style="width:100%;border-collapse:collapse;font-size:13px;color:{T["text"]}">'
+        f'<tr><th></th><th style="text-align:right;padding:5px 8px;color:{UP_COLOR}">CFG</th>'
+        f'<th style="text-align:right;padding:5px 8px">Others</th></tr>{body}</table>',
+        unsafe_allow_html=True)
+
+
 def render_statistics_tab(tx, holdings, T):
     st.markdown("##### Price Brackets")
     dist = price_bracket_distribution(tx)
@@ -92,6 +121,9 @@ def render_statistics_tab(tx, holdings, T):
         # 구간마다 빨강(매도 이력) 막대 밑에 파랑(현재 보유) 막대를 짝지어 — 과거 성향과
         # 지금 실제 분포가 한쪽으로 안 쏠렸는지 바로 비교되게(2026-09-16 사용자 지시).
         _render_bracket_bars_paired(dist, holdings_dist, T)
+
+    with st.expander("CFG vs Others", expanded=False):
+        _render_cfg_compare(compare_cfg_cycles(tx), T)
 
     with st.expander("Top Traded", expanded=False):
         top = top_traded_stocks(tx, top_n=None)

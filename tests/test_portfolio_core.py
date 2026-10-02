@@ -2119,3 +2119,26 @@ def test_db_loaders_paginate_with_stable_order(monkeypatch):
     paged = [u for u in urls if "offset=" in u]
     assert len(paged) == 2
     assert all("order=trade_date,stock_code" in u for u in paged)
+
+
+def test_cfg_tag_marks_whole_cycle_and_compares_closed_cycles():
+    """CFG 태그일이 걸친 사이클 전체가 CFG 사이클 — 태그 이전에 끝난 사이클은 제외.
+    열린 사이클은 비교에서 빠지고 open_cfg로만 센다(2026-10-02, new1 전용 테스트)."""
+    import pandas as pd
+    import portfolio_core as core
+    tx = pd.DataFrame([
+        {"id": "1", "날짜": "2026-09-01", "종목명": "A", "구분": "매수", "수량": 1, "단가": 100, "실현손익": None, "메모": "", "정산반영": True},
+        {"id": "2", "날짜": "2026-09-05", "종목명": "A", "구분": "매도", "수량": 1, "단가": 110, "실현손익": 10, "메모": "", "정산반영": True},
+        {"id": "3", "날짜": "2026-09-10", "종목명": "A", "구분": "매수", "수량": 1, "단가": 100, "실현손익": None, "메모": "", "정산반영": True},
+        {"id": "4", "날짜": "2026-09-12", "종목명": "A", "구분": "매수", "수량": 1, "단가": 90, "실현손익": None, "메모": "", "정산반영": True},
+        {"id": "5", "날짜": "2026-09-20", "종목명": "A", "구분": "매도", "수량": 2, "단가": 114, "실현손익": 38, "메모": "", "정산반영": True},
+        {"id": "6", "날짜": "2026-09-21", "종목명": "B", "구분": "매수", "수량": 1, "단가": 50, "실현손익": None, "메모": "", "정산반영": True},
+    ])
+    tags = pd.DataFrame([{"종목명": "A", "태그일": "2026-09-12", "메모": ""},
+                         {"종목명": "B", "태그일": "2026-09-21", "메모": ""}])
+    cmp = core.compare_cfg_cycles(tx, tags)
+    assert cmp["cfg"]["n"] == 1 and abs(cmp["cfg"]["평균수익률"] - 20.0) < 1e-9  # 38/190
+    assert cmp["rest"]["n"] == 1 and abs(cmp["rest"]["평균수익률"] - 10.0) < 1e-9
+    assert cmp["open_cfg"] == 1
+    assert core.holding_is_cfg(tx, "B", tags) is True
+    assert core.holding_is_cfg(tx, "A", tags) is False

@@ -106,6 +106,7 @@ st.markdown(f"""
     .stock-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:12px; padding:10px 16px; margin-bottom:7px; }}
     /* 물타기(현재 사이클 매수 2회 이상) 했는데 반등해서 현재가가 최초진입가 이상으로 온 종목 */
     .stock-card.watered-ok {{ background:rgba(34,197,94,0.11) !important; border-color:rgba(34,197,94,0.38) !important; }}
+    .stock-card.cfg-tag {{ background:rgba(239,68,68,0.09) !important; border-color:rgba(239,68,68,0.38) !important; }}
     .stock-top {{ display:flex; justify-content:space-between; align-items:baseline; }}
     .stock-title-group {{ flex:1 1 auto; min-width:0; max-width:calc(100% - 180px); }}
     .stock-name {{ font-size:13px; font-weight:700; color:{T['text']}; white-space:nowrap; }}

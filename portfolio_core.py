@@ -2165,6 +2165,67 @@ def _cycle_bucket(c: dict) -> str:
     return "FA" if c["n_buy"] == 1 else "MA"
 
 
+# ------------------------------------------------------------------ #
+# CFG 태그 — CFG 리포트(morning_report.py ③)를 보고 산 종목의 사이클을 따로 추적해
+# "CFG로 산 돈이 나머지보다 더 벌었나"를 비교한다(2026-10-02 사용자 확정, new1 전용,
+# 2026-12-31까지 테스트). 거래 원장(transactions.csv)은 유일한 기준이라 손대지 않고 별도 파일에
+# "종목명, 태그일"만 둔다. 태그일이 걸친 사이클 전체(진입~전량매도)를 CFG 사이클로 본다.
+# ------------------------------------------------------------------ #
+CFG_TAG_PATH = HERE / "cfg_tagged.csv"
+CFG_TAG_COLUMNS = ["종목명", "태그일", "메모"]
+
+
+def load_cfg_tags() -> pd.DataFrame:
+    if not CFG_TAG_PATH.exists():
+        return pd.DataFrame(columns=CFG_TAG_COLUMNS)
+    df = pd.read_csv(CFG_TAG_PATH, encoding="utf-8-sig", dtype=str).fillna("")
+    return df[[c for c in CFG_TAG_COLUMNS if c in df.columns]]
+
+
+def _cycle_has_cfg_tag(cycle: dict, tags: pd.DataFrame) -> bool:
+    if tags is None or tags.empty or not cycle.get("first_buy_date"):
+        return False
+    t = tags[tags["종목명"] == cycle["종목"]]
+    for d in t["태그일"]:
+        if d >= cycle["first_buy_date"] and (cycle["close_date"] is None or d <= cycle["close_date"]):
+            return True
+    return False
+
+
+def holding_is_cfg(tx: pd.DataFrame, name: str, tags: pd.DataFrame) -> bool:
+    """그 종목의 현재 보유(열린) 사이클에 CFG 태그가 걸려 있나 — Holdings 카드 옅은 빨강 판정."""
+    if tags is None or tags.empty or name not in set(tags["종목명"]):
+        return False
+    opens = [c for c in _all_cycles(tx[tx["종목명"] == name]) if not c["closed"]]
+    return bool(opens) and _cycle_has_cfg_tag(opens[-1], tags)
+
+
+def compare_cfg_cycles(tx: pd.DataFrame, tags: pd.DataFrame | None = None) -> dict:
+    """전량매도로 끝난 사이클을 CFG 태그 여부로 나눠 성적을 비교한다.
+    수익률 = 사이클 실현손익 ÷ 사이클 매수금액. 보유일 = 최초 매수일~전량매도일(달력일).
+    반환: {"cfg": {...}, "rest": {...}, "open_cfg": 열린 CFG 사이클 수}. 각 묶음은
+    n, 평균수익률, 중앙수익률, 승률(수익 사이클 비율), 평균보유일, 평균매수횟수, 실현합계."""
+    tags = load_cfg_tags() if tags is None else tags
+    cycles = _all_cycles(tx)
+
+    def summarize(cs):
+        if not cs:
+            return {"n": 0}
+        pct = [c["realized"] / c["buy_amt"] * 100 for c in cs if c["buy_amt"]]
+        days = [(pd.Timestamp(c["close_date"]) - pd.Timestamp(c["first_buy_date"])).days for c in cs]
+        s = pd.Series(pct)
+        return {"n": len(cs), "평균수익률": float(s.mean()), "중앙수익률": float(s.median()),
+                "승률": float((s > 0).mean() * 100), "평균보유일": float(pd.Series(days).mean()),
+                "평균매수횟수": float(pd.Series([c["n_buy"] for c in cs]).mean()),
+                "실현합계": float(sum(c["realized"] for c in cs))}
+
+    closed = [c for c in cycles if c["closed"]]
+    cfg = [c for c in closed if _cycle_has_cfg_tag(c, tags)]
+    rest = [c for c in closed if not _cycle_has_cfg_tag(c, tags)]
+    open_cfg = sum(1 for c in cycles if not c["closed"] and _cycle_has_cfg_tag(c, tags))
+    return {"cfg": summarize(cfg), "rest": summarize(rest), "open_cfg": open_cfg}
+
+
 def compute_pnl_actions(tx: pd.DataFrame, holdings: pd.DataFrame) -> dict:
     """실현손익을 매매 스타일 3버킷(FA/MO/MA)으로 해부 + 진행 상태 카운터 + 물타기 상세.
     §6-20. 도넛·병합표·상태표·Watering 상세에 그대로 쓰는 값들을 반환."""
