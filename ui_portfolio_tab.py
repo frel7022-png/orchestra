@@ -1420,6 +1420,13 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         is_new = df_sorted["종목명"].isin(new_today_names)
         df_sorted = pd.concat([df_sorted[is_new], df_sorted[~is_new]])
 
+    # CFG로 산 종목(옅은 빨강 카드)은 그보다도 위, 맨 위 고정(2026-10-06 사용자 지시).
+    _cfg_tags = load_cfg_tags()
+    _cfg_names = {n for n in df_sorted["종목명"] if holding_is_cfg(tx, n, _cfg_tags)}
+    if _cfg_names:
+        is_cfg = df_sorted["종목명"].isin(_cfg_names)
+        df_sorted = pd.concat([df_sorted[is_cfg], df_sorted[~is_cfg]])
+
     rows = df_sorted.to_dict("records")
 
     if not rows:
@@ -1429,7 +1436,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             st.session_state.holding_detail_open = None
 
         dividend_cache = load_dividend_cache()
-        _cfg_tags = load_cfg_tags()
 
         # 외국인 보유율 (Supabase investor_flow 최신값) — 배당 배지 옆에 수치만. 세션 1회 조회.
         foreign_map = st.session_state.get("holding_foreign_map")

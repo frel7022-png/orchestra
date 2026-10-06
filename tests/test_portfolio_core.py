@@ -2146,9 +2146,9 @@ def test_db_loaders_paginate_with_stable_order(monkeypatch):
     assert all("order=trade_date,stock_code" in u for u in paged)
 
 
-def test_cfg_tag_marks_whole_cycle_and_compares_closed_cycles():
-    """CFG 태그일이 걸친 사이클 전체가 CFG 사이클 — 태그 이전에 끝난 사이클은 제외.
-    열린 사이클은 비교에서 빠지고 open_cfg로만 센다(2026-10-02, new1 전용 테스트)."""
+def test_cfg_lot_compare_counts_only_the_tagged_buy():
+    """CFG 성적은 태그일에 한 매수 1건만 — 같은 사이클의 이전 매수는 Others로 간다(2026-10-06,
+    사이클 단위였던 걸 매수 건 단위로 변경). 청산가는 그 매수일 이후 매도들의 가중평균."""
     import pandas as pd
     import portfolio_core as core
     tx = pd.DataFrame([
@@ -2161,9 +2161,28 @@ def test_cfg_tag_marks_whole_cycle_and_compares_closed_cycles():
     ])
     tags = pd.DataFrame([{"종목명": "A", "태그일": "2026-09-12", "메모": ""},
                          {"종목명": "B", "태그일": "2026-09-21", "메모": ""}])
-    cmp = core.compare_cfg_cycles(tx, tags)
-    assert cmp["cfg"]["n"] == 1 and abs(cmp["cfg"]["평균수익률"] - 20.0) < 1e-9  # 38/190
-    assert cmp["rest"]["n"] == 1 and abs(cmp["rest"]["평균수익률"] - 10.0) < 1e-9
+    cmp = core.compare_cfg_lots(tx, tags, fee_rate=0.0)
+    assert cmp["cfg"]["n"] == 1 and abs(cmp["cfg"]["평균수익률"] - (114 / 90 - 1) * 100) < 1e-9
+    assert cmp["cfg"]["평균회차"] == 2 and cmp["cfg"]["평균보유일"] == 8
+    # Others = 첫 사이클 lot(+10%) + 둘째 사이클 첫 매수(+14%)
+    assert cmp["rest"]["n"] == 2 and abs(cmp["rest"]["평균수익률"] - 12.0) < 1e-9
     assert cmp["open_cfg"] == 1
     assert core.holding_is_cfg(tx, "B", tags) is True
     assert core.holding_is_cfg(tx, "A", tags) is False
+
+
+def test_cfg_lot_exit_ignores_partial_sells_before_the_buy_and_applies_fee():
+    """lot 매수일 전에 있었던 부분매도는 그 lot의 청산가에 안 들어가고, 매도세(fee_rate)는 뺀다."""
+    import pandas as pd
+    import portfolio_core as core
+    tx = pd.DataFrame([
+        {"id": "1", "날짜": "2026-09-01", "종목명": "A", "구분": "매수", "수량": 2, "단가": 100, "실현손익": None, "메모": "", "정산반영": True},
+        {"id": "2", "날짜": "2026-09-02", "종목명": "A", "구분": "매도", "수량": 1, "단가": 80, "실현손익": -20, "메모": "", "정산반영": True},
+        {"id": "3", "날짜": "2026-09-03", "종목명": "A", "구분": "매수", "수량": 1, "단가": 90, "실현손익": None, "메모": "", "정산반영": True},
+        {"id": "4", "날짜": "2026-09-09", "종목명": "A", "구분": "매도", "수량": 2, "단가": 100, "실현손익": 5, "메모": "", "정산반영": True},
+    ])
+    tags = pd.DataFrame([{"종목명": "A", "태그일": "2026-09-03", "메모": ""}])
+    cmp = core.compare_cfg_lots(tx, tags, fee_rate=0.002)
+    assert abs(cmp["cfg"]["평균수익률"] - (100 * 0.998 / 90 - 1) * 100) < 1e-9
+    first = (((80 * 1 + 100 * 2) / 3) * 0.998 / 100 - 1) * 100
+    assert abs(cmp["rest"]["평균수익률"] - first) < 1e-9

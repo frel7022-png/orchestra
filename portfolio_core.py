@@ -2223,30 +2223,77 @@ def holding_is_cfg(tx: pd.DataFrame, name: str, tags: pd.DataFrame) -> bool:
     return bool(opens) and _cycle_has_cfg_tag(opens[-1], tags)
 
 
-def compare_cfg_cycles(tx: pd.DataFrame, tags: pd.DataFrame | None = None) -> dict:
-    """전량매도로 끝난 사이클을 CFG 태그 여부로 나눠 성적을 비교한다.
-    수익률 = 사이클 실현손익 ÷ 사이클 매수금액. 보유일 = 최초 매수일~전량매도일(달력일).
-    반환: {"cfg": {...}, "rest": {...}, "open_cfg": 열린 CFG 사이클 수}. 각 묶음은
-    n, 평균수익률, 중앙수익률, 승률(수익 사이클 비율), 평균보유일, 평균매수횟수, 실현합계."""
+def _all_lots(tx: pd.DataFrame, fee_rate: float = 0.0) -> list[dict]:
+    """매수 1건 = lot 1개. 사이클이 전량매도로 끝나면 각 lot의 성적을 매긴다:
+    청산가 = 그 lot 매수일 이후(같은 날 포함) 같은 사이클 안 매도들의 수량가중 평균 단가,
+    수익률 = 청산가×(1−fee_rate) ÷ 매수단가 − 1. 보유일 = 매수일~전량매도일.
+    lot dict: 종목, 날짜, 수량, 단가, 회차(사이클 안 몇 번째 매수), closed,
+    (closed면) 수익률, 손익, 보유일."""
+    if tx is None or tx.empty:
+        return []
+    t = tx[tx["구분"].isin(["매수", "매도"])].copy()
+    if t.empty:
+        return []
+    t["수량"] = pd.to_numeric(t["수량"], errors="coerce").fillna(0.0)
+    t["단가"] = pd.to_numeric(t["단가"], errors="coerce").fillna(0.0)
+    t["_ord"] = range(len(t))
+    out = []
+    for name, g in t.groupby("종목명", sort=False):
+        g = g.sort_values(["날짜", "_ord"])
+        qty, buys, sells = 0.0, [], []
+        for _, r in g.iterrows():
+            if r["구분"] == "매수":
+                buys.append({"종목": name, "날짜": r["날짜"], "수량": float(r["수량"]),
+                             "단가": float(r["단가"]), "회차": len(buys) + 1, "closed": False})
+                qty += r["수량"]
+                continue
+            sells.append((r["날짜"], float(r["수량"]), float(r["단가"])))
+            qty -= r["수량"]
+            if qty > 1e-9:
+                continue
+            close_date = r["날짜"]
+            for b in buys:
+                after = [(q, p) for d, q, p in sells if d >= b["날짜"]]
+                sq = sum(q for q, _ in after)
+                if sq <= 0 or b["단가"] <= 0:
+                    continue
+                exit_px = sum(q * p for q, p in after) / sq * (1 - fee_rate)
+                b.update(closed=True, 수익률=(exit_px / b["단가"] - 1) * 100,
+                         손익=b["수량"] * (exit_px - b["단가"]),
+                         보유일=(pd.Timestamp(close_date) - pd.Timestamp(b["날짜"])).days)
+            out.extend(buys)
+            qty, buys, sells = 0.0, [], []
+        out.extend(buys)
+    return out
+
+
+def compare_cfg_lots(tx: pd.DataFrame, tags: pd.DataFrame | None = None,
+                     fee_rate: float | None = None) -> dict:
+    """CFG를 보고 한 매수 1건(태그일 = 그 매수일)과 나머지 매수 건을 같은 자로 비교한다
+    (2026-10-06 사용자 확정 — 사이클 전체로 세면 CFG 이전 물타기 판단이 CFG 성적에 섞여서,
+    예컨대 와이지-원은 14번 매수 중 13번이 CFG 이전이었음). 전량매도로 끝난 사이클의 lot만 비교.
+    반환: {"cfg": {...}, "rest": {...}, "open_cfg": 아직 안 끝난 CFG 매수 건수}. 각 묶음은
+    n, 평균수익률, 중앙수익률, 승률, 평균보유일, 평균회차, 손익합계."""
     tags = load_cfg_tags() if tags is None else tags
-    cycles = _all_cycles(tx)
+    fee_rate = load_state()["fee_rate"] if fee_rate is None else fee_rate
+    tagged = set(zip(tags["종목명"], tags["태그일"])) if tags is not None and not tags.empty else set()
+    lots = _all_lots(tx, fee_rate)
 
-    def summarize(cs):
-        if not cs:
+    def summarize(ls):
+        if not ls:
             return {"n": 0}
-        pct = [c["realized"] / c["buy_amt"] * 100 for c in cs if c["buy_amt"]]
-        days = [(pd.Timestamp(c["close_date"]) - pd.Timestamp(c["first_buy_date"])).days for c in cs]
-        s = pd.Series(pct)
-        return {"n": len(cs), "평균수익률": float(s.mean()), "중앙수익률": float(s.median()),
-                "승률": float((s > 0).mean() * 100), "평균보유일": float(pd.Series(days).mean()),
-                "평균매수횟수": float(pd.Series([c["n_buy"] for c in cs]).mean()),
-                "실현합계": float(sum(c["realized"] for c in cs))}
+        s = pd.Series([b["수익률"] for b in ls])
+        return {"n": len(ls), "평균수익률": float(s.mean()), "중앙수익률": float(s.median()),
+                "승률": float((s > 0).mean() * 100),
+                "평균보유일": float(pd.Series([b["보유일"] for b in ls]).mean()),
+                "평균회차": float(pd.Series([b["회차"] for b in ls]).mean()),
+                "손익합계": float(sum(b["손익"] for b in ls))}
 
-    closed = [c for c in cycles if c["closed"]]
-    cfg = [c for c in closed if _cycle_has_cfg_tag(c, tags)]
-    rest = [c for c in closed if not _cycle_has_cfg_tag(c, tags)]
-    open_cfg = sum(1 for c in cycles if not c["closed"] and _cycle_has_cfg_tag(c, tags))
-    return {"cfg": summarize(cfg), "rest": summarize(rest), "open_cfg": open_cfg}
+    is_cfg = lambda b: (b["종목"], b["날짜"]) in tagged
+    closed = [b for b in lots if b["closed"]]
+    return {"cfg": summarize([b for b in closed if is_cfg(b)]),
+            "rest": summarize([b for b in closed if not is_cfg(b)]),
+            "open_cfg": sum(1 for b in lots if not b["closed"] and is_cfg(b))}
 
 
 def compute_pnl_actions(tx: pd.DataFrame, holdings: pd.DataFrame) -> dict:
