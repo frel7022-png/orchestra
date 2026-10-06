@@ -71,6 +71,14 @@ def upsert(table: str, records: list[dict], on_conflict: str, chunk_size: int | 
 
 
 def main():
+    today = core.resolve_trading_date()
+    traded = core.market_traded_on(today)
+    if traded is False:
+        print(f"{today}은 휴장일(마지막 체결이 그 전 거래일)이라 적재하지 않고 종료합니다.")
+        return
+    if traded is None:
+        print(f"경고: {today} 개장 여부 확인 실패 — 거래일로 보고 그대로 적재합니다.")
+
     print("1) watchlist 종목코드 조회...")
     watchlist = rest_get("watchlist?select=stock_code,stock_name")
     codes = [r["stock_code"] for r in watchlist]
@@ -87,7 +95,6 @@ def main():
         names = {r["stock_code"]: r["stock_name"] for r in watchlist}
         print(f"   시세 못 받은 종목({len(missing)}개): {[names[c] for c in missing]}")
 
-    today = core.resolve_trading_date()
     records = [
         {"stock_code": code, "trade_date": today, "close_price": q["price"],
          "change_pct": q["change_pct"], "volume": q.get("volume")}

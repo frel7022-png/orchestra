@@ -103,6 +103,29 @@ def resolve_trading_date() -> str:
     return d.strftime("%Y-%m-%d")
 
 
+def market_traded_on(trade_date: str, probe_code: str = "005930") -> bool | None:
+    """trade_date에 국내 시장이 실제로 열렸는지를 네이버 실시간 시세의 마지막 체결 시각
+    (localTradedAt)으로 판정한다. resolve_trading_date()는 주말만 거르고 한국 휴장일
+    (명절·대체공휴일 등)은 못 거른다 — 2026-10-05(휴장) cron이 그대로 돌아서 price_history에
+    10/2 값을 복사한 가짜 10/5 행 180개, market_flow에 전부 0인 행 2개가 생겼던 실제 사례.
+    휴장일엔 마지막 체결 시각이 직전 거래일에 머물러 있으므로 그 날짜 < trade_date면 False.
+    "<"로 비교하는 이유: 지연 실행이 다음날 아침 NXT 프리마켓(08:00~) 체결 뒤에 돌면 체결
+    날짜가 trade_date보다 커질 수 있는데, 그건 장이 열렸던 날이라 True여야 한다.
+    조회 실패는 None — 호출부는 None이면 적재를 막지 않는다(가짜 행은 지우면 되지만,
+    investor_flow는 5영업일 지나면 못 메우므로 실제 거래일을 놓치는 쪽이 더 나쁨)."""
+    try:
+        r = requests.get(f"https://polling.finance.naver.com/api/realtime/domestic/stock/{probe_code}",
+                         headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"},
+                         timeout=10)
+        r.raise_for_status()
+        traded_at = str(r.json()["datas"][0]["localTradedAt"])[:10]
+    except Exception:
+        return None
+    if len(traded_at) != 10:
+        return None
+    return traded_at >= trade_date
+
+
 def clean_str(x) -> str:
     """pd.NA / NaN / None 안전하게 빈 문자열로 처리."""
     if x is None or (isinstance(x, float) and pd.isna(x)) or (x is pd.NA):

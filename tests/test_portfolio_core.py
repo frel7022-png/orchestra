@@ -458,6 +458,31 @@ def test_resolve_trading_date_rolls_back_over_weekend(monkeypatch):
     assert core.resolve_trading_date() == "2026-08-21"  # 금요일
 
 
+def _quote_with_traded_at(ts):
+    return lambda *a, **k: _FakeResp(json_data={"datas": [{"localTradedAt": ts}]})
+
+
+def test_market_traded_on_holiday_returns_false(monkeypatch):
+    """2026-10-05(휴장)에 cron이 돌면 마지막 체결은 10/2에 머물러 있다 → 적재하면 안 됨."""
+    monkeypatch.setattr(core.requests, "get", _quote_with_traded_at("2026-10-02T19:59:58.1+09:00"))
+    assert core.market_traded_on("2026-10-05") is False
+
+
+def test_market_traded_on_trading_day_and_next_morning_premarket(monkeypatch):
+    """정상 거래일, 그리고 지연 실행이 다음날 프리마켓 체결 뒤에 돈 경우 둘 다 True."""
+    monkeypatch.setattr(core.requests, "get", _quote_with_traded_at("2026-10-06T16:33:40.1+09:00"))
+    assert core.market_traded_on("2026-10-06") is True
+    monkeypatch.setattr(core.requests, "get", _quote_with_traded_at("2026-10-07T08:05:00.0+09:00"))
+    assert core.market_traded_on("2026-10-06") is True
+
+
+def test_market_traded_on_probe_failure_returns_none(monkeypatch):
+    def boom(*a, **k):
+        raise core.requests.RequestException("down")
+    monkeypatch.setattr(core.requests, "get", boom)
+    assert core.market_traded_on("2026-10-06") is None
+
+
 def test_resolve_trading_date_normal_afternoon_run_is_today(monkeypatch):
     """평소대로 장마감 후(16:13 KST) 정상 실행되면 그날 날짜 그대로."""
     monkeypatch.setattr(core, "now_kst", lambda: datetime(2026, 8, 31, 16, 13))  # 월요일 오후
