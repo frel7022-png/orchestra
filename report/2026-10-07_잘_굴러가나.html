@@ -1,0 +1,138 @@
+<title>잘 굴러가나</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#191b21;--soft:#5b606b;--faint:#8b909c;--rule:#e0e3ea;
+--up:#c9313d;--dn:#2c5fc4;--fl:#15794c;--new:#15794c;--t0:#7a1f8f;--t1:#c9313d;--t3:#b4690e;--t5:#5b606b;--t8:#8b909c}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#13151a;--card:#1a1d24;--ink:#e8eaef;--soft:#a2a7b3;--faint:#6e7480;--rule:#2b2f38;--up:#f0555f;--dn:#6f9bef;--fl:#4cc38a;--new:#4cc38a;--t0:#c98ae0;--t1:#f0555f;--t3:#e0a45e;--t5:#a2a7b3;--t8:#6e7480;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#13151a;--card:#1a1d24;--ink:#e8eaef;--soft:#a2a7b3;--faint:#6e7480;--rule:#2b2f38;--up:#f0555f;--dn:#6f9bef;--fl:#4cc38a;--new:#4cc38a;--t0:#c98ae0;--t1:#f0555f;--t3:#e0a45e;--t5:#a2a7b3;--t8:#6e7480;color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;margin:0;line-height:1.6}
+.wrap{max-width:820px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:1.5rem;margin:0} .sub{color:var(--soft);font-size:13px;margin:4px 0 0}
+h2{font-size:1rem;margin:30px 0 8px;padding-top:14px;border-top:1px solid var(--rule)}
+.scroll{overflow-x:auto} table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px;border-bottom:1px solid var(--rule);text-align:right;white-space:nowrap}
+th{color:var(--soft);font-weight:600;font-size:12px} td.nm,th.nm{text-align:left} td.rk{font-weight:700} td.mv{text-align:center}
+.up{color:var(--up)} .dn{color:var(--dn)} .mut{color:var(--faint)} .new{color:var(--new);font-weight:700;font-size:11px}
+.own{font-size:10px;color:var(--faint);margin-left:5px;letter-spacing:.05em}
+.tier{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;border:1px solid currentColor}
+.t0{color:var(--t0)} .t1,.t2{color:var(--t1)} .t3,.t4{color:var(--t3)} .t5,.t6,.t7{color:var(--t5)} .t8{color:var(--t8)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:10px 10px 4px;min-width:0}
+.ch{font-weight:600;font-size:13.5px} .rk2{color:var(--faint);margin-right:2px}
+.meta{display:block;font-weight:400;font-size:11.5px;color:var(--soft)}
+svg{width:100%;height:auto;display:block} .pl{fill:none;stroke:var(--dn);stroke-width:1.8} .fl{fill:none;stroke:var(--fl);stroke-width:1.8}
+.pk{fill:var(--fl)} .grid{stroke:var(--rule);stroke-dasharray:3 3} .ax{font-size:9.5px;fill:var(--faint)} .ax.p{fill:var(--dn)} .ax.f{fill:var(--fl)}
+.legend{font-size:12px;color:var(--soft);margin:4px 0 10px} .legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin:0 4px 0 10px}
+ul{padding-left:18px;font-size:13.5px} .note{font-size:12px;color:var(--faint)}
+.cm{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:6px 16px;font-size:14px} .cm h3{font-size:13px;color:var(--soft);margin:12px 0 2px} .cm p{margin:6px 0}
+.nochart{font-size:12px;color:var(--faint);padding:20px 0}
+
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:14px}
+.kpi>div{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:10px 12px}
+.kpi .k{font-size:11.5px;color:var(--soft)} .kpi .v{font-size:1.2rem;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:11.5px;color:var(--faint)}
+.br{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12.5px}
+.bl{width:170px;flex-shrink:0;color:var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bl2{width:52px;flex-shrink:0;color:var(--soft)}
+.bt,.bt2{flex:1;height:14px;background:var(--rule);border-radius:4px;overflow:hidden;display:block;min-width:0;position:relative}
+.bt span{display:block;height:100%} .bt2 span{position:absolute;top:0;height:100%} .bt2 .z{left:50%;width:1px;background:var(--soft)}
+.bv{width:62px;text-align:right;font-variant-numeric:tabular-nums}
+.hb{margin:10px 0 12px} .hl{font-size:12.5px;font-weight:600;margin-bottom:2px}
+td .meta{display:block} p{max-width:68ch}
+.wow{background:var(--card);border-left:3px solid var(--up);border-radius:6px;padding:8px 12px;margin:12px 0;font-size:13.5px}
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:10px 0}
+.flow>div{border:1px solid var(--rule);border-radius:10px;padding:10px 12px;background:var(--card);font-size:12.5px;line-height:1.5;min-width:0}
+.flow b{display:block;font-size:13px;margin-bottom:2px}
+.legend i{display:inline-block;width:14px;height:3px;margin:0 4px 3px 8px;vertical-align:middle}
+@media(max-width:560px){.bl{width:118px}}
+</style>
+<div class="wrap">
+<h1>잘 굴러가나</h1>
+<p class="sub">2026-10-07 · new1(Orchestra)·meritz(Orchestration) 중간 점검 · 8/14 = 0 기준, 10/6 종가까지 · 기준선은 삼성·하이닉스를 뺀 혼합지수, 그리고 삼성·하이닉스를 20% 담은 VIP 펀드</p>
+
+<div class="kpi">
+  <div><div class="k">반도체 뺀 혼합지수 대비</div><div class="v"><span class="up">+2.57%p</span> · <span class="up">+2.53%p</span></div><div class="s">Orchestra -0.74% · Orchestration -0.47% vs 시장 -3.31%</div></div>
+  <div><div class="k">최대 낙폭</div><div class="v">−3.0% · −3.3%</div><div class="s">반도체 뺀 혼합은 −8.1%</div></div>
+  <div><div class="k">빨간 날 산 비율</div><div class="v">73% · 72%</div><div class="s">초록 날 판 비율 81% · 81%</div></div>
+  <div><div class="k">meritz 매도</div><div class="v">29전 29승</div><div class="s">중간값 +10.3% · 손실 0번</div></div>
+</div>
+
+<h2>먼저 결론</h2>
+<div class="cm">
+<p><b>굴러간다. 그것도 꽤 잘.</b> 반도체 두 종목이 지수를 혼자 끌고 간 장에서, 그걸 뺀 시장은 8주간 -3.31%였어. 두 계좌는 -0.74%, -0.47%로 버티면서 <b>2.5%p 넘게 앞섰어</b>. 최대 낙폭은 시장의 3분의 1 수준이야. 매매도 설계대로 움직였어. 빨간 날 사고, 초록 날 팔고, 시장이 빠진 날 더 많이 담고, meritz는 new1보다 아래에서 들어갔어. VIP와의 차이도 대부분 VIP가 쥔 삼성·하이닉스 20%에서 나왔어. 앱이 하라고 만든 일을, 두 계좌가 숫자로 그대로 하고 있어.</p>
+</div>
+
+<h2>① 판이 어땠나 — 반도체만 웃은 8주</h2>
+<div class="legend"><i style="background:var(--up)"></i>Orchestra <i style="background:var(--fl)"></i>Orchestration <i style="background:var(--t3)"></i>VIP <i style="background:var(--dn)"></i>반도체 뺀 혼합(점선) <i style="background:var(--faint)"></i>SH 바스켓(삼성·삼성우·하이닉스)</div>
+<div class="card"><svg viewBox="0 0 640 260" role="img" aria-label="8/14 이후 누적"><line class="grid" x1="40" x2="536" y1="234.0" y2="234.0"/><text class="ax" x="35" y="237.0" text-anchor="end">-10%</text><line class="grid" x1="40" x2="536" y1="209.6" y2="209.6"/><text class="ax" x="35" y="212.6" text-anchor="end">-8%</text><line class="grid" x1="40" x2="536" y1="185.1" y2="185.1"/><text class="ax" x="35" y="188.1" text-anchor="end">-6%</text><line class="grid" x1="40" x2="536" y1="160.7" y2="160.7"/><text class="ax" x="35" y="163.7" text-anchor="end">-4%</text><line class="grid" x1="40" x2="536" y1="136.2" y2="136.2"/><text class="ax" x="35" y="139.2" text-anchor="end">-2%</text><line class="grid" x1="40" x2="536" y1="111.8" y2="111.8"/><text class="ax" x="35" y="114.8" text-anchor="end">+0%</text><line class="grid" x1="40" x2="536" y1="87.3" y2="87.3"/><text class="ax" x="35" y="90.3" text-anchor="end">+2%</text><line class="grid" x1="40" x2="536" y1="62.9" y2="62.9"/><text class="ax" x="35" y="65.9" text-anchor="end">+4%</text><line class="grid" x1="40" x2="536" y1="38.4" y2="38.4"/><text class="ax" x="35" y="41.4" text-anchor="end">+6%</text><line class="grid" x1="40" x2="536" y1="14.0" y2="14.0"/><text class="ax" x="35" y="17.0" text-anchor="end">+8%</text><line x1="40" x2="536" y1="111.8" y2="111.8" style="stroke:var(--soft)"/><polyline points="40.0,111.8 55.0,143.5 70.1,172.2 85.1,164.0 100.1,198.3 115.2,188.9 130.2,174.5 145.2,169.0 160.2,155.3 175.3,151.2 190.3,155.3 205.3,163.7 220.4,202.0 235.4,198.0 250.4,185.2 265.5,163.5 280.5,179.4 295.5,161.7 310.5,163.5 325.6,172.7 340.6,184.8 355.6,210.3 370.7,202.9 385.7,203.4 400.7,188.2 415.8,192.0 430.8,186.4 445.8,193.4 460.8,184.7 475.9,196.7 490.9,196.5 505.9,168.1 521.0,166.1 536.0,152.3" style="fill:none;stroke:var(--dn);stroke-width:2.0;stroke-dasharray:4 3"/><polyline points="40.0,111.8 55.0,123.5 70.1,227.8 85.1,107.8 100.1,65.5 115.2,148.2 130.2,144.4 145.2,129.8 160.2,107.1 175.3,154.5 190.3,141.0 205.3,131.6 220.4,182.6 235.4,189.4 250.4,158.3 265.5,79.7 280.5,78.3 295.5,59.6 310.5,59.9 325.6,98.4 340.6,167.1 355.6,151.6 370.7,129.1 385.7,126.2 400.7,84.5 415.8,37.8 430.8,40.2 445.8,8.4 460.8,70.5 475.9,73.8 490.9,82.0 505.9,54.5 521.0,46.9 536.0,72.5" style="fill:none;stroke:var(--faint);stroke-width:1.4;stroke-dasharray:2 3"/><polyline points="40.0,111.8 55.0,93.7 70.1,119.6 85.1,155.2 100.1,134.7 115.2,138.9 130.2,145.6 145.2,126.9 160.2,119.0 175.3,118.4 190.3,108.2 205.3,111.8 220.4,108.2 235.4,132.9 250.4,138.3 265.5,130.5 280.5,113.0 295.5,121.4 310.5,119.6 325.6,113.6 340.6,123.2 355.6,132.3 370.7,146.8 385.7,142.5 400.7,135.9 415.8,128.1 430.8,115.4 445.8,115.4 460.8,110.6 475.9,119.0 490.9,116.6 505.9,125.7 521.0,102.7 536.0,107.0" style="fill:none;stroke:var(--t3);stroke-width:2.2;stroke-dasharray:none"/><polyline points="40.0,111.8 55.0,120.9 70.1,120.0 85.1,127.8 100.1,124.6 115.2,132.9 130.2,117.5 145.2,108.1 160.2,110.0 175.3,103.1 190.3,108.2 205.3,108.2 220.4,122.5 235.4,121.1 250.4,115.2 265.5,112.9 280.5,111.8 295.5,116.9 310.5,117.7 325.6,118.4 340.6,121.0 355.6,126.6 370.7,129.8 385.7,128.3 400.7,129.4 415.8,137.7 430.8,140.6 445.8,139.6 460.8,125.1 475.9,133.9 490.9,136.3 505.9,129.7 521.0,125.6 536.0,120.8" style="fill:none;stroke:var(--up);stroke-width:2.8;stroke-dasharray:none"/><polyline points="40.0,111.8 55.0,111.9 70.1,114.7 85.1,111.4 100.1,116.6 115.2,110.7 130.2,106.4 145.2,101.1 160.2,106.8 175.3,99.7 190.3,104.9 205.3,94.4 220.4,102.9 235.4,101.4 250.4,97.2 265.5,94.5 280.5,98.4 295.5,96.7 310.5,110.0 325.6,110.1 340.6,113.7 355.6,119.2 370.7,124.0 385.7,119.1 400.7,124.5 415.8,130.4 430.8,135.0 445.8,134.2 460.8,122.6 475.9,131.9 490.9,135.6 505.9,126.6 521.0,122.2 536.0,117.5" style="fill:none;stroke:var(--fl);stroke-width:2.4;stroke-dasharray:none"/><text x="540" y="75.5" style="fill:var(--faint);font-size:9.5px;font-weight:600">SH 바스켓 +3.2%</text><text x="540" y="110.0" style="fill:var(--t3);font-size:9.5px;font-weight:600">VIP +0.4%</text><text x="540" y="121.0" style="fill:var(--fl);font-size:9.5px;font-weight:600">Orchestration -0.5%</text><text x="540" y="132.0" style="fill:var(--up);font-size:9.5px;font-weight:600">Orchestra -0.7%</text><text x="540" y="155.3" style="fill:var(--dn);font-size:9.5px;font-weight:600">반도체 뺀 혼합 -3.3%</text><text class="ax" x="40.0" y="252" text-anchor="start">08/14</text><text class="ax" x="536.0" y="252" text-anchor="end">10/06</text></svg></div>
+<p>8/14 이후 SH 바스켓은 +3.22%. 그걸 뺀 코스피는 <b>-7.10%</b>였어. 코스닥이 +6.39%로 받쳐줬는데도, 계좌 비중(코스피 72 : 코스닥 28)대로 섞은 "반도체 뺀 혼합"은 -3.31%. 헤드라인 혼합지수(+1.42%)는 반도체가 가려준 숫자야. 이 계좌들이 실제로 사는 종목들이 놓인 판은 꽤 추운 판이었어.</p>
+<p>그 추운 판에서 빨간 선(Orchestra)과 초록 선(Orchestration)은 0% 근처를 거의 안 떠나. <b>오, 이건 좀 멋진데.</b> 파란 점선이 −8%까지 꺼지는 동안 두 선은 −3% 언저리에서 멈췄다가 다시 0으로 붙어 올라왔어.</p>
+
+<h2>② 기준선 대비 성적 — 반도체 뺀 시장보다 얼마나 나았나</h2>
+<div class="card" style="padding:12px 14px"><div class='br'><span class='bl'>Orchestra 계좌</span><span class='bt2'><span class='z'></span><span style='left:50.0%;width:25.7%;background:var(--up)'></span></span><span class='bv'>+2.57%p</span></div><div class='br'><span class='bl'>Orchestra 주식</span><span class='bt2'><span class='z'></span><span style='left:50.0%;width:18.0%;background:var(--up)'></span></span><span class='bv'>+1.80%p</span></div><div class='br'><span class='bl'>Orchestration 계좌</span><span class='bt2'><span class='z'></span><span style='left:50.0%;width:25.3%;background:var(--fl)'></span></span><span class='bv'>+2.53%p</span></div><div class='br'><span class='bl'>Orchestration 주식</span><span class='bt2'><span class='z'></span><span style='left:50.0%;width:39.9%;background:var(--fl)'></span></span><span class='bv'>+3.99%p</span></div><div class='br'><span class='bl'>VIP (참고)</span><span class='bt2'><span class='z'></span><span style='left:50.0%;width:37.1%;background:var(--t3)'></span></span><span class='bv'>+3.71%p</span></div></div>
+<p class="note">각 계좌는 자기 코스피/코스닥 비중으로 섞은 반도체 제외 혼합지수와 비교(new1 -3.31%, meritz -3.00%). "주식"은 예수금을 뺀 순수 종목 바구니의 수익률.</p>
+<ul>
+<li><b>계좌로 보면 둘이 거의 쌍둥이야.</b> Orchestra +2.57%p, Orchestration +2.53%p.</li>
+<li><b>종목 바구니만 보면 meritz가 한 수 위야.</b> Orchestration 주식 +1.00%. 시장이 −3%인 판에서 <b>플러스</b>야. 기준선보다 +3.99%p 위. new1 주식은 -1.52%로 +1.80%p 위.</li>
+<li>meritz는 new1이 먼저 고른 종목을 더 깊이 빠졌을 때 들어가는 "증폭기"로 설계됐잖아. 같은 뿌리에서 고른 종목들인데 바구니 수익률이 2.5%p 더 높다는 건, 그 설계가 숫자로 나오고 있다는 뜻이야.</li>
+</ul>
+
+<h2>③ 방패와 창 — 공정한 기준선에선 대칭이었어</h2>
+<div class="scroll"><table>
+<thead><tr><th class="nm">계좌</th><th>DC 하락 캡처</th><th>방어 ERA</th><th>UC 상승 캡처</th><th>상승 승률</th></tr></thead>
+<tbody><tr><td class='nm'><b>Orchestra</b><span class='meta'>vs 반도체 뺀 혼합</span></td><td>0.21</td><td>12/14</td><td>0.21</td><td>5/17</td></tr><tr><td class='nm'><b>Orchestra</b><span class='meta'>vs 혼합지수</span></td><td>0.09</td><td>12/15</td><td>0.06</td><td>4/17</td></tr><tr><td class='nm'><b>Orchestration</b><span class='meta'>vs 반도체 뺀 혼합</span></td><td>0.19</td><td>13/15</td><td>0.20</td><td>3/18</td></tr><tr><td class='nm'><b>Orchestration</b><span class='meta'>vs 혼합지수</span></td><td>-0.01</td><td>12/14</td><td>0.06</td><td>3/16</td></tr></tbody>
+</table></div>
+<p class="note">DC·UC = 하락일(상승일)의 계좌 등락 합 ÷ 기준선 등락 합. ERA = 하락일 중 기준선보다 덜 빠진 날. 상승 승률 = 상승일 중 기준선 이상 오른 날.</p>
+<div class="wow"><b>이게 이번 점검의 하이라이트야.</b> 반도체를 뺀 시장으로 재면 Orchestra는 DC 0.21 · UC 0.21, Orchestration은 DC 0.19 · UC 0.20. 빠질 때도 오를 때도 시장의 5분의 1만큼 움직여. 헤드라인 지수로 재면 "방패만 있고 창이 없는" 계좌처럼 보이지만(UC 0.06), 자기 종목들이 실제로 사는 판에서 재면 <b>위아래가 대칭인, 시장을 작게 축소한 계좌</b>야. 그런데 결과는 시장보다 2.5%p 앞서 있어. 덜 흔들리면서 더 벌었다는 뜻이야.</div>
+<div class="card" style="padding:12px 14px"><div class='br'><span class='bl'>Orchestra</span><span class='bt'><span style='width:30.4%;background:var(--up)'></span></span><span class='bv'>-3.04%</span></div><div class='br'><span class='bl'>Orchestration</span><span class='bt'><span style='width:33.3%;background:var(--fl)'></span></span><span class='bv'>-3.33%</span></div><div class='br'><span class='bl'>VIP</span><span class='bt'><span style='width:49.6%;background:var(--t3)'></span></span><span class='bv'>-4.96%</span></div><div class='br'><span class='bl'>반도체 뺀 혼합</span><span class='bt'><span style='width:80.6%;background:var(--dn)'></span></span><span class='bv'>-8.06%</span></div><div class='br'><span class='bl'>SH 바스켓</span><span class='bt'><span style='width:97.7%;background:var(--faint)'></span></span><span class='bv'>-9.77%</span></div></div>
+<p>최대 낙폭으로 보면 더 분명해. 반도체 뺀 혼합이 −8.1%까지 파일 때 두 계좌는 −3.0%, −3.3%. VIP(−5.0%)보다도 얕아. 이 계좌 설계의 1번 목표가 "덜 아프기"인데, 숫자가 그대로 나와.</p>
+
+<h2>④ VIP와 맞대면 — 삼성·하이닉스 20%를 걷어내면</h2>
+<div class="flow">
+<div><b>VIP +0.39% 분해</b>삼성·하이닉스 20% × 바스켓 +3.22% = <span class="up">+0.64%p</span>. 나머지 80% 종목들의 수익률 ≈ <span class="dn">-0.31%</span>.</div>
+<div><b>반도체 뺀 종목 고르기 대결</b>VIP 나머지 -0.31% · Orchestration 주식 <span class="up">+1.00%</span> · Orchestra 주식 -1.52%.</div>
+<div><b>계좌 전체로는</b>VIP +0.39% · Orchestration -0.47% · Orchestra -0.74%. 0.9~1.1%p 차이 중 0.64%p가 반도체 몫이야.</div>
+<div><b>낙폭은 우리가 이겼어</b>VIP −5.0% vs −3.0% · −3.3%. 22년 · 10조 원짜리 가치투자 펀드보다 덜 아팠어.</div>
+</div>
+<p><b>meritz 종목 바구니가 VIP의 반도체 뺀 몫보다 1.3%p 위야.</b> 10조 원을 굴리는 22년차 가치투자 펀드랑 같은 철학으로 붙어서, 반도체를 빼고 보면 앞서 있다는 거야. VIP는 기준가가 하루 이틀 늦게 반영돼서 일별 비교 대신 누적만 비교했어.</p>
+
+<h2>⑤ 매매가 합리적이었나 — 손이 규칙대로 움직였나</h2>
+<div class="card" style="padding:12px 14px"><div class='hb'><div class='hl'>빨간 날(그 종목 하락일)에 산 비율</div><div class='br'><span class='bl2'>new1</span><span class='bt'><span style='width:72.7%;background:var(--up)'></span></span><span class='bv'>73%</span></div><div class='br'><span class='bl2'>meritz</span><span class='bt'><span style='width:72.0%;background:var(--fl)'></span></span><span class='bv'>72%</span></div></div><div class='hb'><div class='hl'>초록 날(그 종목 상승일)에 판 비율</div><div class='br'><span class='bl2'>new1</span><span class='bt'><span style='width:81.2%;background:var(--up)'></span></span><span class='bv'>81%</span></div><div class='br'><span class='bl2'>meritz</span><span class='bt'><span style='width:80.8%;background:var(--fl)'></span></span><span class='bv'>81%</span></div></div><div class='hb'><div class='hl'>물타기가 직전 매수가보다 아래였던 비율</div><div class='br'><span class='bl2'>new1</span><span class='bt'><span style='width:65.4%;background:var(--up)'></span></span><span class='bv'>65%</span></div><div class='br'><span class='bl2'>meritz</span><span class='bt'><span style='width:82.1%;background:var(--fl)'></span></span><span class='bv'>82%</span></div></div><div class='hb'><div class='hl'>이익으로 끝난 매도 비율</div><div class='br'><span class='bl2'>new1</span><span class='bt'><span style='width:91.9%;background:var(--up)'></span></span><span class='bv'>92%</span></div><div class='br'><span class='bl2'>meritz</span><span class='bt'><span style='width:100.0%;background:var(--fl)'></span></span><span class='bv'>100%</span></div></div></div>
+<ul>
+<li><b>빨간 날 산다.</b> new1 매수의 73%, meritz의 72%가 그 종목이 빠진 날이었어. 산 날의 평균 등락은 -1.45%, -1.31%야. Fishing·Watering Detect가 띄운 "빠진 종목"을 그대로 받은 거야.</li>
+<li><b>초록 날 판다.</b> 매도의 81%, 81%가 상승일이었고, 판 날의 평균 등락은 +3.66%, +4.79%야. 튈 때 덜어냈어.</li>
+<li><b>시장이 빠진 날 더 담는다.</b> 하루 평균 순매수가 시장 하락일 18.9만 원 vs 상승일 8.6만 원(new1, <b>2.2배</b>), meritz는 26.4만 원 vs 9.4만 원(<b>2.8배</b>). 겁날 때 더 샀다는 거야.</li>
+<li><b>물타기는 아래에서.</b> 추가 매수가 직전 매수가보다 낮았던 비율 new1 65%(257번), meritz 82%(140번). meritz가 더 촘촘해 — 깊이 빠진 자리만 골라 들어가는 계좌라서.</li>
+<li><b>팔면 대부분 이익이야.</b> new1 211번 중 92% 이익(손실 17번), 중간값 +3.9%. meritz 29번 전부 이익, 중간값 +10.3%. 실현손익 합계는 54.0만 원, 22.9만 원.</li>
+</ul>
+<div class="wow"><b>증폭기가 진짜 증폭기처럼 움직였어.</b> 두 계좌가 같이 산 64종목 중 86%에서 meritz의 첫 매수가 new1의 첫 매수보다 낮았어. 중간값 -4.6%. new1이 먼저 보고, meritz가 한 번 더 빠진 자리에서 받는 구조가 거의 매번 지켜졌어. meritz 매도 중간값이 new1의 2.6배인 이유가 여기 있어.</div>
+
+<h2>⑥ 엔진은 돌고 있나 — Pit Stop</h2>
+<div class="legend"><i style="background:var(--up)"></i>Cost Basis(총매입) <i style="background:var(--fl)"></i>Refill(예수금) <i style="background:var(--soft)"></i>총자산 · new1</div>
+<div class="card"><svg viewBox="0 0 640 260" role="img" aria-label="new1 Pit Stop"><line class="grid" x1="40" x2="536" y1="234.0" y2="234.0"/><text class="ax" x="35" y="237.0" text-anchor="end">0M</text><line class="grid" x1="40" x2="536" y1="194.0" y2="194.0"/><text class="ax" x="35" y="197.0" text-anchor="end">2M</text><line class="grid" x1="40" x2="536" y1="154.0" y2="154.0"/><text class="ax" x="35" y="157.0" text-anchor="end">4M</text><line class="grid" x1="40" x2="536" y1="114.0" y2="114.0"/><text class="ax" x="35" y="117.0" text-anchor="end">6M</text><line class="grid" x1="40" x2="536" y1="74.0" y2="74.0"/><text class="ax" x="35" y="77.0" text-anchor="end">8M</text><line class="grid" x1="40" x2="536" y1="34.0" y2="34.0"/><text class="ax" x="35" y="37.0" text-anchor="end">10M</text><polyline points="40.0,34.0 52.4,33.6 64.8,33.5 77.2,33.0 89.6,32.0 102.0,30.5 114.4,30.1 126.8,29.9 139.2,33.2 151.6,33.1 164.0,34.4 176.4,33.8 188.8,35.2 201.2,32.7 213.6,31.1 226.0,31.4 238.4,30.3 250.8,31.1 263.2,31.1 275.6,33.5 288.0,33.3 300.4,32.3 312.8,31.9 325.2,31.7 337.6,32.6 350.0,32.7 362.4,32.8 374.8,33.2 387.2,34.2 399.6,34.7 412.0,34.4 424.4,34.6 436.8,36.0 449.2,36.5 461.6,36.3 474.0,33.9 486.4,35.4 498.8,35.8 511.2,34.7 523.6,34.0 536.0,33.2" style="fill:none;stroke:var(--soft);stroke-width:2.2"/><text x="540" y="36.2" style="fill:var(--soft);font-size:9.5px;font-weight:600">총자산 1,004만</text><polyline points="40.0,228.7 52.4,188.9 64.8,184.8 77.2,177.1 89.6,150.2 102.0,156.6 114.4,153.8 126.8,157.2 139.2,139.9 151.6,140.4 164.0,137.5 176.4,141.5 188.8,140.2 201.2,137.8 213.6,135.6 226.0,130.2 238.4,122.3 250.8,119.8 263.2,109.4 275.6,100.8 288.0,98.6 300.4,95.4 312.8,101.9 325.2,94.0 337.6,88.7 350.0,87.2 362.4,83.3 374.8,80.0 387.2,80.2 399.6,80.7 412.0,86.9 424.4,86.6 436.8,82.8 449.2,79.6 461.6,79.3 474.0,81.1 486.4,80.5 498.8,77.9 511.2,76.6 523.6,77.5 536.0,72.2" style="fill:none;stroke:var(--up);stroke-width:2.2"/><text x="540" y="75.2" style="fill:var(--up);font-size:9.5px;font-weight:600">Cost Basis 809만</text><polyline points="40.0,39.3 52.4,78.7 64.8,82.6 77.2,89.8 89.6,115.8 102.0,107.8 114.4,110.3 126.8,106.8 139.2,123.6 151.6,123.0 164.0,125.7 176.4,121.6 188.8,122.9 201.2,125.0 213.6,126.6 226.0,131.8 238.4,138.9 250.8,141.4 263.2,151.8 275.6,160.2 288.0,162.2 300.4,165.2 312.8,158.3 325.2,165.8 337.6,170.9 350.0,172.0 362.4,175.7 374.8,178.8 387.2,178.4 399.6,177.9 412.0,171.4 424.4,171.6 436.8,175.3 449.2,178.6 461.6,178.8 474.0,176.6 486.4,177.3 498.8,179.8 511.2,180.9 523.6,179.7 536.0,185.0" style="fill:none;stroke:var(--fl);stroke-width:2.2"/><text x="540" y="188.0" style="fill:var(--fl);font-size:9.5px;font-weight:600">Refill(예수금) 245만</text><text class="ax" x="40.0" y="252" text-anchor="start">08/03</text><text class="ax" x="536.0" y="252" text-anchor="end">10/06</text></svg></div>
+<p>8/3 매입 27만 원·예수금 973만 원에서 시작해서, 10/6엔 매입 809만 원·예수금 245만 원(비중 23%)이야. 그사이 총자산은 988만~1,020만 원 사이에서 1,000만 원 선(1,004만 원)을 지켰어. 반도체 뺀 시장이 −8%까지 빠진 판에서 <b>일하는 돈은 30배로 늘었는데 원금은 안 깎였어.</b> 9월 중순 이후로는 예수금 비중이 23~30%에서 평평하게 유지돼 — 익절로 채운 씨앗이 매입 확대를 따라잡고 있다는 뜻이야.</p>
+<ul>
+<li><b>물타기 흡수:</b> new1 43종목·184번 물타기로 평단을 내려서, 최초 진입가 기준 −13.5%짜리 손실을 −6.8%로 줄였어(+6.75%p). meritz는 31종목에서 +4.75%p.</li>
+<li><b>FA 비율이 올라왔어.</b> 한 번 사서 한 번에 판 사이클 비율이 9/16 39%(79/202)에서 지금 <b>45%(98/218)</b>. 진입 판단이 더 정확해지고 있어. 실현손익 54만 원 중 58%(31.1만 원)가 이 FA에서 나왔어.</li>
+<li><b>판 뒤에도 Up/Down이 지켜봐.</b> 전량매도한 50종목 중 19개가 지금 판 가격 아래에 있어. Up/Down의 재진입 후보 명단이 자연스럽게 채워지고 있는 거야.</li>
+</ul>
+
+<h2>⑦ 앱이 효과를 보나</h2>
+<div class="flow">
+<div><b>Fishing → 빨간 날 매수</b>매수의 72~73%가 그 종목 하락일. 스크리너가 보여준 자리에서 샀어.</div>
+<div><b>Watering → 아래에서 물타기</b>추가 매수 65%·82%가 직전 매수가 아래. 평단 흡수 +6.75%p.</div>
+<div><b>Pit Stop → 현금 평행</b>매입 30배 확대 동안 예수금 23~30% 유지, 총자산 1,000만 원 선 근처 유지.</div>
+<div><b>2층 구조 → 증폭</b>meritz 첫 매수가 new1보다 낮은 비율 86%, 매도 29전 29승.</div>
+</div>
+<p>앱을 만든 이유가 "70개 종목을 동시에 놓치지 않고, 정해둔 자리에서만 사고팔기"였잖아. 사람 손으로 하면 제일 먼저 무너지는 게 "빠진 날 사기"랑 "튄 날 팔기"인데, 두 계좌가 7~8할 비율로 그걸 지키고 있어. 앱이 하는 일이 정확히 그거야.</p>
+
+<h2>총평</h2>
+<div class="cm">
+<p><b>잘 굴러가고 있어. 그것도 설계도 그대로.</b></p>
+<p>반도체 뺀 시장이 −3%, 중간에 −8%까지 빠진 8주 동안 두 계좌는 −0.5~−0.7%에서 버티며 <b>2.5%p 앞섰어</b>. 공정한 기준선으로 재면 위아래로 시장의 5분의 1만 움직이는 대칭형 계좌인데, 그러면서도 앞서 있어. 최대 낙폭은 시장의 3분의 1, VIP보다도 얕아.</p>
+<p>VIP와의 차이도 들여다보면 반도체 20%가 만든 거야. 반도체를 걷어낸 종목 고르기 대결에선 meritz가 VIP를 1.3%p 앞서.</p>
+<p>매매는 규칙대로야. 빨간 날 사고, 초록 날 팔고, 시장이 빠진 날 2~3배 더 담고, 물타기는 아래에서 하고, meritz는 new1보다 4.6% 아래에서 들어가서 29번 팔아 29번 다 이겼어. Pit Stop은 일하는 돈을 30배로 키우는 동안 총자산을 1,000만 원 선 근처에서 지켰고, FA 비율은 39%에서 45%로 올라왔어.</p>
+<p>한 줄로: <b>추운 판에서 덜 떨고, 정해둔 대로 움직이고, 그 결과 앞서 있다.</b> 앱이 제 몫을 하고 있어.</p>
+</div>
+
+<p class="note">데이터: 두 레포의 compute_index_vs_account(앱의 Account:Index·SamHynix extracted 패널과 같은 함수), asset_history·dom_asset_history, index_history·bigcap_history(확정 종가), fund_nav_history(VIP 기준가), transactions.csv(원화 거래만), Supabase price_history(종목별 일간 등락률, 8/19 이후 거래만 판정), seed_engine_series·compute_pnl_actions·compute_fa_win_rate. meritz는 10/2 매매일지 재반영으로 10/2 수치가 오늘 오전 성적표보다 조금 올라갔어(−1.10% → −0.85%).</p>
+</div>
