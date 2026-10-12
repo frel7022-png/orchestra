@@ -1,0 +1,133 @@
+<title>인바디 해부</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#191b21;--soft:#5b606b;--faint:#8b909c;--rule:#e0e3ea;
+--up:#c9313d;--dn:#2c5fc4;--fl:#15794c;--new:#15794c;--t0:#7a1f8f;--t1:#c9313d;--t3:#b4690e;--t5:#5b606b;--t8:#8b909c}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#13151a;--card:#1a1d24;--ink:#e8eaef;--soft:#a2a7b3;--faint:#6e7480;--rule:#2b2f38;--up:#f0555f;--dn:#6f9bef;--fl:#4cc38a;--new:#4cc38a;--t0:#c98ae0;--t1:#f0555f;--t3:#e0a45e;--t5:#a2a7b3;--t8:#6e7480;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#13151a;--card:#1a1d24;--ink:#e8eaef;--soft:#a2a7b3;--faint:#6e7480;--rule:#2b2f38;--up:#f0555f;--dn:#6f9bef;--fl:#4cc38a;--new:#4cc38a;--t0:#c98ae0;--t1:#f0555f;--t3:#e0a45e;--t5:#a2a7b3;--t8:#6e7480;color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;margin:0;line-height:1.6}
+.wrap{max-width:820px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:1.5rem;margin:0} .sub{color:var(--soft);font-size:13px;margin:4px 0 0}
+h2{font-size:1rem;margin:30px 0 8px;padding-top:14px;border-top:1px solid var(--rule)}
+.scroll{overflow-x:auto} table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px;border-bottom:1px solid var(--rule);text-align:right;white-space:nowrap}
+th{color:var(--soft);font-weight:600;font-size:12px} td.nm,th.nm{text-align:left} td.rk{font-weight:700} td.mv{text-align:center}
+.up{color:var(--up)} .dn{color:var(--dn)} .mut{color:var(--faint)} .new{color:var(--new);font-weight:700;font-size:11px}
+.own{font-size:10px;color:var(--faint);margin-left:5px;letter-spacing:.05em}
+.tier{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;border:1px solid currentColor}
+.t0{color:var(--t0)} .t1,.t2{color:var(--t1)} .t3,.t4{color:var(--t3)} .t5,.t6,.t7{color:var(--t5)} .t8{color:var(--t8)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:10px 10px 4px;min-width:0}
+.ch{font-weight:600;font-size:13.5px} .rk2{color:var(--faint);margin-right:2px}
+.meta{display:block;font-weight:400;font-size:11.5px;color:var(--soft)}
+svg{width:100%;height:auto;display:block} .pl{fill:none;stroke:var(--dn);stroke-width:1.8} .fl{fill:none;stroke:var(--fl);stroke-width:1.8}
+.pk{fill:var(--fl)} .grid{stroke:var(--rule);stroke-dasharray:3 3} .ax{font-size:9.5px;fill:var(--faint)} .ax.p{fill:var(--dn)} .ax.f{fill:var(--fl)}
+.legend{font-size:12px;color:var(--soft);margin:4px 0 10px} .legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin:0 4px 0 10px}
+ul{padding-left:18px;font-size:13.5px} .note{font-size:12px;color:var(--faint)}
+.cm{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:6px 16px;font-size:14px} .cm h3{font-size:13px;color:var(--soft);margin:12px 0 2px} .cm p{margin:6px 0}
+.nochart{font-size:12px;color:var(--faint);padding:20px 0}
+
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:14px}
+.kpi>div{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:10px 12px}
+.kpi .k{font-size:11.5px;color:var(--soft)} .kpi .v{font-size:1.2rem;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:11.5px;color:var(--faint)}
+.mk{fill:var(--card);stroke-width:1.8} .mk.buy{stroke:var(--up)}
+.br{display:flex;align-items:center;gap:8px;margin:7px 0;font-size:12.5px}
+.bl{width:150px;flex-shrink:0;color:var(--soft)} .bt{flex:1;height:14px;background:var(--rule);border-radius:4px;overflow:hidden;display:block}
+.bt span{display:block;height:100%} .bv{width:44px;text-align:right;font-variant-numeric:tabular-nums}
+td .meta{display:block}
+p{max-width:68ch}
+.news td.txt{white-space:normal;min-width:260px;max-width:420px;line-height:1.55}
+.news td{vertical-align:top}
+.no{display:inline-block;width:18px;height:18px;border-radius:50%;background:var(--up);color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:18px}
+a{color:var(--dn)}
+@media(max-width:560px){.bl{width:112px}}
+</style>
+<div class="wrap">
+<h1>인바디 해부</h1>
+<p class="sub">2026-10-12 · 주가 오늘 장중 51,700원 · 외인·수급 10/8까지 · 체성분 분석기 · Action · Link · CFG · 실적을 한 종목에 겹쳐 본 것</p>
+
+<div class="kpi">
+  <div><div class="k">8/7 고점 대비</div><div class="v"><span class="dn">-27.0%</span></div><div class="s">70,800 → 51,700 (종가 기준)</div></div>
+  <div><div class="k">외인 보유율</div><div class="v">33.53%</div><div class="s">고점 33.86%(10/1)에서 반납 92% · 7/24엔 34.19%</div></div>
+  <div><div class="k">PER · PBR · 배당</div><div class="v">14.9배 · 2.00배</div><div class="s">추정 PER 13.1배 · 배당수익률 1.16% · 시총 약 6,956억</div></div>
+  <div><div class="k">연초 대비</div><div class="v"><span class="up">+58%</span></div><div class="s">2025년 말 32,750 → 51,700</div></div>
+</div>
+
+<h2>한 줄로</h2>
+<div class="cm">
+<p><b>인바디는 이익이 실제로 크게 늘고 있는 회사인데, 주가는 8/7 고점에서 두 달째 계단식으로 내려오는 중이야.</b> 2분기 영업이익 +71%(10분기 연속 최대) 발표로 나흘 만에 +42% 올랐고, 그 뒤 −27%를 되돌렸어. 외국인은 그 오르내림에 <b>거꾸로</b> 움직였어. 랠리 때 팔고, 조정 때 사고, 9월 하순엔 2세 블록딜 물량이 풀린 뒤 모았다가, 10/6부터 사흘 만에 다시 덜어냈어. 이 마지막 사흘 때문에 Link에선 착시, CFG에선 탈락이 된 거야.</p>
+</div>
+
+<h2>① Action: 주가는 어떻게 움직였나</h2>
+<div class="legend"><i style="background:var(--dn)"></i>주가(왼쪽) <i style="background:var(--fl)"></i>외인 보유율(오른쪽, 7/24부터) · 빨간 원 = new1 매수 · 주황 원 = meritz 매수 · 빨간 번호 = 아래 주석 · 배경 빨강 = 실적 랠리 · 녹색 = 외인 모음 · 파랑 = 외인 반납</div>
+<div class="card"><svg viewBox="0 0 640 230" role="img" aria-label="인바디 주가와 외인 보유율"><rect x="322.0" y="14" width="18.3" height="190" style="fill:var(--up);opacity:.08"/><rect x="504.7" y="14" width="54.8" height="190" style="fill:var(--fl);opacity:.08"/><rect x="565.6" y="14" width="18.3" height="190" style="fill:var(--dn);opacity:.08"/><line class="grid" x1="54" x2="590" y1="204.0" y2="204.0"/><text class="ax p" x="49" y="207.0" text-anchor="end">35k</text><line class="grid" x1="54" x2="590" y1="156.5" y2="156.5"/><text class="ax p" x="49" y="159.5" text-anchor="end">45k</text><line class="grid" x1="54" x2="590" y1="109.0" y2="109.0"/><text class="ax p" x="49" y="112.0" text-anchor="end">55k</text><line class="grid" x1="54" x2="590" y1="61.5" y2="61.5"/><text class="ax p" x="49" y="64.5" text-anchor="end">65k</text><line class="grid" x1="54" x2="590" y1="14.0" y2="14.0"/><text class="ax p" x="49" y="17.0" text-anchor="end">75k</text><text class="ax f" x="595" y="207.0">32.0%</text><text class="ax f" x="595" y="169.0">32.5%</text><text class="ax f" x="595" y="131.0">33.0%</text><text class="ax f" x="595" y="93.0">33.5%</text><text class="ax f" x="595" y="55.0">34.0%</text><text class="ax f" x="595" y="17.0">34.5%</text><polyline class="pl" points="54.0,167.2 60.1,167.2 66.2,168.6 72.3,181.2 78.4,191.4 84.5,173.8 90.5,153.4 96.6,150.8 102.7,159.6 108.8,153.9 114.9,154.1 121.0,148.4 127.1,149.8 133.2,149.6 139.3,150.1 145.4,159.1 151.5,150.3 157.5,142.2 163.6,155.8 169.7,120.4 175.8,95.7 181.9,75.8 188.0,91.9 194.1,113.8 200.2,93.8 206.3,104.2 212.4,112.8 218.5,106.6 224.5,120.9 230.6,125.2 236.7,121.3 242.8,106.6 248.9,112.8 255.0,128.5 261.1,116.6 267.2,134.2 273.3,137.0 279.4,144.6 285.5,130.4 291.5,131.3 297.6,135.6 303.7,148.7 309.8,150.8 315.9,132.8 322.0,97.6 328.1,100.9 334.2,37.8 340.3,33.9 346.4,37.8 352.5,38.2 358.5,50.1 364.6,55.8 370.7,64.3 376.8,80.0 382.9,73.8 389.0,75.8 395.1,86.2 401.2,71.5 407.3,81.0 413.4,83.8 419.5,82.9 425.5,83.8 431.6,84.3 437.7,80.0 443.8,90.5 449.9,87.2 456.0,80.0 462.1,85.2 468.2,92.9 474.3,92.4 480.4,93.3 486.5,96.7 492.5,100.4 498.6,88.6 504.7,94.8 510.8,91.9 516.9,98.1 523.0,100.0 529.1,108.5 535.2,115.6 541.3,114.7 547.4,116.1 553.5,120.9 559.5,115.2 565.6,122.8 571.7,121.3 577.8,117.5 583.9,125.6 590.0,124.7"/><polyline class="fl" points="279.4,37.6 285.5,53.5 291.5,76.3 297.6,90.0 303.7,90.8 309.8,81.6 315.9,79.4 322.0,102.2 328.1,103.7 334.2,100.6 340.3,166.8 346.4,170.6 352.5,156.9 358.5,125.7 364.6,96.8 370.7,61.9 376.8,64.9 382.9,90.0 389.0,93.8 395.1,82.4 401.2,110.5 407.3,124.2 413.4,133.3 419.5,131.8 425.5,125.0 431.6,110.5 437.7,128.8 443.8,126.5 449.9,137.9 456.0,144.0 462.1,147.0 468.2,135.6 474.3,128.0 480.4,122.7 486.5,120.4 492.5,119.6 498.6,109.0 504.7,111.3 510.8,115.8 516.9,115.1 523.0,109.0 529.1,89.2 535.2,82.4 541.3,76.3 547.4,71.0 553.5,64.2 559.5,62.6 565.6,63.4 571.7,65.7 577.8,75.6 583.9,87.7"/><circle cx="425.5" cy="84.8" r="3.6" style="fill:var(--card);stroke:var(--up);stroke-width:1.8"/><circle cx="529.1" cy="107.6" r="3.6" style="fill:var(--card);stroke:var(--up);stroke-width:1.8"/><circle cx="571.7" cy="123.7" r="3.6" style="fill:var(--card);stroke:var(--up);stroke-width:1.8"/><circle cx="486.5" cy="96.2" r="3.6" style="fill:var(--card);stroke:var(--t3);stroke-width:1.8"/><line x1="169.7" x2="169.7" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="169.7" cy="20" r="6.5" style="fill:var(--up)"/><text x="169.7" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">1</text><line x1="334.2" x2="334.2" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="334.2" cy="20" r="6.5" style="fill:var(--up)"/><text x="334.2" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">2</text><line x1="498.6" x2="498.6" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="498.6" cy="20" r="6.5" style="fill:var(--up)"/><text x="498.6" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">3</text><line x1="559.5" x2="559.5" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="559.5" cy="20" r="6.5" style="fill:var(--up)"/><text x="559.5" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">4</text><line x1="583.9" x2="583.9" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="583.9" cy="20" r="6.5" style="fill:var(--up)"/><text x="583.9" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">5</text><text class="ax" x="54.0" y="222" text-anchor="start">06-01</text><text class="ax" x="279.4" y="222" text-anchor="middle">07-24</text><text class="ax" x="437.7" y="222" text-anchor="middle">09-01</text><text class="ax" x="590.0" y="222" text-anchor="end">10-12</text></svg></div>
+<p><b>6월 말 첫 급등(6/29~7/1):</b> 45,150원에서 62,000원까지 사흘 만에 +37%, 거래량은 평소의 2~3배였어. 이걸 직접 설명하는 개별 뉴스는 못 찾았어. 비만치료제 확산 기대가 붙던 시기야.</p>
+<p><b>식으면서 내려옴(7/2~7/31):</b> 62,000원에서 46,200원까지 −25%. 첫 급등을 거의 다 반납했어.</p>
+<p><b>실적 랠리(8/3~8/7):</b> 46,200원에서 70,800원까지 +53%. 8/6 장중 2분기 실적 공시가 나온 날 하루 +23.5%, 거래량 65만 주(7월 평균 11만 주의 6배)였어. 8/7 종가 70,800원이 지금까지 최고야.</p>
+<p><b>고점 뒤 계단식 조정(8/10~10/8):</b> 70,800원에서 51,500원까지 −27%. 급락 하루가 아니라 두 달 동안 조금씩 내려왔어. 9/15 하루 +4.4%(블록딜 날)를 빼면 큰 반등이 없었어.</p>
+<p class="note">내 위치: new1은 3회(8/28 60,100 · 9/22 55,300 · 10/6 51,900), 평단 55,767원 대비 −7.3%, 마지막 매수가 대비 −0.4%. meritz는 2회(9/11 57,700 · 9/22 55,300), 평단 56,500원 대비 −8.5%.</p>
+
+<h2>② Link: 외인은 무엇을 했나</h2>
+<p>외인 보유율은 7/24 이후 32.49%~34.19% 사이를 오갔어. 시총 7천억 원에 외인이 1/3을 쥔 종목이라, 0.3%p가 약 4만 주(20억 원 남짓)야. 이번 Link 명단 진입·탈락은 이 범위 안의 작은 흔들림이었어.</p>
+<ul>
+<li><b>기준일(8/19) 33.50% → 고점(10/1) 33.86%:</b> +0.36%p, 상대 +1.1%. 단계는 "보충"이었어(명단을 채우는 자리, 정식 단계 미달).</li>
+<li><b>10/6~10/8 사흘 연속 감소 → 33.53%:</b> 늘었던 0.36%p 중 0.33%p를 반납(92%). 착시 기준 30%를 넘어서 오늘 명단에서 빠졌어.</li>
+<li><b>더 긴 창으로 보면:</b> 7/24 34.19%에서 지금 33.53%로 오히려 −0.66%p야. 외인이 이 종목을 "모은" 게 아니라, 실적 랠리 때 덜어낸 걸 조정 때 일부 되산 흐름이야.</li>
+</ul>
+<p>Link 4분면으로는 숫자상 다이버전스(주가↓·외인↑)지만, 주가가 기준일 대비 −17%인 동안 외인은 +0.03%p라 사실상 0이야.</p>
+
+<h2>누가 사고 팔았나: 기관 vs 외인</h2>
+<div class="legend"><i style="background:var(--t3)"></i>기관 누적 순매수 <i style="background:var(--fl)"></i>외인 누적 순매수 (7/24부터, 주식 수)</div>
+<div class="card"><svg viewBox="0 0 640 230" role="img" aria-label="기관과 외인 누적 순매수"><line class="grid" x1="54" x2="590" y1="204.0" y2="204.0"/><text class="ax" x="49" y="207.0" text-anchor="end">-30만</text><line class="grid" x1="54" x2="590" y1="176.9" y2="176.9"/><text class="ax" x="49" y="179.9" text-anchor="end">-20만</text><line class="grid" x1="54" x2="590" y1="149.7" y2="149.7"/><text class="ax" x="49" y="152.7" text-anchor="end">-10만</text><line class="grid" x1="54" x2="590" y1="122.6" y2="122.6"/><text class="ax" x="49" y="125.6" text-anchor="end">+0만</text><line class="grid" x1="54" x2="590" y1="95.4" y2="95.4"/><text class="ax" x="49" y="98.4" text-anchor="end">+10만</text><line class="grid" x1="54" x2="590" y1="68.3" y2="68.3"/><text class="ax" x="49" y="71.3" text-anchor="end">+20만</text><line class="grid" x1="54" x2="590" y1="41.1" y2="41.1"/><text class="ax" x="49" y="44.1" text-anchor="end">+30만</text><line class="grid" x1="54" x2="590" y1="14.0" y2="14.0"/><text class="ax" x="49" y="17.0" text-anchor="end">+40만</text><line x1="54" x2="590" y1="122.6" y2="122.6" style="stroke:var(--faint);stroke-width:1"/><polyline style="fill:none;stroke:var(--t3);stroke-width:1.8" points="54.0,126.8 64.7,119.8 75.4,106.9 86.2,96.2 96.9,94.4 107.6,96.9 118.3,94.7 129.0,82.7 139.8,87.4 150.5,68.0 161.2,38.1 171.9,41.5 182.6,43.8 193.4,50.3 204.1,54.1 214.8,68.1 225.5,67.7 236.2,58.4 247.0,59.9 257.7,55.1 268.4,44.0 279.1,43.5 289.8,41.6 300.6,48.6 311.3,51.4 322.0,49.8 332.7,33.8 343.4,32.4 354.2,27.5 364.9,24.6 375.6,24.8 386.3,30.8 397.0,34.4 407.8,37.3 418.5,37.6 429.2,38.1 439.9,9.1 450.6,8.8 461.4,7.5 472.1,9.3 482.8,10.2 493.5,19.4 504.2,22.1 515.0,23.5 525.7,24.8 536.4,28.9 547.1,29.9 557.8,31.1 568.6,29.0 579.3,27.7 590.0,24.0"/><polyline class="fl" points="54.0,117.3 64.7,124.2 75.4,134.9 86.2,141.8 96.9,143.0 107.6,138.8 118.3,137.7 129.0,149.5 139.8,149.2 150.5,147.5 161.2,177.2 171.9,179.5 182.6,175.6 193.4,161.2 204.1,148.3 214.8,133.1 225.5,132.8 236.2,143.7 247.0,146.3 257.7,142.6 268.4,153.7 279.1,158.6 289.8,161.1 300.6,160.0 311.3,157.3 322.0,153.2 332.7,161.5 343.4,160.0 354.2,164.0 364.9,167.3 375.6,169.3 386.3,163.2 397.0,160.2 407.8,157.6 418.5,156.7 429.2,156.5 439.9,151.5 450.6,151.8 461.4,154.0 472.1,153.4 482.8,150.9 493.5,142.7 504.2,139.8 515.0,137.2 525.7,134.9 536.4,132.6 547.1,131.9 557.8,131.5 568.6,133.2 579.3,138.4 590.0,144.3"/><text class="ax" x="54.0" y="222" text-anchor="start">07-24</text><text class="ax" x="590.0" y="222" text-anchor="end">10-08</text><text class="ax" x="586.0" y="18.0" text-anchor="end" style="fill:var(--t3)">기관 +36.3만</text><text class="ax f" x="586.0" y="158.3" text-anchor="end">외인 -8.0만</text></svg></div>
+<div class="scroll"><table>
+<thead><tr><th class="nm">구간</th><th>주가</th><th>기관 순매수</th><th>외인 순매수</th><th>외인 보유율</th></tr></thead>
+<tbody><tr><td class='nm'><b>실적 전</b><span class='meta'>07-24 ~ 08-03</span></td><td>49,100 → 50,000<span class='meta'><span class="up">+1.8%</span></span></td><td><span class="up">+10.29만주</span></td><td><span class="dn">-5.57만주</span></td><td>34.19 → 33.64%<span class='meta'><span class="dn">-0.55%p</span></span></td></tr><tr><td class='nm'><b>실적 랠리</b><span class='meta'>08-04 ~ 08-07</span></td><td>50,000 → 70,800<span class='meta'><span class="up">+41.6%</span></span></td><td><span class="up">+20.85만주</span></td><td><span class="dn">-14.57만주</span></td><td>33.64 → 32.49%<span class='meta'><span class="dn">-1.15%p</span></span></td></tr><tr><td class='nm'><b>고점 뒤 조정</b><span class='meta'>08-10 ~ 09-14</span></td><td>70,800 → 56,800<span class='meta'><span class="dn">-19.8%</span></span></td><td><span class="dn">-0.01만주</span></td><td><span class="up">+7.65만주</span></td><td>32.49 → 33.11%<span class='meta'><span class="up">+0.62%p</span></span></td></tr><tr><td class='nm'><b>블록딜</b><span class='meta'>09-15</span></td><td>56,800 → 59,300<span class='meta'><span class="up">+4.4%</span></span></td><td><span class="up">+10.67만주</span></td><td><span class="up">+1.83만주</span></td><td>33.11 → 33.25%<span class='meta'><span class="up">+0.14%p</span></span></td></tr><tr><td class='nm'><b>외인 모음</b><span class='meta'>09-16 ~ 10-01</span></td><td>59,300 → 53,700<span class='meta'><span class="dn">-9.4%</span></span></td><td><span class="dn">-7.65만주</span></td><td><span class="up">+7.21만주</span></td><td>33.25 → 33.86%<span class='meta'><span class="up">+0.61%p</span></span></td></tr><tr><td class='nm'><b>외인 반납</b><span class='meta'>10-02 ~ 10-08</span></td><td>53,700 → 51,500<span class='meta'><span class="dn">-4.1%</span></span></td><td><span class="up">+2.16만주</span></td><td><span class="dn">-4.57만주</span></td><td>33.86 → 33.53%<span class='meta'><span class="dn">-0.33%p</span></span></td></tr></tbody></table></div>
+<p><b>실적 랠리는 기관이 끌었어.</b> 8/4~8/7에 기관이 21만 주를 사는 동안 외인은 15만 주를 팔았어. 특히 고점 날 8/7 하루에 외인 11만 주 매도, 기관 11만 주 매수로 정확히 맞바뀌었어.</p>
+<p><b>조정은 외인이 받았어.</b> 8/10~9/14에 기관은 거의 0이었고 외인이 7.7만 주를 되샀어.</p>
+<p><b>9/15 블록딜은 기관이 받았어.</b> 이날 거래량 31만 주 중 12만 주가 2세 차인준 부사장의 블록딜(주당 54,860원, 66억 원)이었고, 기관이 10.7만 주를 순매수했어.</p>
+<p><b>그 뒤 외인과 기관이 다시 갈렸어.</b> 9/16~10/1엔 기관이 7.6만 주를 덜어내고 외인이 7.2만 주를 받았어(외인 보유율 33.25 → 33.86%). 10/2~10/8엔 반대로 외인이 4.6만 주를 팔고 기관이 2.2만 주를 샀어.</p>
+
+<h2>주석</h2>
+<div class="scroll"><table class="news">
+<thead><tr><th class="nm">#</th><th class="nm">날짜</th><th class="nm">내용</th><th>그날 주가</th></tr></thead>
+<tbody>
+<tr><td class="nm"><span class="mut">-</span></td><td class="nm">04-08</td><td class="nm txt"><b>배경: 1분기 호실적에 상한가.</b> 1분기 매출 684억 원(+23.1%), 영업이익 130억 원(+86.0%).</td><td><span class="mut">-</span></td></tr>
+<tr><td class="nm"><span class="no">1</span></td><td class="nm">06-29 ~ 07-01</td><td class="nm txt"><b>사흘 +37% 급등.</b> 직접 원인이 된 개별 뉴스는 못 찾았어. 거래량 24만~36만 주.</td><td><span class="up">+16.5%</span></td></tr>
+<tr><td class="nm"><span class="no">2</span></td><td class="nm">08-06</td><td class="nm txt"><b>2분기 실적.</b> 매출 732억 원(+30.4%), 영업이익 177억 원(+70.7%), 10분기 연속 사상 최대. 상반기 영업이익 308억 원(+130.8%), 이익률 21.7%. 단 2분기 영업이익엔 <b>미국 관세 환급금 29억 원</b>(일회성)이 들어 있어. 빼면 약 148억 원이야.</td><td><span class="up">+23.5%</span></td></tr>
+<tr><td class="nm"><span class="mut">-</span></td><td class="nm">08-07</td><td class="nm txt"><b>고점 70,800원.</b> "일주일 만에 53% 급등" 기사가 나온 날이야. 이날부터 외인이 대량으로 팔았어.</td><td><span class="up">+1.1%</span></td></tr>
+<tr><td class="nm"><span class="no">3</span></td><td class="nm">09-15</td><td class="nm txt"><b>2세 블록딜.</b> 차기철 대표의 아들 차인준 부사장이 12만 주(0.89%)를 주당 54,860원에 매각했어(66억 원). 2022년 증여받은 지분의 증여세를 내려고 받은 주식담보대출 상환용이야. 남은 지분 8.9%.</td><td><span class="up">+4.4%</span></td></tr>
+<tr><td class="nm"><span class="no">4</span></td><td class="nm">10-01</td><td class="nm txt"><b>외인 보유율 고점 33.86%.</b> 10/2 Link 명단에 "보충"으로 들어온 근거가 된 숫자야.</td><td><span class="up">+2.3%</span></td></tr>
+<tr><td class="nm"><span class="no">5</span></td><td class="nm">10-07 ~ 10-08</td><td class="nm txt"><b>상상인증권 목표가 75,000 → 85,000원 상향.</b> 3분기 매출 731억 원(+22.2%), 영업이익 145억 원(+47.8%) 추정. 같은 이틀 동안 외인은 4.1만 주를 팔았어(33.82 → 33.53%).</td><td><span class="dn">-3.2%</span><span class="meta">(10/8)</span></td></tr>
+</tbody></table></div>
+
+<h2>회사는 어떤가</h2>
+<ul>
+<li><b>뭘 하는 회사:</b> 체성분 분석기(몸의 근육·지방·수분을 재는 장비) 세계 1위권 업체야. 병원·헬스장·비만클리닉에 들어가는 "InBody" 장비가 상반기 매출의 70.8%고, 혈압계·가정용 제품이 나머지야. 1996년 차기철 대표가 창업했어.</li>
+<li><b>수출 회사야.</b> 상반기 수출 비중 87.3%, 미국·유럽이 절반 넘어. 환율과 미국 관세가 실적에 바로 찍혀.</li>
+<li><b>돈을 잘 벌고, 점점 더 벌어.</b> 매출은 2021년 1,380억 원에서 2025년 2,340억 원으로 늘었고, 올해 상반기 영업이익률은 21.7%야. 증권가의 성장 이야기는 GLP-1 비만치료제(위고비·마운자로)가 퍼지면서 "살이 아니라 근육이 얼마나 빠지는지"를 재야 해서 체성분 분석기 수요가 는다는 거야.</li>
+<li><b>몸값은 싸진 않아.</b> PER 14.9배, PBR 2.0배, 배당 1.16%. 바텍·노바렉스(PER 4.5배)와는 다른 체급이야. 성장주 값을 받고 있어.</li>
+<li><b>성장 속도는 둔해질 예정이야.</b> 3분기 추정 영업이익 145억 원은 2분기 177억 원보다 낮고, 관세 환급을 뺀 2분기(약 148억 원)와 비슷해. 전년 대비로는 +48%지만 분기로는 제자리야. 체성분 분석기 수출 증가율도 2분기 37.9%에서 3분기 27.0%로 내려갈 거란 전망이야(환율 하락 영향).</li>
+</ul>
+
+<h2>③ CFG: 겹치나</h2>
+<p>10/7엔 겹쳤고, 오늘은 안 겹쳐. 10/7 CFG는 Fishing 기준일(8/19) 대비 −16.8%에 외인 +0.31%p로 들어왔는데, 외인 증가가 상대 +0.9%로 CFG 문턱(+0.3%p)에 간신히 걸친 상태였어. 10/7~8 이틀 매도로 +0.03%p가 되면서 빠졌어.</p>
+<p class="note">10/6 CFG를 보고 산 1주(51,900원)는 오늘 장중 51,700원, −0.4%야.</p>
+
+<h2>종합</h2>
+<div class="cm">
+<p><b>Action:</b> 8/7 고점 대비 −27%. 두 달째 큰 반등 없이 계단식으로 내려오는 중이고, 지금 51,700원은 실적 발표 전날(8/5) 종가 56,700원보다 아래야.</p>
+<p><b>Link:</b> 외인 보유율 33%대의 대형 외인 보유 종목이야. 0.3%p 수준의 증감은 하루이틀 매매로 생겼다 사라져서, 이번 명단 진입·탈락도 그 범위였어. 7/24부터 길게 보면 외인은 −0.66%p로, 랠리 때 판 걸 일부 되산 상태야.</p>
+<p><b>CFG:</b> 10/7까지 경계선에 걸쳤다가 오늘 탈락.</p>
+<p><b>회사:</b> 이익이 실제로 크게 늘고 있는 흑자 성장주(상반기 영업이익 +131%, 이익률 21.7%). 다만 2분기엔 관세 환급 29억 원이 끼어 있었고, 3분기는 증가율이 낮아질 거란 추정이야.</p>
+<p><b>볼 숫자:</b> 외인 보유율이 33.86%(10/1 고점)를 다시 넘는지, 그리고 11월 3분기 실적이 추정치(영업이익 145억 원)를 넘는지야.</p>
+</div>
+
+<p class="note">주가·거래량: 네이버 일별시세(10/8까지) + 10/12 장중가. 외인 보유율·기관/외인 순매수: Supabase investor_flow(10/8까지). PER·PBR·배당·시총: 네이버 금융(10/12). 출처:
+<a href="https://zdnet.co.kr/view/?no=20260806164038">ZDNet 8/6 2분기 실적</a> ·
+<a href="https://www.hankyung.com/article/2026100897196">한경 10/8 상상인 목표가 상향(관세 환급 29억)</a> ·
+<a href="https://www.medipana.com/news/articleView.html?idxno=418984">메디파나 10/8 3분기 전망</a> ·
+<a href="https://view.asiae.co.kr/article/2026100809212402269">아시아경제 10/8 비만 치료 대중화</a> ·
+<a href="https://news.bizwatch.co.kr/article/governance/2026/10/02/0029">비즈워치 10/2 2세 블록딜</a> ·
+<a href="https://m.news.nate.com/view/20260807n27856">8/7 일주일 53% 급등 기사</a> ·
+<a href="https://www.sisa-news.com/news/article.html?no=269758">시사뉴스 4/8 1분기 상한가</a></p>
+</div>
