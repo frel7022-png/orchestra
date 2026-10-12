@@ -1,0 +1,136 @@
+<title>에스엘 해부</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#191b21;--soft:#5b606b;--faint:#8b909c;--rule:#e0e3ea;
+--up:#c9313d;--dn:#2c5fc4;--fl:#15794c;--new:#15794c;--t0:#7a1f8f;--t1:#c9313d;--t3:#b4690e;--t5:#5b606b;--t8:#8b909c}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#13151a;--card:#1a1d24;--ink:#e8eaef;--soft:#a2a7b3;--faint:#6e7480;--rule:#2b2f38;--up:#f0555f;--dn:#6f9bef;--fl:#4cc38a;--new:#4cc38a;--t0:#c98ae0;--t1:#f0555f;--t3:#e0a45e;--t5:#a2a7b3;--t8:#6e7480;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#13151a;--card:#1a1d24;--ink:#e8eaef;--soft:#a2a7b3;--faint:#6e7480;--rule:#2b2f38;--up:#f0555f;--dn:#6f9bef;--fl:#4cc38a;--new:#4cc38a;--t0:#c98ae0;--t1:#f0555f;--t3:#e0a45e;--t5:#a2a7b3;--t8:#6e7480;color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;margin:0;line-height:1.6}
+.wrap{max-width:820px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:1.5rem;margin:0} .sub{color:var(--soft);font-size:13px;margin:4px 0 0}
+h2{font-size:1rem;margin:30px 0 8px;padding-top:14px;border-top:1px solid var(--rule)}
+.scroll{overflow-x:auto} table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px;border-bottom:1px solid var(--rule);text-align:right;white-space:nowrap}
+th{color:var(--soft);font-weight:600;font-size:12px} td.nm,th.nm{text-align:left} td.rk{font-weight:700} td.mv{text-align:center}
+.up{color:var(--up)} .dn{color:var(--dn)} .mut{color:var(--faint)} .new{color:var(--new);font-weight:700;font-size:11px}
+.own{font-size:10px;color:var(--faint);margin-left:5px;letter-spacing:.05em}
+.tier{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;border:1px solid currentColor}
+.t0{color:var(--t0)} .t1,.t2{color:var(--t1)} .t3,.t4{color:var(--t3)} .t5,.t6,.t7{color:var(--t5)} .t8{color:var(--t8)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:10px 10px 4px;min-width:0}
+.ch{font-weight:600;font-size:13.5px} .rk2{color:var(--faint);margin-right:2px}
+.meta{display:block;font-weight:400;font-size:11.5px;color:var(--soft)}
+svg{width:100%;height:auto;display:block} .pl{fill:none;stroke:var(--dn);stroke-width:1.8} .fl{fill:none;stroke:var(--fl);stroke-width:1.8}
+.pk{fill:var(--fl)} .grid{stroke:var(--rule);stroke-dasharray:3 3} .ax{font-size:9.5px;fill:var(--faint)} .ax.p{fill:var(--dn)} .ax.f{fill:var(--fl)}
+.legend{font-size:12px;color:var(--soft);margin:4px 0 10px} .legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin:0 4px 0 10px}
+ul{padding-left:18px;font-size:13.5px} .note{font-size:12px;color:var(--faint)}
+.cm{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:6px 16px;font-size:14px} .cm h3{font-size:13px;color:var(--soft);margin:12px 0 2px} .cm p{margin:6px 0}
+.nochart{font-size:12px;color:var(--faint);padding:20px 0}
+
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:14px}
+.kpi>div{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:10px 12px}
+.kpi .k{font-size:11.5px;color:var(--soft)} .kpi .v{font-size:1.2rem;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:11.5px;color:var(--faint)}
+.mk{fill:var(--card);stroke-width:1.8} .mk.buy{stroke:var(--up)}
+.br{display:flex;align-items:center;gap:8px;margin:7px 0;font-size:12.5px}
+.bl{width:150px;flex-shrink:0;color:var(--soft)} .bt{flex:1;height:14px;background:var(--rule);border-radius:4px;overflow:hidden;display:block}
+.bt span{display:block;height:100%} .bv{width:44px;text-align:right;font-variant-numeric:tabular-nums}
+td .meta{display:block}
+p{max-width:68ch}
+.news td.txt{white-space:normal;min-width:260px;max-width:420px;line-height:1.55}
+.news td{vertical-align:top}
+.no{display:inline-block;width:18px;height:18px;border-radius:50%;background:var(--up);color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:18px}
+a{color:var(--dn)}
+@media(max-width:560px){.bl{width:112px}}
+</style>
+<div class="wrap">
+<h1>에스엘 해부</h1>
+<p class="sub">2026-10-12 · 주가 오늘 47,800원 · 외인·수급 10/8까지 · 자동차 램프 · Action · Link · CFG · 실적을 한 종목에 겹쳐 본 것</p>
+
+<div class="kpi">
+  <div><div class="k">6/16 고점 대비</div><div class="v"><span class="dn">−37.3%</span></div><div class="s">76,200 → 47,800 (종가 기준)</div></div>
+  <div><div class="k">외인 보유율</div><div class="v">16.05%</div><div class="s">8/11 16.62% → 9/2 15.82% 바닥 → 되사는 중</div></div>
+  <div><div class="k">PER · PBR · 배당</div><div class="v">5.8배 · 0.81배</div><div class="s">배당수익률 5.8%(주당 2,770원) · 시총 약 2.2조</div></div>
+  <div><div class="k">연초 대비</div><div class="v"><span class="up">+11.6%</span></div><div class="s">2025년 말 42,850 → 47,800</div></div>
+</div>
+
+<h2>한 줄로</h2>
+<div class="cm">
+<p><b>에스엘은 돈 잘 버는 램프 회사에 "로봇 부품주" 기대가 얹혔다가, 그 기대가 빠지는 중이야.</b> 1월 현대차그룹 로봇 밸류체인 기대로 상한가를 쳤고, 6/16 76,200원까지 올랐어. 그 뒤 두 달 넘게 내려와 고점 대비 −37%야. 결정타는 8월 2분기 실적이었어. 컨센서스를 밑돌고 분기 매출이 줄었다는 게 나오자 8/18~19 이틀에 −11%가 빠졌고, 외인이 그 이틀에만 9.3만 주를 던졌어. 지금은 PER 5.8배, PBR 0.81배, 배당 5.8%로 로봇 프리미엄이 다 빠진 가격이야. 외인은 9월 초 바닥(15.82%)부터 조금씩 되사고 있어(16.05%).</p>
+</div>
+
+<h2>① Action: 주가는 어떻게 움직였나</h2>
+<div class="legend"><i style="background:var(--dn)"></i>주가(왼쪽, 2025-12부터) <i style="background:var(--fl)"></i>외인 보유율(오른쪽, 7/24부터) · 빨간 원 = new1 매수 · 주황 원 = meritz 매수 · 빨간 번호 = 아래 주석 · 배경 빨강 = 로봇 랠리 · 파랑 = 2분기 실망 · 녹색 = 외인 되사기</div>
+<div class="card"><svg viewBox="0 0 640 230" role="img" aria-label="에스엘 주가와 외인 보유율"><rect x="128.7" y="14" width="12.9" height="190" style="fill:var(--up);opacity:.08"/><rect x="497.2" y="14" width="23.2" height="190" style="fill:var(--dn);opacity:.08"/><rect x="566.8" y="14" width="20.6" height="190" style="fill:var(--fl);opacity:.08"/><line class="grid" x1="54" x2="590" y1="182.9" y2="182.9"/><text class="ax p" x="49" y="185.9" text-anchor="end">40k</text><line class="grid" x1="54" x2="590" y1="140.7" y2="140.7"/><text class="ax p" x="49" y="143.7" text-anchor="end">50k</text><line class="grid" x1="54" x2="590" y1="98.4" y2="98.4"/><text class="ax p" x="49" y="101.4" text-anchor="end">60k</text><line class="grid" x1="54" x2="590" y1="56.2" y2="56.2"/><text class="ax p" x="49" y="59.2" text-anchor="end">70k</text><line class="grid" x1="54" x2="590" y1="14.0" y2="14.0"/><text class="ax p" x="49" y="17.0" text-anchor="end">80k</text><text class="ax f" x="595" y="207.0">15.6%</text><text class="ax f" x="595" y="159.5">15.9%</text><text class="ax f" x="595" y="112.0">16.2%</text><text class="ax f" x="595" y="64.5">16.5%</text><text class="ax f" x="595" y="17.0">16.8%</text><polyline class="pl" points="54.0,181.6 56.6,177.8 59.2,166.6 61.7,166.0 64.3,159.0 66.9,156.7 69.5,165.6 72.0,166.2 74.6,168.1 77.2,165.8 79.8,167.9 82.3,172.1 84.9,167.7 87.5,173.8 90.1,169.6 92.7,167.7 95.2,172.3 97.8,170.6 100.4,169.4 103.0,171.3 105.5,170.9 108.1,175.3 110.7,175.9 113.3,174.2 115.8,163.9 118.4,167.3 121.0,157.3 123.6,165.2 126.2,156.1 128.7,155.2 131.3,152.7 133.9,140.7 136.5,130.5 139.0,141.1 141.6,78.2 144.2,90.8 146.8,114.1 149.3,119.6 151.9,112.4 154.5,109.0 157.1,106.0 159.7,118.3 162.2,128.4 164.8,120.4 167.4,114.9 170.0,121.7 172.5,134.3 175.1,126.3 177.7,121.7 180.3,120.8 182.8,121.7 185.4,130.1 188.0,119.1 190.6,93.8 193.2,90.4 195.7,93.4 198.3,46.9 200.9,52.8 203.5,41.9 206.0,63.4 208.6,98.9 211.2,73.1 213.8,63.8 216.3,90.8 218.9,82.8 221.5,81.6 224.1,77.3 226.7,76.1 229.2,84.5 231.8,74.4 234.4,63.8 237.0,79.4 239.5,85.4 242.1,103.5 244.7,99.7 247.3,94.2 249.8,101.8 252.4,99.3 255.0,110.7 257.6,117.9 260.2,104.4 262.7,122.9 265.3,118.7 267.9,120.4 270.5,122.9 273.0,103.1 275.6,105.6 278.2,112.4 280.8,118.3 283.3,106.5 285.9,104.8 288.5,97.6 291.1,93.4 293.7,94.2 296.2,77.8 298.8,81.6 301.4,92.5 304.0,95.1 306.5,81.1 309.1,73.1 311.7,71.0 314.3,86.2 316.8,82.8 319.4,86.6 322.0,81.1 324.6,63.4 327.2,64.7 329.7,78.6 332.3,61.7 334.9,65.1 337.5,48.2 340.0,78.2 342.6,87.9 345.2,103.1 347.8,62.6 350.3,31.7 352.9,32.2 355.5,45.2 358.1,32.6 360.7,34.7 363.2,38.5 365.8,60.4 368.4,51.2 371.0,57.5 373.5,82.0 376.1,76.5 378.7,83.7 381.3,77.8 383.8,65.9 386.4,31.3 389.0,30.0 391.6,43.1 394.2,58.8 396.7,71.4 399.3,83.7 401.9,104.4 404.5,108.2 407.0,113.6 409.6,120.4 412.2,104.4 414.8,112.4 417.3,105.2 419.9,110.7 422.5,100.1 425.1,98.4 427.7,106.9 430.2,109.4 432.8,113.2 435.4,116.6 438.0,122.9 440.5,128.4 443.1,120.0 445.7,122.1 448.3,134.8 450.8,129.3 453.4,122.9 456.0,111.5 458.6,122.5 461.2,119.6 463.7,133.9 466.3,141.7 468.9,140.2 471.5,128.4 474.0,123.4 476.6,123.4 479.2,114.9 481.8,112.0 484.3,118.7 486.9,110.7 489.5,111.5 492.1,109.4 494.7,102.7 497.2,91.7 499.8,105.6 502.4,120.4 505.0,125.0 507.5,130.5 510.1,125.9 512.7,125.9 515.3,128.0 517.8,129.7 520.4,130.5 523.0,127.2 525.6,128.4 528.2,140.2 530.7,137.3 533.3,134.8 535.9,132.6 538.5,137.3 541.0,136.0 543.6,133.1 546.2,131.4 548.8,137.7 551.3,137.7 553.9,139.8 556.5,137.7 559.1,139.0 561.7,142.6 564.2,144.0 566.8,146.8 569.4,139.4 572.0,142.1 574.5,142.1 577.1,133.9 579.7,130.1 582.3,130.5 584.8,138.1 587.4,140.7 590.0,150.0"/><polyline class="fl" points="458.6,67.8 461.2,72.6 463.7,75.8 466.3,74.2 468.9,74.2 471.5,69.4 474.0,67.8 476.6,69.4 479.2,59.9 481.8,56.7 484.3,55.2 486.9,47.3 489.5,42.5 492.1,53.6 494.7,59.9 497.2,69.4 499.8,94.8 502.4,116.9 505.0,129.6 507.5,132.7 510.1,128.0 512.7,135.9 515.3,143.8 517.8,151.8 520.4,156.5 523.0,156.5 525.6,158.1 528.2,169.2 530.7,154.9 533.3,158.1 535.9,158.1 538.5,161.3 541.0,161.3 543.6,166.0 546.2,156.5 548.8,153.3 551.3,148.6 553.9,153.3 556.5,150.2 559.1,154.9 561.7,164.4 564.2,166.0 566.8,164.4 569.4,142.2 572.0,150.2 574.5,143.8 577.1,142.2 579.7,139.1 582.3,132.7 584.8,132.7 587.4,132.7"/><circle cx="520.4" cy="130.5" r="3.6" style="fill:var(--card);stroke:var(--up);stroke-width:1.8"/><circle cx="528.2" cy="140.7" r="3.6" style="fill:var(--card);stroke:var(--t3);stroke-width:1.8"/><line x1="141.6" x2="141.6" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="141.6" cy="20" r="6.5" style="fill:var(--up)"/><text x="141.6" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">1</text><line x1="340.0" x2="340.0" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="340.0" cy="20" r="6.5" style="fill:var(--up)"/><text x="340.0" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">2</text><line x1="389.0" x2="389.0" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="389.0" cy="20" r="6.5" style="fill:var(--up)"/><text x="389.0" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">3</text><line x1="435.4" x2="435.4" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="435.4" cy="20" r="6.5" style="fill:var(--up)"/><text x="435.4" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">4</text><line x1="499.8" x2="499.8" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="499.8" cy="20" r="6.5" style="fill:var(--up)"/><text x="499.8" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">5</text><line x1="590.0" x2="590.0" y1="26" y2="204" style="stroke:var(--up);stroke-width:1;stroke-dasharray:2 3;opacity:.6"/><circle cx="590.0" cy="20" r="6.5" style="fill:var(--up)"/><text x="590.0" y="23.5" text-anchor="middle" style="fill:#fff;font-size:9px;font-weight:700">6</text><text class="ax" x="54.0" y="222" text-anchor="start">25.12</text><text class="ax" x="206.0" y="222" text-anchor="middle">26.03</text><text class="ax" x="363.2" y="222" text-anchor="middle">26.06</text><text class="ax" x="525.6" y="222" text-anchor="middle">26.09</text><text class="ax" x="590.0" y="222" text-anchor="end">26.10</text></svg></div>
+<p><b>로봇 랠리(1/2~1/21):</b> 41,800원에서 64,800원까지 15거래일 만에 +55%. 1/21 하루 +29.9% 상한가, 거래량 184만 주(평소의 10배 넘게)였어. 보스턴 다이내믹스 로봇 모듈 공급 등 현대차그룹 로보틱스 밸류체인 진입 기대가 불을 붙였어.</p>
+<p><b>높은 변동 속 우상향(1월 말~6/16):</b> 하루 ±10%짜리 날이 여러 번 끼면서 계속 올라 6/16 종가 76,200원이 고점이야. 5월엔 1분기 실적(매출 1.39조 원, 영업이익 1,438억 원, 이익률 10.4%)이 기대를 크게 넘었어. 하나증권이 목표가를 85,000원으로 올리기도 했어.</p>
+<p><b>고점 뒤 하락(6/17~8/14):</b> 76,200원에서 7월 말 49,750원까지 −35%. 7/10 대신증권이 밸류업(배당성향 40%+, 주당 3,000원)을 근거로 목표가 86,000원을 냈지만 흐름은 못 돌렸어. 실적 발표를 앞두고 8/14 61,600원까지 반등하긴 했어.</p>
+<p><b>2분기 실망(8/18~8/28):</b> 61,600원에서 52,400원까지 −15%. 8/18 −5.4%, 8/19 −6.0%로 이틀에 −11%야. new1은 이 구간 끝(8/28, 52,400원)에 들어갔어.</p>
+<p><b>바닥 다지기(8/31~10/8):</b> 48,550~52,500원 사이를 오갔어. 그리고 오늘(10/12) −4.4%로 47,800원까지 밀리면서 그 박스 아래로 내려왔어.</p>
+<p class="note">내 위치: new1 1주(8/28 52,400원), 오늘 −8.8%. meritz 1주(9/2 50,000원), 오늘 −4.4%. 둘 다 물을 안 탄 상태라 녹색 카드 대상이 아니야.</p>
+
+<h2>② Link: 외인은 무엇을 했나</h2>
+<p>외인 보유율은 7/24 이후 15.82%~16.62% 사이를 오갔어. 시총 2.2조 원에 외인이 16%를 쥔 종목이라, 0.1%p가 약 4.7만 주(23억 원 남짓)야.</p>
+<ul>
+<li><b>실적 기대 때 소폭 매집(7/24~8/11):</b> 16.46% → 16.62%, +0.16%p.</li>
+<li><b>실적 전후 이탈(8/12~9/2):</b> 16.62% → 15.82%, −0.80%p. 실적 뒤 이틀(8/18~19)에만 9.3만 주를 팔았어. 외인이 이 종목에서 빠져나간 건 이 3주가 거의 전부야.</li>
+<li><b>되사기(9/3~10/8):</b> 15.82% → 16.05%, +0.23%p. 빠진 것의 30% 정도를 다시 담았어. 9/28 하루 3.7만 주가 가장 컸어.</li>
+</ul>
+<p>Link 4분면: 기준일(8/19) 54,800원 · 16.15% 대비 지금 P −12.8%, dF −0.10%p라 <b>이탈</b> 구간이야. 다만 최근 3거래일 외인이 +0.04%p라 추세는 <b>꺾임</b>으로 찍혀. 가격은 계속 빠지는데 외인 매도는 멈추고 살짝 담기 시작한, 이탈이 다이버전스로 넘어가는 초입 모양이야. 오늘 −4.4% 날 외인이 어떻게 했는지는 오후 cron(16:13) 뒤에 확인돼.</p>
+
+<h2>누가 사고 팔았나: 기관 vs 외인</h2>
+<div class="legend"><i style="background:var(--t3)"></i>기관 누적 순매수 <i style="background:var(--fl)"></i>외인 누적 순매수 (7/24부터, 주식 수)</div>
+<div class="card"><svg viewBox="0 0 640 230" role="img" aria-label="기관과 외인 누적 순매수"><line class="grid" x1="54" x2="590" y1="204.0" y2="204.0"/><text class="ax" x="49" y="207.0" text-anchor="end">-30만</text><line class="grid" x1="54" x2="590" y1="156.5" y2="156.5"/><text class="ax" x="49" y="159.5" text-anchor="end">-20만</text><line class="grid" x1="54" x2="590" y1="109.0" y2="109.0"/><text class="ax" x="49" y="112.0" text-anchor="end">-10만</text><line class="grid" x1="54" x2="590" y1="61.5" y2="61.5"/><text class="ax" x="49" y="64.5" text-anchor="end">+0만</text><line class="grid" x1="54" x2="590" y1="14.0" y2="14.0"/><text class="ax" x="49" y="17.0" text-anchor="end">+10만</text><line x1="54" x2="590" y1="61.5" y2="61.5" style="stroke:var(--faint);stroke-width:1"/><polyline style="fill:none;stroke:var(--t3);stroke-width:1.8" points="54.0,52.4 64.7,46.2 75.4,41.4 86.2,42.8 96.9,39.3 107.6,40.4 118.3,41.5 129.0,50.2 139.8,56.6 150.5,54.0 161.2,64.7 171.9,69.3 182.6,73.8 193.4,54.5 204.1,48.1 214.8,42.8 225.5,49.3 236.2,58.1 247.0,66.5 257.7,72.2 268.4,72.0 279.1,79.1 289.8,72.9 300.6,78.0 311.3,78.3 322.0,74.5 332.7,75.7 343.4,73.5 354.2,81.0 364.9,79.9 375.6,75.9 386.3,79.4 397.0,79.5 407.8,65.8 418.5,68.9 429.2,75.6 439.9,83.0 450.6,83.2 461.4,83.3 472.1,80.3 482.8,82.5 493.5,83.9 504.2,101.7 515.0,100.8 525.7,99.7 536.4,105.7 547.1,79.9 557.8,78.4 568.6,93.6 579.3,97.7 590.0,96.6"/><polyline class="fl" points="54.0,72.3 64.7,79.3 75.4,84.9 86.2,83.6 96.9,84.3 107.6,81.4 118.3,79.7 129.0,76.3 139.8,68.2 150.5,65.4 161.2,63.0 171.9,53.9 182.6,48.8 193.4,63.4 204.1,66.5 214.8,77.8 225.5,98.7 236.2,122.1 247.0,133.8 257.7,138.3 268.4,134.4 279.1,138.5 289.8,148.6 300.6,158.8 311.3,167.4 322.0,169.3 332.7,171.3 343.4,182.8 354.2,172.4 364.9,176.2 375.6,178.4 386.3,180.9 397.0,181.4 407.8,192.0 418.5,181.6 429.2,178.1 439.9,171.4 450.6,177.0 461.4,173.3 472.1,180.4 482.8,188.7 493.5,191.0 504.2,188.6 515.0,171.0 525.7,178.8 536.4,174.7 547.1,177.0 557.8,174.1 568.6,165.9 579.3,164.8 590.0,165.0"/><text class="ax" x="54.0" y="222" text-anchor="start">07-24</text><text class="ax" x="590.0" y="222" text-anchor="end">10-08</text><text class="ax" x="586.0" y="90.6" text-anchor="end" style="fill:var(--t3)">기관 -7.4만</text><text class="ax f" x="586.0" y="179.0" text-anchor="end">외인 -21.8만</text></svg></div>
+<div class="scroll"><table>
+<thead><tr><th class="nm">구간</th><th>주가</th><th>기관 순매수</th><th>외인 순매수</th><th>외인 보유율</th></tr></thead>
+<tbody><tr><td class='nm'><b>실적 기대 반등</b><span class='meta'>07-24 ~ 08-14</span></td><td>56,900 → 61,600<span class='meta'><span class="up">+8.3%</span></span></td><td><span class="up">+3.93만주</span></td><td><span class="dn">-3.43만주</span></td><td>16.46 → 16.45%<span class='meta'><span class="dn">-0.01%p</span></span></td></tr><tr><td class='nm'><b>2분기 실망</b><span class='meta'>08-18 ~ 08-28</span></td><td>61,600 → 52,400<span class='meta'><span class="dn">-14.9%</span></span></td><td><span class="dn">-7.46만주</span></td><td><span class="dn">-18.88만주</span></td><td>16.45 → 15.90%<span class='meta'><span class="dn">-0.55%p</span></span></td></tr><tr><td class='nm'><b>바닥 다지기</b><span class='meta'>08-31 ~ 09-23</span></td><td>52,400 → 48,550<span class='meta'><span class="dn">-7.3%</span></span></td><td><span class="dn">-4.94만주</span></td><td><span class="dn">-4.45만주</span></td><td>15.90 → 15.85%<span class='meta'><span class="dn">-0.05%p</span></span></td></tr><tr><td class='nm'><b>외인 되사기</b><span class='meta'>09-28 ~ 10-08</span></td><td>48,550 → 50,000<span class='meta'><span class="up">+3.0%</span></span></td><td><span class="up">+1.08만주</span></td><td><span class="up">+4.98만주</span></td><td>15.85 → 16.05%<span class='meta'><span class="up">+0.20%p</span></span></td></tr></tbody></table></div>
+<p><b>7/24부터 외인은 −21.8만 주, 기관은 −7.4만 주.</b> 둘 다 팔았지만 무게는 외인 쪽이야. 특히 8/12~8/28 외인 매도가 하락을 만들었어.</p>
+<p><b>최근엔 외인과 기관이 갈렸어.</b> 9/28~10/8엔 외인이 순매수로 돌아섰고, 기관은 10/6 하루에 3.2만 주를 덜어냈어. 10/1엔 기관이 5.4만 주를 샀어. 기관은 들쑥날쑥이고 외인은 조금씩 모으는 쪽이야.</p>
+
+<h2>주석</h2>
+<div class="scroll"><table class="news">
+<thead><tr><th class="nm">#</th><th class="nm">날짜</th><th class="nm">내용</th><th>그날 주가</th></tr></thead>
+<tbody>
+<tr><td class="nm"><span class="mut">-</span></td><td class="nm">2025-12-16</td><td class="nm txt"><b>배경: 로보틱스 사업 가시화.</b> 증권가가 목표가를 52,000원으로 올리며 로봇 부품을 새 성장축으로 꼽기 시작했어.</td><td><span class="mut">-</span></td></tr>
+<tr><td class="nm"><span class="no">1</span></td><td class="nm">01-21</td><td class="nm txt"><b>로봇 기대 상한가.</b> 현대차그룹 로보틱스 밸류체인 진입 기대. 보스턴 다이내믹스 '스팟' 다리 조립품, '스트레치' 표시등을 이미 공급하고 있어. 52주 신고가.</td><td><span class="up">+29.9%</span></td></tr>
+<tr><td class="nm"><span class="no">2</span></td><td class="nm">05-18</td><td class="nm txt"><b>1분기 서프라이즈 · 하나증권 목표가 85,000원.</b> 매출 1.39조 원(+13%), 영업이익 1,438억 원(+21%), 이익률 10.4%. 멕시코·인도 공장 가동률 상승, 전장 부품(BMS 등) 증가, 2026년 말 독일 프리미엄 완성차향 대규모 램프 공급이 근거야.</td><td><span class="dn">−9.9%</span></td></tr>
+<tr><td class="nm"><span class="no">3</span></td><td class="nm">06-16</td><td class="nm txt"><b>종가 고점 76,200원.</b> 전날 +12.1%에 이은 고점. 이날 이후 두 달 동안 흐름이 꺾였어.</td><td><span class="up">+0.4%</span></td></tr>
+<tr><td class="nm"><span class="no">4</span></td><td class="nm">07-10</td><td class="nm txt"><b>대신증권 목표가 86,000원.</b> 밸류업 공시로 2026년 배당성향 40% 이상, 주당 3,000원 가이드. "성장에 환원까지." 2026년 매출 5.7조 원, 영업이익 4,569억 원 추정.</td><td><span class="mut">55,700</span></td></tr>
+<tr><td class="nm"><span class="no">5</span></td><td class="nm">08-18 ~ 08-19</td><td class="nm txt"><b>2분기 실적 실망.</b> 매출 1조 3,673억 원(+5.6%), 영업이익 1,258억 원(+18.8%). 전년보단 늘었지만 1분기보다 매출·이익이 다 줄었고(영업이익 −12.6%), 컨센서스(매출 −3.7%, 영업이익 −5.5%)를 밑돌았어. 하나증권 요약은 "램프가 쉬는 동안 전동화가 뛰었다". 이틀간 외인 9.3만 주 순매도.</td><td><span class="dn">−5.4%</span><span class="meta">−6.0%</span></td></tr>
+<tr><td class="nm"><span class="mut">-</span></td><td class="nm">09-29</td><td class="nm txt"><b>"특별한 악재 없이" 외인·기관 동반 매도.</b> 자동차 부품 업종 심리 위축 기사. 9월부터는 현대차 이동형 로봇 '모베드'용 라이다 모듈·배터리팩 위탁생산을 시작했어.</td><td><span class="dn">−1.3%</span></td></tr>
+<tr><td class="nm"><span class="no">6</span></td><td class="nm">10-12</td><td class="nm txt"><b>시장 급락 + 현대차 목표가 하향.</b> 코스피 −3.2%·코스닥 −4.1% 날, 같은 날 아침 현대차 목표가가 63만 원으로 내려갔어. 8/31 이후 박스(48,550~52,500) 하단을 깼어.</td><td><span class="dn">−4.4%</span></td></tr>
+</tbody></table></div>
+
+<h2>회사는 어떤가</h2>
+<ul>
+<li><b>뭘 하는 회사:</b> 대구에 본사를 둔 국내 1위 자동차 램프 회사야. 헤드램프·리어램프가 주력이고, 미러·전장 부품(BMS, 전동화 제어 부품 등)도 만들어. 현대차·기아가 큰 고객이고 GM 등 해외 완성차에도 공급해.</li>
+<li><b>공장이 글로벌이야.</b> 한국 외에 미국·멕시코·인도·중국에 생산 거점이 있어. 미국 관세는 멕시코 공장에서 USMCA 무관세 혜택을 받는 식으로 대응하고 있어.</li>
+<li><b>돈을 잘 벌어, 꾸준히.</b> 2025년 매출 5.2조 원, 영업이익 4,071억 원(이익률 7.8%). 2026년 추정은 매출 5.7조 원대, 영업이익 4,500억 원대(+10~12%)야. 상반기 영업이익률은 9~10%로 부품사치고 높은 편이야.</li>
+<li><b>로봇은 아직 작아.</b> 보스턴 다이내믹스 부품, 현대차 모베드 부품 위탁생산, 내년 휠 구동 액추에이터 양산이 예정돼 있어. 증권가 기대치는 로봇 부품 매출 연 1,000억 원 이상인데, 전체 매출 5조 원대에서 2% 수준이야. 주가는 이 2%에 프리미엄을 줬다가 다시 뺀 거야.</li>
+<li><b>몸값은 싸.</b> PER 5.8배, PBR 0.81배, 배당 5.8%(작년 주당 2,770원). 올해 가이드 3,000원이면 지금 가격에 6.3%야. 인바디(PER 14.9배)와 반대로 이익에 비해 값을 덜 받는 쪽이야.</li>
+</ul>
+
+<h2>③ CFG: 겹치나</h2>
+<p>안 겹쳐. Fishing 기준(8/19 대비 −12.8%)은 충분히 빠졌는데, 외인이 기준일 대비 −0.10%p라 CFG의 외인 문턱을 못 넘어. Link에서도 명단(다이버전스·진행형) 밖이야. 외인이 지금 속도(9/3 이후 하루 평균 +0.01%p)로 계속 담으면 16.15%를 넘는 순간 다이버전스로 넘어오고, 그때 CFG 후보가 될 수 있어.</p>
+
+<h2>종합</h2>
+<div class="cm">
+<p><b>Action:</b> 6/16 고점 대비 −37%, 올해 상승분을 거의 다 반납했어. 8월 2분기 실망이 마지막 계단을 만들었고, 오늘 8월 말 이후 박스 하단을 깼어.</p>
+<p><b>Link:</b> 이탈 구간이지만 추세는 꺾임이야. 외인은 9월 초 바닥부터 빠진 것의 30%를 되샀어. 지금은 가격이 빠지는데 외인은 멈춘 단계야.</p>
+<p><b>CFG:</b> 해당 없음. 외인이 기준일(16.15%)을 넘어서야 후보가 돼.</p>
+<p><b>회사:</b> 흑자에 이익률 9~10%, 매년 10% 안팎 성장하는 국내 램프 1위. 로봇 프리미엄이 빠진 지금은 PER 6배 이하, 배당 6% 안팎의 가치주 가격이야.</p>
+<p><b>볼 숫자:</b> 외인 보유율이 16.15%(기준일)를 넘는지, 그리고 3분기 실적에서 분기 매출이 다시 늘어나는지야. 물을 탈 생각이 있다면 지금 가격은 new1 진입가보다 −8.8%, meritz 진입가보다 −4.4%야.</p>
+</div>
+
+<p class="note">주가·거래량: 네이버 일별시세(10/12 포함). 외인 보유율·기관/외인 순매수: Supabase investor_flow(10/8까지). PER·PBR·배당·시총: 네이버 금융(10/12). 출처:
+<a href="https://www.topstarnews.net/news/articleView.html?idxno=15940524">톱스타뉴스 1/21 로봇 상한가</a> ·
+<a href="https://m.news.nate.com/view/20260121n35344">1/21 피지컬 AI·로봇 랠리</a> ·
+<a href="https://www.newspim.com/news/view/20251216000093">뉴스핌 2025/12/16 로보틱스 가시화</a> ·
+<a href="https://www.newspim.com/news/view/20260518000059">뉴스핌 5/18 목표가 85,000원</a> ·
+<a href="https://file.hanaw.com/download/research/FileServer/WEB/industry/enterprise/2026/05/17/SL_260518_1Q26Review.pdf">하나증권 5/18 1Q26 리뷰</a> ·
+<a href="https://www.newspim.com/news/view/20260710000157">뉴스핌 7/10 대신증권 86,000원</a> ·
+<a href="https://news.nate.com/view/20260818n04855">8/18 하나증권 2분기 리뷰</a> ·
+<a href="https://x.com/Jaymin_Alpha/status/2090293497685586225/photo/1">2분기 실적·컨센서스 집계</a> ·
+<a href="https://news.jkn.co.kr/post/1000541">재경일보 9/29 특징주</a> ·
+<a href="http://www.dailyinvest.kr/news/articleView.html?idxno=69854">데일리인베스트 SDV·로봇</a> ·
+<a href="https://fnnews.com/news/202610120754101733">파이낸셜뉴스 10/12 현대차 목표가 하향</a></p>
+</div>
