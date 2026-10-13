@@ -167,6 +167,11 @@ report/                           # 세션이 쓴 관찰/리뷰 리포트(HTML +
                                   #   HTML은 아티팩트로도 발행, PDF는 Playwright(headless chrome, emulate_media print)로 렌더.
                                   #   **개정 시 기존 파일 덮어쓰지 말 것(2026-09-04 사용자 지시)** — 새 버전은 _v2/_v3
                                   #   같은 접미사로 새 파일 추가. 아티팩트는 같은 URL에 재발행(버전 히스토리 남음).
+mailbox/                          # 튜즈데이(Desktop/Tuseday, 나스닥 담당 세션)와 주고받는 우편함(2026-10-13 신설, 대표 아이디어).
+                                  #   new1/mailbox/ = 새러데이가 받는 곳, Tuseday/mailbox/ = 튜즈데이가 받는 곳. 각자 read/에 읽은 편지 보관.
+                                  #   파일명 YYYY-MM-DD[_HHMM]_from-tuesday|from-saturday_제목.md. mailbox/ 바로 아래 .md = 안 읽음.
+                                  #   세션이 켜져 있으면 백그라운드 감시로 새 편지를 감지 → 읽고 read/로 옮김 → 필요하면 답장
+                                  #   → 대표에게 요지 보고. 세션 시작 시 mailbox/부터 확인. 커밋 여부는 대표 결정 대기.
 manual/                           # report/와 성격이 다름 — **살아있는 설계 문서**(2026-09-11 신설).
                                   #   report는 "그 시점의 관찰"이라 안 덮어쓰지만, manual/은 계속 고쳐 쓰는 스펙.
                                   #   지금은 오케스트라_아키텍트_매뉴얼.html 하나 — Link/CFG 아키텍처, 4분면 정의,
@@ -628,6 +633,14 @@ manual/                           # report/와 성격이 다름 — **살아있�
   `main()` 맨 앞에서 False면 아무것도 적재하지 않고 종료, 조회 실패(None)면 거래일로 보고 그대로
   진행(investor_flow는 5영업일 지나면 못 메우니 실제 거래일을 놓치는 쪽이 더 나쁨). 휴장일 목록을
   하드코딩하지 않아도 되는 방식. 회귀 테스트 `test_market_traded_on_*` 3개.
+- **빠진 날 자동 메우기 (2026-10-13, 튜즈데이 `load_daily.py` 방식 차용)**: `db_fetch_daily_prices.py`
+  마지막 단계 `fill_recent_gaps()` — 오늘 이전 최근 5거래일(코스피 일별시세에 실제로 있는 날짜)마다
+  price_history 적재 수를 세서 watchlist의 90% 미만이면 빠진 종목만 `fetch_daily_price_history`로 그날
+  확정 종가·거래량을 넣고, market_flow는 KOSPI/KOSDAQ 행이 없는 날만 `fetch_market_flow(market, d)`로
+  다시 받는다. 8/27처럼 cron이 하루 통째로 안 돌아도 다음 실행 때 저절로 메워짐. investor_flow는 원래
+  종목마다 최근 5영업일치를 통째로 upsert해서 이미 자가 복구됨 — **단 5영업일 넘게 cron이 멈추면 외인
+  수급은 못 메운다**(API 한계). 거래정지 한두 종목은 90% 문턱에 안 걸려 건드리지 않음. 휴장일엔
+  main()이 먼저 종료하므로 이 단계도 안 돈다. 회귀 테스트 `tests/test_db_fetch_gap_fill.py` 2개.
 
 ### 6-10. 보유종목 카드 클릭 → 매수/매도 내역 + "물타기 적정성" 그래프
 - **동기**: 물을 탈 때(하락 중 추가매수) 내가 현재가를 적절히 따라가며 사고 있는지(너무
