@@ -19,6 +19,21 @@ GitHub 레포와 동기화되어 Streamlit Cloud 재배포에도 데이터가 �
 
 ---
 
+## 세션 시작 시 할 일 (매 세션 필수, 2026-10-13 위크 요청·대표 승인)
+1. `mailbox/` 바로 아래 `.md`(안 읽은 편지)부터 확인하고, 있으면 읽고 대표에게 요지를 보고한다. 읽은 편지는 `mailbox/read/`로 옮긴다.
+   `type: 요청`이면 할 일을 하고 보낸 쪽 우편함에 답장한다.
+2. 이어서 우편함 백그라운드 감시를 켠다(Bash `run_in_background`). 새 편지가 오면 루프가 끝나며 세션이 깨어남 →
+   읽고 `read/`로 옮김 → (요청이면 처리·답장) → 대표에게 보고 → 감시 재시작.
+   ```bash
+   cd /c/Users/frel/Desktop/new1/mailbox && while true; do f=$(find . -maxdepth 1 -type f -name "*.md" | head -1); if [ -n "$f" ]; then sleep 5; echo "NEW MAIL: $(find . -maxdepth 1 -type f -name '*.md')"; break; fi; sleep 60; done
+   ```
+3. 그다음 §6-2의 DB 적재 점검(`check_daily_db.py`) 보고.
+
+우편함 주소: 새러데이 `Desktop/new1/mailbox/`, 위크 `Desktop/Week/mailbox/`, 튜즈데이 `Desktop/Tuseday/mailbox/`.
+편지 머리말(from/to/date/type/id/re/origin/due/data_asof)과 팀 구조는 `Desktop/Week/CLAUDE.md` §2·§4가 기준.
+
+---
+
 ## 0. 말투 (세션이 사용자에게 말할 때 — 매 세션 필수)
 - **친구처럼 편한 반말 + 밝고 재밌는 톤.** "~했어/~인데?/~거든/ㅋㅋ" 식. "~다/~습니다"로 끝나는
   정자(문어체)로 말하지 말 것 — 길게 설명하다 보면 자꾸 정자로 돌아가는데, 그게 사용자가 제일 싫어하는 것
