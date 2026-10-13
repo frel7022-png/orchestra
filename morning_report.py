@@ -19,6 +19,7 @@ from pathlib import Path
 import pandas as pd
 
 import daily_link_report as link
+import live_check
 import portfolio_core as core
 
 HERE = Path(__file__).parent
@@ -172,18 +173,14 @@ def build(data, link_res):
 
     res = {"today": today, "asof": data["asof"], "own": own}
 
-    # A. 계좌 vs 혼합지수
-    idx_h, asset_h = core.load_index_history(), core.load_history()
-    mc = core.load_market_cache()
-    v = pd.to_numeric(hl["수량"]) * pd.to_numeric(hl["현재가"])
-    mk = hl["종목명"].map(mc)
-    ks, kq = float(v[mk == "KOSPI"].sum()), float(v[mk == "KOSDAQ"].sum())
-    wk = ks / (ks + kq) if ks + kq else None
-    ex = core.synthetic_kospi_ex_bigcap(idx_h, core.load_bigcap_history())
-    iva_s = core.compute_index_vs_account(tx, asset_h, ex, state["initial"], state.get("fee_rate", 0.0), kospi_weight=wk)
-    iva_m = core.compute_index_vs_account(tx, asset_h, idx_h, state["initial"], state.get("fee_rate", 0.0), kospi_weight=wk)
-    res["index"] = {"ex": iva_s.get("latest", {}), "main": iva_m.get("latest", {}),
-                    "asof": str(asset_h["날짜"].max()) if not asset_h.empty else ""}
+    # A. 계좌 vs 혼합지수 — live_check.live_snapshot() 그대로(히스토리 CSV가 아니라 확정 종가 + 지금 실시간).
+    #    위에서 받은 실시간 시세(hl)를 넘겨서 같은 시각 가격으로 맞춘다.
+    lq = {str(r["종목코드"]): {"price": float(r["현재가"]),
+                              "change_pct": None if pd.isna(r["등락률"]) else float(r["등락률"])}
+          for _, r in hl.iterrows()}
+    snap = live_check.live_snapshot(holdings=hl, quotes=lq)
+    res["index"] = {"ex": {"벤치": snap["ex"], "계좌": snap["acct"], "주식": snap["stock"]},
+                    "main": {"벤치": snap["main"]}, "asof": snap["holdings_asof"], "snap": snap}
 
     # B. Up/Down 재진입 후보 — 마지막 매도가 대비 많이 빠진 순
     closed = core.get_closed_out_last_sells(h, tx)
@@ -341,7 +338,7 @@ def write_action(res, ph):
     ix, im = res["index"]["ex"], res["index"]["main"]
     def kv(k, lab):
         a = ix.get(k) if k != "main벤치" else im.get("벤치")
-        if not a:
+        if not a or a[0] is None:
             return ""
         return f'<div><div class="k">{lab}</div><div class="v">{sign(a[0] * 100, 2)}</div><div class="k">당일 {sign(a[1] * 100, 2)}</div></div>'
     kpi = (kv("벤치", "혼합지수(삼성·하이닉스 제외)") + kv("main벤치", "혼합지수(일반)") + kv("계좌", "내 계좌")
@@ -426,7 +423,7 @@ def write_action(res, ph):
     body = f"""
 <h2>계좌 vs 혼합지수 (8/14 기준 누적)</h2>
 <div class="kpi">{kpi}</div>
-<p class="note">계좌·주식은 asset_history 최신일({res["index"]["asof"]}) 기준. 혼합지수는 보유종목 코스피/코스닥 평가금액 비중으로 가중.</p>
+<p class="note">{res["index"]["snap"]["asof"]} 기준 · 지수는 확정 종가 + 지금 실시간, 당일은 전일 확정 종가 대비 · 보유·예수금은 매매일지 {res["index"]["asof"]} 반영분. 혼합지수는 보유종목 코스피/코스닥 평가금액 비중으로 가중.</p>
 
 <h2>Up/Down — 재진입 후보 (매도가 대비 많이 빠진 순, 전체 {res["updown_n"]}종목 중 상위 {TOP})</h2>
 <p class="legend">빨간 점선 = 마지막 매도가 · 빨간 점 = 매도일</p>
