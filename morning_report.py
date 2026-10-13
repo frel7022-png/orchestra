@@ -1,7 +1,7 @@
 """아침 리포트 3종 — 버전 1 (2026-10-02).
 
   ① 액션 리포트   morning_report/action/YYYY-MM-DD.html (+ latest_action.html)
-     계좌 vs 혼합지수, Up/Down 재진입 후보, Watering Detect 물타기 후보, Fishing 하락 흐름,
+     계좌 vs 혼합지수, Up/Down 재진입 후보, Watering Detect 물타기 후보, Fishing 하락 흐름, Basecamp 매집 후보,
      Today's Alarm, meritz 진입 후보. 각 칸 상위 10개(고정 기준이 아니라 우선순위), 행마다 그래프.
   ② 외인 샘플 리포트 link_sample/ (daily_link_report.py — 같은 데이터로 같이 돌린다)
   ③ CFG 리포트     morning_report/cfg/YYYY-MM-DD.html (+ latest_cfg.html)
@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 
+import basecamp
 import daily_link_report as link
 import live_check
 import portfolio_core as core
@@ -268,6 +269,13 @@ def build(data, link_res):
     res["fishing_first"] = not prev_d
     res["fishing_n"] = len(fish)
 
+    # D2. Basecamp — 죽죽 빠지다 평지에서 거래량이 평소보다 꾸준히 터지는 종목(basecamp.py, 점수 순)
+    camps = basecamp.scan(ph, fh, live, today=today, top_n=TOP)
+    for x in camps:
+        i0 = trade_days.index(x["고점일"]) if x["고점일"] in trade_days else 0
+        x["pts"] = series_from(ph, x["종목코드"], trade_days[max(0, i0 - 10)], live.get(x["종목코드"]), today)
+    res["basecamp"] = camps
+
     # E. Today's Alarm — 앱과 같은 함수, 입력만 리포트 데이터로 구성
     fp = pd.DataFrame([{"종목명": f["종목명"], "최초가": f["기준가"], "최근가": f["현재가"],
                         "전일대비": f["전일"], "기준일": f["기준일"]} for f in fish])
@@ -305,6 +313,7 @@ def build(data, link_res):
     srcs = ([("Up/Down", x["코드"], x["종목명"], x["매도일"], x["pct"], "매도가 대비") for x in res["updown"]]
             + [("Watering", x["코드"], x["종목명"], x["마지막일"], x["pct_last"], "마지막 매수가 대비") for x in res["watering"]]
             + [("Fishing", x["코드"], x["종목명"], x["기준일"], x["cum"], "기준일 대비") for x in res["fishing"]]
+            + [("Basecamp", x["종목코드"], x["종목명"], x["평지시작"], x["고점대비"], "고점 대비(평지 구간 외인)") for x in res["basecamp"]]
             + [("meritz 후보", x["코드"], x["종목명"], x["최초일"], x["pct_first"], "new1 최초진입가 대비") for x in res["meritz"]])
     cfg = []
     for src, c, n, start, pct, basis in srcs:
@@ -394,6 +403,24 @@ def write_action(res, ph):
                f'<th>바닥 대비</th><th>바닥 후</th><th>최근 3일</th><th class="l">상태</th></tr></thead>'
                f'<tbody>{"".join(rows)}</tbody></table></div><div class="grid2">{"".join(cards)}</div>')
 
+    # Basecamp
+    rows, cards = [], []
+    st_cls = {"돌파": "", "다지는 중": "base", "이탈": "down"}
+    for i, x in enumerate(res["basecamp"], 1):
+        rows.append(f'<tr><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span></td>'
+                    f'<td>{x["고점일"][5:]}</td><td>{sign(x["하락률"])}</td><td>{x["평지시작"][5:]} · {x["평지일수"]}일</td>'
+                    f'<td>{x["밴드"]:.1f}%</td><td>×{x["거래량배수"]:.1f}</td><td>{x["대량일수"]}/{x["거래량일수"]}일</td>'
+                    f'<td>{sign(x["고점대비"])}</td><td class="l"><span class="bd st {st_cls[x["상태"]]}">{x["상태"]}</span></td></tr>')
+        cards.append(card(f'{i}. {esc(x["종목명"])}',
+                          f'고점 {x["고점일"][5:]} {x["고점"]:,.0f} → 평지 {x["평지시작"][5:]}부터 {x["평지일수"]}일 '
+                          f'({x["평지저"]:,.0f}~{x["평지고"]:,.0f}) · 거래량 하락 전 대비 ×{x["거래량배수"]:.1f}, '
+                          f'2배 이상 {x["대량일수"]}/{x["거래량일수"]}일 · 지금 {x["현재가"]:,.0f} {x["상태"]}',
+                          svg_line(x["pts"], refs=[("고점", x["고점"], "first"), ("평지고", x["평지고"], "avg"),
+                                                   ("평지저", x["평지저"], "last")])))
+    bc_html = (f'<div class="scroll"><table><thead><tr><th>#</th><th class="l">종목</th><th>고점</th><th>평지까지 하락</th>'
+               f'<th>평지</th><th>밴드</th><th>거래량</th><th>2배↑</th><th>지금(고점 대비)</th><th class="l">상태</th></tr></thead>'
+               f'<tbody>{"".join(rows)}</tbody></table></div><div class="grid2">{"".join(cards)}</div>') if rows else '<p class="note">없음</p>'
+
     # Alarm
     al = res["alarm"]
     items = []
@@ -437,6 +464,10 @@ def write_action(res, ph):
 <p class="legend">세로축 = 기준일 대비 % · 파란 점 = 기간 중 바닥 · 상태: 빠지는 중(바닥이 최근) / 바닥 다지는 중 / 반등 중(바닥 대비 +3%↑이고 최근 3일 상승)</p>
 {fi_html}
 
+<h2>Basecamp — 빠지다 평지에서 물량이 터지는 종목 (점수 상위 {TOP})</h2>
+<p class="legend">점선: 회색 고점 · 녹색 평지 고가 · 주황 평지 저가 · 거래량 = 평지 구간 중간값 ÷ 하락 시작 전 중간값 · 2배↑ = 평지 중 하락 전의 2배 넘게 터진 날</p>
+{bc_html}
+
 <h2>Today's Alarm</h2>
 {al_html}
 
@@ -471,7 +502,7 @@ def write_cfg(res, data):
             f'<div class="pair"><div><div class="note">① 그 기능의 하락 구간 주가</div>{left}</div>'
             f'<div><div class="note">② 외인 리포트 그래프 (기준일부터)</div>{right}</div></div></div>')
     body = f"""
-<p class="note">① 액션 리포트 후보(Up/Down·Watering·Fishing·meritz 후보) 중, <b>그 기능이 잰 하락 구간 동안</b> 외국인 보유율이 실제로 늘었고(+0.3%p 이상 또는 상대 +5% 이상), ② 외인 리포트에서 착시·꺾임이 아닌 종목. 하락 3% 미만은 제외. 드문 게 정상.</p>
+<p class="note">① 액션 리포트 후보(Up/Down·Watering·Fishing·Basecamp·meritz 후보) 중, <b>그 기능이 잰 하락 구간(Basecamp는 평지 구간) 동안</b> 외국인 보유율이 실제로 늘었고(+0.3%p 이상 또는 상대 +5% 이상), ② 외인 리포트에서 착시·꺾임이 아닌 종목. 하락 3% 미만은 제외. 드문 게 정상.</p>
 <h2>오늘의 CFG ({len(res["cfg"])}종목)</h2>
 <div class="grid2" style="grid-template-columns:1fr">{"".join(cards) or '<p class="note">오늘은 없음</p>'}</div>
 <h2>총평</h2>
@@ -499,7 +530,7 @@ def main():
         old = old[old["날짜"] != res["today"]]
     pd.concat([old, pd.DataFrame(rows)], ignore_index=True).to_csv(log, index=False, encoding="utf-8-sig")
     print(f"[완료] {res['today']} ① Up/Down {len(res['updown'])} · Watering {len(res['watering'])} · "
-          f"Fishing {len(res['fishing'])} · meritz {len(res['meritz'])} / ③ CFG {len(res['cfg'])}")
+          f"Fishing {len(res['fishing'])} · Basecamp {len(res['basecamp'])} · meritz {len(res['meritz'])} / ③ CFG {len(res['cfg'])}")
     for x in res["cfg"]:
         print(f"  CFG {x['종목명']} [{', '.join(sorted(x['출처들']))}] {x['basis']} {x['pct']:+.1f}% · 외인 {x['fw']['d']:+.2f}%p ({x['fw']['rel']:+.1f}%)")
     return res

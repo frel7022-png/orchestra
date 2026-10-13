@@ -151,6 +151,7 @@ portfolio_core.py        # 데이터 계층 전체(로드/저장/replay/시세�
 ui_portfolio_tab.py       # render_portfolio_tab() — 요약카드/섹터비중/Up-Down/종목현황/Volume/Foreigner.
 ui_transactions_tab.py     # render_transactions_tab() — 실현손익 그래프/거래 캘린더/누적요약.
 ui_statistics_tab.py        # render_statistics_tab() — Price Brackets/Top Traded (§6-32, 2026-09-16 신설).
+basecamp.py                 # Basecamp 점수 — 빠지다 평지에서 거래량이 꾸준히 터지는 종목 (§6-35, 2026-10-13 신설).
 ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-2 참고, 내부적으로 rebuild_portfolio_incremental 사용 — §6-14).
 fix_sector.py                  # 보유종목 섹터만 안전하게 고치는 스크립트 (§1-7 참고, 2026-08-28 신설).
 live_check.py                  # 지금 이 순간 시장·계좌 상태 출력(파일 안 씀). 사용자가 뭘 물으면 세션이 먼저 돌려 그 숫자로 답한다
@@ -240,7 +241,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
   그 종목이 **Up/Down 결과에도 걸려 있으면**(매도 후 DOWN 2%/UP 3% 이탈) Fishing에서 그
   **종목명을 파랑**으로 표시 — Up/Down 새로고침을 눌러 결과가 있을 때만 (2026-09-10)
 - Bench: 한 번도 매수한 적 없는 관심종목(소외종목) — Fishing 밑, Volume 위 (§6-23)
-- Volume / Foreigner: 거래량·외국인 수급 이상치 스크리너 (§6-12)
+- Basecamp / Foreigner: Basecamp = 빠지다 평지에서 물량이 터지는 종목 점수 순위(§6-35, 2026-10-13 Volume 자리 교체), Foreigner = 외국인 수급 스크리너 (§6-12)
 - Holdings 카드 (비중은 예수금 포함 총자산 대비) — 종목명 아래 줄에 배당수익률 배지(비중%과
   같은 크기, 수익률 구간별 색상 — 5%초과 빨강/3~5% 진한녹색/1~3% 검정/1%미만 파랑, §6-15)
   + 그 옆에 **외국인 보유율 수치**(라벨 없이 %만, >20% 녹색 / ≤5% 파랑 / 그 사이 검정 —
@@ -2157,3 +2158,26 @@ manual/                           # report/와 성격이 다름 — **살아있�
   `test_compute_todays_alarm_falls_back_to_top_one_when_no_stock_meets_threshold`,
   `test_compute_todays_alarm_empty_inputs_returns_no_alarms`.
 - **new1 전용** (meritz는 Fishing/Foreigner류 인프라 자체가 없음).
+
+### 6-35. "Basecamp" — 죽죽 빠지다 평지에서 물량이 터지는 종목 (2026-10-13, new1 전용)
+- **동기 (사용자 가설)**: 20~30%씩 꾸준히 빠지다가 바닥을 다지는데, 그 평지 구간에서 거래량이 평소의
+  2~3배로 꾸준히 나오면 누군가 던지는 물량(악재·공매도 물량 등)을 가격 안 올리고 받아내는 중 = 매집 신호.
+  사용자가 설계·이름을 세션에 맡김("너가 피싱이나 업다운처럼 분석하고 나에게 매일 리포트 써주는 파트").
+- **고정 문턱 대신 점수 순위** (사용자 지시: 날짜·숫자를 픽스하면 거의 맞는 종목이 다 빠지니 비슷한 순 top 10~20).
+  `basecamp.scan(price_hist, flow_hist, live_quotes, today, top_n)`:
+  - 평지 길이 5~12거래일을 종목마다 다 시도해 점수가 가장 높은 길이를 고른다.
+  - 점수 = 하락 깊이(평지 직전 고점 대비 평지 평균, 25%=1.0·35% 상한) × 평탄도(밴드 폭·기울기) ×
+    거래량(평지 중간값 ÷ **하락 시작 전** 최대 20일 중간값, 2배 이상인 날 비율로 가중).
+    기준을 "최근 15일 평균"으로 잡으면 하락 중 투매 거래량이 섞여 부풀기 때문에 고점 이전 구간으로 잡는다.
+  - 고점이 1~3일 만에 15% 넘게 튄 뉴스 급등 꼭대기면 제외(실측: 샘표·샘표식품 9/10~11 거래량 수백 배 급등 후
+    되돌림이 1·2위로 잡혔음).
+  - 하락 10% 미만은 제외. 오늘 행은 장중이라 평지 계산에서 빼고, 실시간가는 상태(돌파/다지는 중/이탈)에만 씀.
+  - 데이터: 종가 = price_history, 거래량 = investor_flow(7/24부터). 새 DB 호출 없음.
+- **외인·기관(누가 받는지)은 점수에 안 넣음** — 아침 리포트 ①(액션)은 외인 정보 없이 보는 원칙이라
+  ①엔 가격·거래량만, ③ CFG가 "그 평지 구간 동안 외인이 늘었나"를 확인한다(CFG srcs에 Basecamp 추가,
+  시작일 = 평지 시작).
+- **앱**: 포트폴리오 탭 Volume expander 자리를 Basecamp로 교체(새로고침 버튼 키 `volume_refresh` 그대로,
+  `refresh_flow_data()` 공유). `compute_volume_flags` 등 Volume 계산 함수는 core에 남아 있음(테스트 있음, UI에선 안 씀).
+- **아침 리포트**: ① 액션에 Basecamp 섹션(점수 상위 10, 행마다 그래프).
+- 회귀 테스트 `tests/test_basecamp.py` 4개(대량 평지가 조용한 평지보다 위 / 급등 고점 제외 / 상태 판정 / 오늘 행 제외).
+- 가중치·문턱은 리포트 보면서 사용자와 조금씩 조정하기로 함(2026-10-13).

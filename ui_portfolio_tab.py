@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
+import basecamp
+
 from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR, DIVIDEND_MID_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_TARGETS
 from portfolio_core import (
     load_cfg_tags, holding_is_cfg,
@@ -17,7 +19,7 @@ from portfolio_core import (
     get_holding_trade_points, get_holding_avg_price_path,
     load_investor_flow_db, load_market_flow_db, load_watchlist_history_db,
     get_stock_price_history_db,
-    compute_volume_flags, compute_foreign_flags, compute_market_flow_baseline, foreign_pct_change_since,
+    compute_foreign_flags, compute_market_flow_baseline, foreign_pct_change_since,
     cumulative_price_change_map,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     compute_link_candidates, load_link_watch_log, link_watch_status, fetch_quotes,
@@ -1178,9 +1180,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     )
                 st.markdown("".join(bench_parts), unsafe_allow_html=True)
 
-    # ---- Volume / Foreigner: 거래량·외국인 수급이 평소보다 튀는 종목 (2026-08-24 신설) ----
-    # investor_flow(종목별)/market_flow(시장 전체) 테이블을 조회해서 compute_volume_flags/
-    # compute_foreign_flags로 "오늘 vs 그동안 쌓인 평균" 차이가 큰 순으로 보여준다.
+    # ---- Basecamp / Foreigner (2026-08-24 신설, Volume은 2026-10-13 Basecamp로 교체) ----
+    # investor_flow(종목별)/market_flow(시장 전체) 테이블을 조회해서 basecamp.scan/
+    # compute_foreign_flags로 보여준다.
     # §6-12 참고 — 필터 빌더처럼 DB엔 원시값만 쌓고 등락폭은 화면에서 계산.
     flow_hist = st.session_state.get("flow_hist")
     market_hist = st.session_state.get("market_hist")
@@ -1191,56 +1193,32 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 하나를 공유해야 "같은 기준일이면 흔들림이 없다"는 전제가 실제로 성립한다(사용자 지적,
     # 2026-09-11). refresh_flow_data()(모듈 최상위, §6-33 "Setting"에서도 재사용)가 실제 로직.
 
-    with st.expander("Volume", expanded=False):
+    # ---- Basecamp (§6-35, 2026-10-13 — Volume 패널 자리): 죽죽 빠지다 평지에서 거래량이 평소보다
+    # 꾸준히 터지는(=누가 던지는 물량을 받아내는) 종목을 점수 순으로. 데이터·새로고침은 Foreigner/Link와 공유.
+    with st.expander("Basecamp", expanded=False):
         if st.button("새로고침", key="volume_refresh", use_container_width=True):
             with st.spinner("거래량 데이터 조회 중..."):
                 refresh_flow_data()
             st.rerun()
 
-        if flow_hist is None:
-            st.caption("새로고침을 누르면 153개 종목의 거래량이 평소 대비 얼마나 튀었는지 보여줍니다.")
+        if flow_hist is None or price_hist_flow is None:
+            st.caption("새로고침을 누르면 관심종목 중 빠지다 평지에서 물량이 터지는 종목을 보여줍니다.")
         else:
-            baseline = compute_market_flow_baseline(market_hist)
-            if baseline:
-                bits = [f"{m} 거래량 평균대비 {'+' if b['거래량vs평균pct'] >= 0 else ''}{b['거래량vs평균pct']:.0f}%"
-                        for m, b in baseline.items()]
-                st.caption(" · ".join(bits))
-
-            vol_flags = compute_volume_flags(flow_hist, price_hist_flow)
-            if not vol_flags:
-                st.caption("비교할 데이터가 아직 부족합니다(최소 이틀치 필요).")
+            camps = basecamp.scan(price_hist_flow, flow_hist, live_quotes_ff, today=today_kst_str(), top_n=15)
+            if not camps:
+                st.caption("조건에 가까운 종목이 없습니다.")
             else:
-                vb1, vb2 = st.columns(2)
-                with vb1:
-                    vol_basis = st.radio("기준", ["누적", "전일"], horizontal=True,
-                                          label_visibility="collapsed", key="vol_basis")
-                with vb2:
-                    vol_dir = st.radio("방향", ["DOWN", "UP"], horizontal=True,
-                                        label_visibility="collapsed", key="vol_dir")
-                bkey = FLOW_BASIS_KEY["volume"][vol_basis]
-                ranked = rank_flow_flags(vol_flags, bkey, vol_dir)
-                prev_ranks = get_flow_prev_day_ranks(flow_hist, "volume", vol_basis, vol_dir,
-                                                      today_kst_str())
-                if not ranked:
-                    st.caption(f"{vol_basis} 기준 {vol_dir}으로 움직인 종목이 없습니다.")
-                else:
-                    parts = []
-                    for i, r in enumerate(ranked[:15], 1):
-                        v = r[bkey]
-                        chg = r["오늘등락률"]
-                        chg_s = (f'{"+" if chg >= 0 else ""}{chg:.1f}%') if chg is not None else "-"
-                        parts.append(
-                            f'<div class="updown-row flow-row"><span class="rank">{i}</span>'
-                            f'{_rank_delta_html(prev_ranks.get(r["종목명"]), i)}'
-                            f'<span class="name">{r["종목명"]}</span>'
-                            f'<span class="pct" style="color:{UP_COLOR if v >= 0 else DOWN_COLOR}">'
-                            f'{"+" if v >= 0 else ""}{v:.0f}%</span>'
-                            f'<span class="detail">주가 {chg_s}</span></div>'
-                        )
-                    st.markdown("".join(parts), unsafe_allow_html=True)
-                    st.caption(f"{vol_basis}({'평균 대비' if vol_basis == '누적' else '어제 대비'}) "
-                               f"거래량 {vol_dir} 큰 순 · 상위 15개 표시 "
-                               f"(추적 {len(vol_flags)}종목 중 {vol_dir} {len(ranked)}종목)")
+                status_color = {"돌파": UP_COLOR, "다지는 중": T["text"], "이탈": DOWN_COLOR}
+                parts = []
+                for i, r in enumerate(camps, 1):
+                    parts.append(
+                        f'<div class="updown-row flow-row"><span class="rank">{i}</span>'
+                        f'<span class="name">{r["종목명"]}</span>'
+                        f'<span class="pct" style="color:{DOWN_COLOR}">{r["하락률"]:.0f}%</span>'
+                        f'<span class="detail">{r["평지일수"]}일 · ×{r["거래량배수"]:.1f} '
+                        f'<span style="color:{status_color[r["상태"]]}">{r["상태"]}</span></span></div>'
+                    )
+                st.markdown("".join(parts), unsafe_allow_html=True)
 
     with st.expander("Foreigner", expanded=False):
         if st.button("새로고침", key="foreigner_refresh", use_container_width=True):
