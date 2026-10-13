@@ -15,6 +15,7 @@ unique라 upsert로 덮어씀). GitHub Actions cron이 매일 이 스크립트�
 import os
 import time
 import tomllib
+from datetime import date, timedelta
 from pathlib import Path
 
 import requests
@@ -167,6 +168,77 @@ def main():
             print(f"   완료: {n}건")
     except Exception as e:
         print(f"   경고: 시장 전체 수급 적재 단계에서 문제가 발생해 이 단계만 건너뜁니다: {e}")
+
+    try:
+        fill_recent_gaps(watchlist, today)
+    except Exception as e:
+        print(f"   경고: 빠진 날 메우기 단계에서 문제가 발생해 이 단계만 건너뜁니다: {e}")
+
+
+GAP_LOOKBACK = 5        # 오늘 이전 최근 몇 거래일까지 빈 날을 찾아 메울지
+GAP_MIN_RATIO = 0.9     # 그날 적재 종목 수가 watchlist의 이 비율 미만이면 "빠진 날"로 본다
+
+
+def fill_recent_gaps(watchlist: list[dict], today: str) -> None:
+    """cron이 하루 안 돌았거나 일부만 들어간 날을 다음 실행 때 저절로 메운다(2026-10-13, 튜즈데이
+    load_daily.py의 "최근 N거래일 중 빠진 날만" 방식을 가져옴 — 국장은 8/27 cron 미실행으로 하루가
+    영구 공백이 된 전례가 있음).
+
+    - 거래일 목록은 코스피 일별시세에 실제로 있는 날짜로 정한다(한국 휴장일 목록 하드코딩 불필요).
+    - price_history: 그날 적재 수가 watchlist의 90% 미만이면 빠진 종목만 일별시세 API로 그날 확정 종가·
+      거래량을 받아 넣는다(실시간 시세 API는 오늘 값만 줘서 과거 날짜엔 못 씀). 거래정지 한두 종목처럼
+      매일 정상적으로 빠지는 경우는 90% 문턱 아래로 안 내려가서 건드리지 않는다.
+    - market_flow: 그날 KOSPI/KOSDAQ 행이 없으면 날짜 지정으로 다시 받는다.
+    - investor_flow는 4단계가 종목마다 최근 5영업일치를 통째로 upsert하므로 이미 저절로 메워진다.
+      그 API가 5영업일치만 줘서, 5영업일 넘게 cron이 멈추면 외인 수급은 이 방법으로도 못 메운다.
+    """
+    print(f"8) 최근 {GAP_LOOKBACK}거래일 빈 날 점검...")
+    start = (date.fromisoformat(today) - timedelta(days=GAP_LOOKBACK * 2 + 10)).isoformat()
+    days = [r["날짜"] for r in core.fetch_daily_price_history("KOSPI", start, today) if r["날짜"] < today]
+    days = days[-GAP_LOOKBACK:]
+    if not days:
+        print("   거래일 목록을 못 받아 건너뜁니다.")
+        return
+
+    codes = [w["stock_code"] for w in watchlist]
+    need = int(len(codes) * GAP_MIN_RATIO)
+    gaps: dict[str, set[str]] = {}
+    for d in days:
+        have = {r["stock_code"] for r in rest_get(f"price_history?select=stock_code&trade_date=eq.{d}")}
+        if len(have) < need:
+            gaps[d] = set(codes) - have
+            print(f"   price_history {d}: {len(have)}/{len(codes)} — 메울 대상 {len(gaps[d])}종목")
+    if gaps:
+        lo = (date.fromisoformat(min(gaps)) - timedelta(days=10)).isoformat()
+        hi = max(gaps)
+        records = []
+        for code in sorted(set().union(*gaps.values())):
+            hist = core.fetch_daily_price_history(code, lo, hi)
+            for prev, cur in zip(hist, hist[1:]):
+                if cur["날짜"] in gaps and code in gaps[cur["날짜"]]:
+                    pct = (cur["종가"] - prev["종가"]) / prev["종가"] * 100 if prev["종가"] else 0.0
+                    records.append({"stock_code": code, "trade_date": cur["날짜"], "close_price": cur["종가"],
+                                    "change_pct": round(pct, 2), "volume": cur["거래량"]})
+            time.sleep(0.2)
+        if records:
+            n = upsert("price_history", records, "stock_code,trade_date", chunk_size=500)
+            print(f"   price_history 메움: {n}건")
+
+    mf_records = []
+    for d in days:
+        have = {r["market"] for r in rest_get(f"market_flow?select=market&trade_date=eq.{d}")}
+        for market in ("KOSPI", "KOSDAQ"):
+            if market in have:
+                continue
+            for r in core.fetch_market_flow(market, d):
+                mf_records.append({"market": market, "trade_date": r["날짜"], "volume": r["거래량"],
+                                   "individual_net": r["개인순매수"], "foreign_net": r["외국인순매수"],
+                                   "institution_net": r["기관순매수"]})
+    if mf_records:
+        n = upsert("market_flow", mf_records, "market,trade_date")
+        print(f"   market_flow 메움: {n}건")
+    if not gaps and not mf_records:
+        print(f"   {days[0]}~{days[-1]} 빈 날 없음")
 
 
 if __name__ == "__main__":

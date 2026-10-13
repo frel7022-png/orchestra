@@ -5,3 +5,6 @@ temporary/
 files/
 ui_cache/
 .streamlit/secrets.toml
+
+# 튜즈데이와 주고받는 우편함 — 공개 레포라 커밋 안 함(2026-10-13)
+mailbox/
