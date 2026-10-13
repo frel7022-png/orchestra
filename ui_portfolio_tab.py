@@ -1193,8 +1193,9 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 하나를 공유해야 "같은 기준일이면 흔들림이 없다"는 전제가 실제로 성립한다(사용자 지적,
     # 2026-09-11). refresh_flow_data()(모듈 최상위, §6-33 "Setting"에서도 재사용)가 실제 로직.
 
-    # ---- Basecamp (§6-35, 2026-10-13 — Volume 패널 자리): 죽죽 빠지다 평지에서 거래량이 평소보다
+    # ---- Basecamp (§6-35, 2026-10-13 — Volume 패널 자리): 꾸준히 빠지다 평지에서 거래량이 평소보다
     # 꾸준히 터지는(=누가 던지는 물량을 받아내는) 종목을 점수 순으로. 데이터·새로고침은 Foreigner/Link와 공유.
+    # 평지 구간에 외인이 받는 종목은 이름을 녹색으로(가중치 아님, 사용자 확정).
     with st.expander("Basecamp", expanded=False):
         if st.button("새로고침", key="volume_refresh", use_container_width=True):
             with st.spinner("거래량 데이터 조회 중..."):
@@ -1213,7 +1214,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 for i, r in enumerate(camps, 1):
                     parts.append(
                         f'<div class="updown-row flow-row"><span class="rank">{i}</span>'
-                        f'<span class="name">{r["종목명"]}</span>'
+                        f'<span class="name" style="color:{NEW_COLOR if r["받는손"] == "외인" else T["text"]}">{r["종목명"]}</span>'
                         f'<span class="pct" style="color:{DOWN_COLOR}">{r["하락률"]:.0f}%</span>'
                         f'<span class="detail">{r["평지일수"]}일 · ×{r["거래량배수"]:.1f} '
                         f'<span style="color:{status_color[r["상태"]]}">{r["상태"]}</span></span></div>'

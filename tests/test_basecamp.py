@@ -51,6 +51,29 @@ def test_status_uses_live_price_against_base_range():
     assert basecamp.scan(ph, fh, live_quotes={"000001": 70.0})[0]["상태"] == "이탈"
 
 
+def test_base_days_accumulate_while_price_holds_the_band():
+    c, v = _decline_then_flat(3)
+    ph, fh = _stock("000001", "매집", c, v)
+    n0 = basecamp.scan(ph, fh)[0]["평지일수"]
+    ph2, fh2 = _stock("000001", "매집", c + [75.0, 74.9, 75.2], v + [3000] * 3)   # 3일 더 버팀
+    assert basecamp.scan(ph2, fh2)[0]["평지일수"] == n0 + 3
+
+
+def test_absorber_marks_foreign_when_foreigners_net_buy_in_base():
+    c, v = _decline_then_flat(3)
+    ph, fh = _stock("000001", "매집", c, v)
+    n = len(c)
+    fh["외국인순매수"] = [0] * (n - 7) + [500] * 7
+    fh["기관순매수"] = [0] * n
+    fh["외국인보유율"] = [10.0] * (n - 7) + [10.0 + 0.1 * i for i in range(1, 8)]
+    top = basecamp.scan(ph, fh)[0]
+    assert top["받는손"] == "외인" and top["외인pp"] > 0
+    fh["외국인순매수"] = [0] * (n - 7) + [-500] * 7
+    fh["외국인보유율"] = [10.0] * n
+    fh["기관순매수"] = [0] * (n - 7) + [400] * 7
+    assert basecamp.scan(ph, fh)[0]["받는손"] == "기관"
+
+
 def test_today_row_is_excluded_from_base():
     c, v = _decline_then_flat(3)
     ph, fh = _stock("000001", "매집", c + [60.0], v + [99999])   # 오늘(장중) 폭락 행

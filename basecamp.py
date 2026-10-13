@@ -1,21 +1,21 @@
-"""Basecamp — 죽죽 빠지다 평지에서 짐(물량)을 꾸리는 종목 (2026-10-13 신설, Volume 패널 자리).
+"""Basecamp — 꾸준히 빠지다 평지에서 짐(물량)을 꾸리는 종목 (2026-10-13 신설, Volume 패널 자리).
 
-사용자 가설: 20~30%씩 꾸준히 빠지다가 바닥을 다지는데, 그 평지 구간에서 거래량이 평소의 2~3배로
-꾸준히 터진다면 누군가 던지는 물량(악재·공매도 물량 등)을 가격 안 올리고 받아내는 중 = 매집 신호.
+사용자 가설: 꾸준히 빠지다가 바닥을 다지는데, 그 평지 구간에서 거래량이 평소보다 2~3배로 꾸준히
+터진다면 누군가 던지는 물량(악재·공매도 물량 등)을 가격 안 올리고 받아내는 중 = 매집 신호.
 
-고정 기준(15일 평균, −20% 같은 문턱)으로 거르면 "거의 맞는데 하나 안 걸리는" 종목이 다 빠지므로,
-Fishing·Up/Down처럼 **점수를 매겨 비슷한 순으로 상위 N개**를 꾸린다. 평지 길이(5~12거래일)도
-종목마다 점수가 가장 잘 나오는 길이를 고른다.
+문턱으로 거르지 않고(하락률 10%든 20%든 열어둠) Fishing·Up/Down처럼 **점수 순 상위 N개**로 꾸린다.
+평지는 **누적**한다(2026-10-13 사용자 확정): 오늘 기준으로 거꾸로 세서 가격이 좁은 밴드 안에 머문
+가장 긴 구간(최소 3일)을 평지로 잡는다. 버티는 날이 늘수록 평지 일수가 1씩 쌓인다.
 
 점수 = 하락 깊이 × 평지 평탄도 × 거래량 배수(꾸준함 가중)
   - 하락 깊이: 평지 직전 구간 고점 대비 평지 평균가 하락률. 25%에서 1.0, 35%에서 상한.
-  - 평탄도: 평지 구간 종가 밴드 폭(고−저)/평균, 그리고 평지 안의 추세(선형 기울기 × 길이)가 작을수록 1에 가깝다.
-  - 거래량 배수: 평지 구간 거래량 중간값 ÷ "하락 시작 전" 거래량 중간값. 하락 중 투매 거래량이
-    기준에 섞여 평균을 부풀리지 않게, 기준은 고점 이전 구간(최대 20거래일)으로 잡는다.
-    꾸준함 = 평지 날들 중 기준의 2배 이상인 날의 비율.
+  - 평탄도: 평지 밴드 폭(고−저)/평균과 평지 안의 추세(기울기 × 길이)가 작을수록 1에 가깝다.
+  - 거래량 배수: 평지 거래량 중간값 ÷ "하락 시작 전" 거래량 중간값. 하락 중 투매 거래량이 기준을
+    부풀리지 않게 기준은 고점 이전 구간(최대 20거래일)으로 잡는다. 꾸준함 = 평지 날들 중 기준의 2배 이상인 날 비율.
 
-외인·기관(누가 받는지)은 일부러 점수에 넣지 않는다 — 아침 리포트 ①(액션)은 외인 정보 없이
-보고, ③ CFG가 "그 평지 구간 동안 외인이 실제로 늘었나"를 따로 확인한다(morning_report.py).
+누가 받는지(외인·기관)는 점수에 넣지 않고 표시만 한다(사용자 확정: 가중치 대신 다른 색). "받는손" =
+평지 구간 외인 순매수 합 > 0 이고 외인 보유율도 올랐으면 "외인", 아니면 기관 순매수 합 > 0 이면 "기관".
+아침 리포트 ①(액션)은 외인 정보를 넣지 않는 원칙이라 거기선 쓰지 않고, 앱 패널과 Basecamp 리포트에서만 색으로 쓴다.
 오늘 거래량은 장중이라 미완성이므로 평지 계산에서 빼고, 오늘 실시간 가격은 상태(돌파/다지는 중/이탈)에만 쓴다.
 """
 import math
@@ -23,10 +23,12 @@ import math
 import numpy as np
 import pandas as pd
 
-BASE_MIN, BASE_MAX = 5, 12      # 평지 길이 후보(거래일)
+BASE_MIN, BASE_MAX = 3, 30      # 평지 길이 범위(거래일) — 이 안에서 밴드를 지킨 가장 긴 구간
+BAND_MAX = 0.07                 # 평지 = 종가 (고−저)/평균이 이 안
+SLOPE_MAX = 0.05                # 평지 = 구간 추세(기울기 × 길이 / 평균)가 이 안
 PRE_MIN = 8                     # 평지 앞에 최소 이만큼의 구간이 있어야 "빠지다"를 판단
 BASELINE_MAX = 20               # 하락 전 거래량 기준 구간 최대 길이
-MIN_DROP = 0.10                 # 이보다 덜 빠진 건 후보에서 제외(점수 0)
+MIN_DROP = 0.05                 # "빠졌다"고 부를 최소 하락(이보다 덜 빠지면 그냥 횡보)
 HEAVY_MULT = 2.0                # "대량" = 기준 거래량의 2배 이상
 SPIKE_JUMP = 0.15               # 고점이 직전 대비 이만큼 1~3일 만에 튀었으면 뉴스 급등 고점으로 보고 제외
 
@@ -45,17 +47,38 @@ def _merge(price_hist: pd.DataFrame, flow_hist: pd.DataFrame) -> pd.DataFrame:
     return p.dropna(subset=["종가"]).sort_values(["종목코드", "날짜"])
 
 
-def _score_window(closes: np.ndarray, vols: np.ndarray, L: int) -> dict | None:
+def _flat(base: np.ndarray) -> tuple[float, float]:
+    m = float(base.mean())
+    band = float(base.max() - base.min()) / m
+    slope = float(np.polyfit(np.arange(len(base)), base, 1)[0]) * (len(base) - 1) / m
+    return band, slope
+
+
+def _base_length(closes: np.ndarray) -> int:
+    """오늘 기준 거꾸로 하루씩 붙여가며 세는 평지 길이(누적). 붙이려는 날이 지금까지 평지 중간값에서
+    BAND_MAX/2 넘게 벗어나거나, 붙인 뒤 밴드·기울기가 깨지면 거기서 멈춘다(하락 끝자락이 평지에 안 섞이게).
+    최소 BASE_MIN일을 못 채우면 0."""
+    L = 0
+    for n in range(BASE_MIN, min(BASE_MAX, len(closes) - PRE_MIN) + 1):
+        if n > BASE_MIN:
+            med = float(np.median(closes[-(n - 1):]))
+            if abs(closes[-n] / med - 1) > BAND_MAX / 2:
+                break
+        band, slope = _flat(closes[-n:])
+        if band > BAND_MAX or abs(slope) > SLOPE_MAX:
+            break
+        L = n
+    return L
+
+
+def _score(closes: np.ndarray, vols: np.ndarray, L: int) -> dict | None:
     base, pre = closes[-L:], closes[:-L]
-    if len(pre) < PRE_MIN:
-        return None
     peak_i = int(np.argmax(pre))
     peak = float(pre[peak_i])
-    if len(pre) - peak_i < 3:            # 고점에서 평지까지 최소 3거래일은 빠져야 "죽죽 내려온" 것
+    if len(pre) - peak_i < 3:            # 고점에서 평지까지 최소 3거래일은 빠져야 "꾸준히 내려온" 것
         return None
     # 고점이 뉴스 한 방으로 1~3일 만에 튀어 오른 꼭대기면, 그 뒤 하락은 "빠지다"가 아니라 김 빠지는 것
-    # (실측: 샘표·샘표식품 9/10~11 거래량 수백 배 급등 → 이후 되돌림이 1·2위로 잡힘). 고점 직전 10일
-    # 중간값보다 SPIKE_JUMP 넘게 높고, 3거래일 전 가격보다도 그만큼 높으면 급등 고점으로 보고 버린다.
+    # (실측: 샘표·샘표식품 9/10~11 거래량 수백 배 급등 → 이후 되돌림이 1·2위로 잡혔음).
     before = pre[max(0, peak_i - 10):peak_i]
     if len(before) >= 3:
         ref = float(np.median(before))
@@ -65,15 +88,14 @@ def _score_window(closes: np.ndarray, vols: np.ndarray, L: int) -> dict | None:
     drop = 1 - bmean / peak
     if drop < MIN_DROP:
         return None
-    band = float(base.max() - base.min()) / bmean
-    slope = float(np.polyfit(np.arange(L), base, 1)[0]) * (L - 1) / bmean
+    band, slope = _flat(base)
     bv = vols[-L:]
     bv = bv[~np.isnan(bv)]
     pre_v = vols[:-L][max(0, peak_i - BASELINE_MAX + 1): peak_i + 1]
     pre_v = pre_v[~np.isnan(pre_v)]
     if len(pre_v) < 5:                   # 고점 전 거래량이 부족하면 평지 앞 전체 구간으로 대체
         pre_v = vols[:-L][~np.isnan(vols[:-L])]
-    if len(bv) < max(3, L // 2) or len(pre_v) < 5:
+    if len(bv) < max(2, L // 2) or len(pre_v) < 5:
         return None
     baseline = float(np.median(pre_v))
     if baseline <= 0:
@@ -83,13 +105,33 @@ def _score_window(closes: np.ndarray, vols: np.ndarray, L: int) -> dict | None:
     depth_s = min(drop, 0.35) / 0.25
     flat_s = math.exp(-band / 0.08) * math.exp(-abs(slope) / 0.05)
     vol_s = math.log2(1 + ratio) * (0.5 + heavy / len(bv))
-    return {"score": depth_s * flat_s * vol_s, "L": L, "peak_i": peak_i, "peak": peak, "drop": drop,
+    return {"score": depth_s * flat_s * vol_s, "peak_i": peak_i, "peak": peak, "drop": drop,
             "band": band, "slope": slope, "ratio": ratio, "heavy": heavy, "n_vol": len(bv),
             "baseline": baseline, "base_hi": float(base.max()), "base_lo": float(base.min())}
 
 
+def _absorber(flow_hist: pd.DataFrame, code: str, start: str, end: str) -> dict:
+    """평지 구간에 누가 받았나 — 외인·기관 순매수 합(거래량 대비 %)과 외인 보유율 변화."""
+    need = {"외국인보유율", "외국인순매수", "기관순매수", "거래량"}
+    if flow_hist is None or flow_hist.empty or not need <= set(flow_hist.columns):
+        return {"받는손": "", "외인pp": None, "외인몫": None, "기관몫": None}
+    f = flow_hist[flow_hist["종목코드"].astype(str) == code].sort_values("날짜")
+    g = f[(f["날짜"] >= start) & (f["날짜"] <= end)]
+    if g.empty:
+        return {"받는손": "", "외인pp": None, "외인몫": None, "기관몫": None}
+    prev = f[f["날짜"] < start]
+    f0 = float(prev["외국인보유율"].iloc[-1]) if not prev.empty else float(g["외국인보유율"].iloc[0])
+    pp = float(g["외국인보유율"].iloc[-1]) - f0
+    vol = float(pd.to_numeric(g["거래량"], errors="coerce").sum())
+    fn = float(pd.to_numeric(g["외국인순매수"], errors="coerce").sum())
+    inn = float(pd.to_numeric(g["기관순매수"], errors="coerce").sum())
+    who = "외인" if fn > 0 and pp > 0 else ("기관" if inn > 0 else "")
+    return {"받는손": who, "외인pp": pp, "외인몫": fn / vol * 100 if vol else None,
+            "기관몫": inn / vol * 100 if vol else None}
+
+
 def scan(price_hist: pd.DataFrame, flow_hist: pd.DataFrame, live_quotes: dict | None = None,
-         today: str | None = None, top_n: int = 15) -> list[dict]:
+         today: str | None = None, top_n: int | None = 15) -> list[dict]:
     """관심종목 전체를 Basecamp 점수 순으로. 오늘(today) 행은 장중일 수 있어 평지 계산에서 뺀다."""
     if price_hist is None or price_hist.empty:
         return []
@@ -100,31 +142,30 @@ def scan(price_hist: pd.DataFrame, flow_hist: pd.DataFrame, live_quotes: dict | 
     out = []
     for code, g in df.groupby("종목코드"):
         closes, vols, dates = g["종가"].to_numpy(float), g["거래량"].to_numpy(float), g["날짜"].tolist()
-        best = None
-        for L in range(BASE_MIN, BASE_MAX + 1):
-            if len(closes) < L + PRE_MIN:
-                break
-            r = _score_window(closes, vols, L)
-            if r and (best is None or r["score"] > best["score"]):
-                best = r
-        if not best:
+        if len(closes) < BASE_MIN + PRE_MIN:
             continue
-        L = best["L"]
+        L = _base_length(closes)
+        if not L:
+            continue
+        r = _score(closes, vols, L)
+        if not r:
+            continue
         now = live_quotes.get(code) or float(closes[-1])
-        if now > best["base_hi"]:
+        if now > r["base_hi"]:
             status = "돌파"
-        elif now < best["base_lo"] * 0.97:
+        elif now < r["base_lo"] * 0.97:
             status = "이탈"
         else:
             status = "다지는 중"
         out.append({
-            "종목코드": code, "종목명": g["종목명"].iloc[-1], "score": best["score"],
-            "고점일": dates[best["peak_i"]], "고점": best["peak"], "하락률": -best["drop"] * 100,
+            "종목코드": code, "종목명": g["종목명"].iloc[-1], "score": r["score"],
+            "고점일": dates[r["peak_i"]], "고점": r["peak"], "하락률": -r["drop"] * 100,
             "평지시작": dates[-L], "평지끝": dates[-1], "평지일수": L,
-            "밴드": best["band"] * 100, "기울기": best["slope"] * 100,
-            "거래량배수": best["ratio"], "대량일수": best["heavy"], "거래량일수": best["n_vol"],
-            "기준거래량": best["baseline"], "평지고": best["base_hi"], "평지저": best["base_lo"],
-            "현재가": float(now), "고점대비": (float(now) / best["peak"] - 1) * 100, "상태": status,
+            "밴드": r["band"] * 100, "기울기": r["slope"] * 100,
+            "거래량배수": r["ratio"], "대량일수": r["heavy"], "거래량일수": r["n_vol"],
+            "기준거래량": r["baseline"], "평지고": r["base_hi"], "평지저": r["base_lo"],
+            "현재가": float(now), "고점대비": (float(now) / r["peak"] - 1) * 100, "상태": status,
+            **_absorber(flow_hist, code, dates[-L], dates[-1]),
         })
     out.sort(key=lambda x: -x["score"])
     return out[:top_n] if top_n else out
