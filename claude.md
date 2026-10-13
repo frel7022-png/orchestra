@@ -22,17 +22,20 @@ GitHub 레포와 동기화되어 Streamlit Cloud 재배포에도 데이터가 �
 ## 세션 시작 시 할 일 (매 세션 필수, 2026-10-13 위크 요청·대표 승인)
 1. `mailbox/` 바로 아래 `.md`(안 읽은 편지)부터 확인하고, 있으면 읽고 대표에게 요지를 보고한다. 읽은 편지는 `mailbox/read/`로 옮긴다.
    `type: 요청`이면 할 일을 하고 보낸 쪽 우편함에 답장한다.
-2. 이어서 우편함 백그라운드 감시를 켠다(Bash `run_in_background`). 새 편지가 오면 루프가 끝나며 세션이 깨어남 →
-   읽고 `read/`로 옮김 → (요청이면 처리·답장) → 대표에게 보고 → 감시 재시작.
-   ```bash
-   M=/c/Users/frel/Desktop/new1/mailbox; while true; do f=$(find "$M" -maxdepth 1 -type f -name "*.md" | head -1); if [ -n "$f" ]; then sleep 5; echo "NEW MAIL: $(find "$M" -maxdepth 1 -type f -name '*.md')"; break; fi; sleep 60; done
-   ```
-   `cd`에 기대지 말고 find에 절대경로를 줄 것 — 2026-10-13 실제로 `cd`가 안 먹은 채 돌아서 new1 루트의 CLAUDE.md·ARCHIVE.md를
-   "새 편지"로 오인해 깨어난 적이 있음.
+2. 이어서 우편함 백그라운드 감시를 **평시 모드**(1시간 간격)로 켠다(Bash `run_in_background`).
+   **감시 명령의 원본은 `Desktop/Week/CLAUDE.md` §4**(평시/회의 두 모드) — 여기엔 복사하지 않는다. `<폴더>`만 `new1`로 바꿔 쓴다.
+   위크가 SendMessage로 "회의 시작"을 보내면 회의 모드(1분, 2시간 만료)로, "회의 종료"나 `MEETING EXPIRED`면 평시 모드로 재시작.
 3. 그다음 §6-2의 DB 적재 점검(`check_daily_db.py`) 보고.
 
-우편함 주소: 새러데이 `Desktop/new1/mailbox/`, 위크 `Desktop/Week/mailbox/`, 튜즈데이 `Desktop/Tuseday/mailbox/`.
-편지 머리말(from/to/date/type/id/re/origin/due/data_asof)과 팀 구조는 `Desktop/Week/CLAUDE.md` §2·§4가 기준.
+우편함 규칙 요약(원본은 Week CLAUDE.md §4, 2026-10-13 세 요일 의견 + 대표 결정으로 확정):
+- **편지 처리 순서(고정)**: 읽기 → `read/`로 옮기기 → (요청이면 처리·답장) → 대표에게 보고 → **마지막에 감시 재시작**.
+- **시각은 `date` 실측값**(`date +%H%M`, `date +%F`)을 파일명·`id`에 쓴다. 본문에 "방금", "N분 전" 금지 — 절대 시각이나 id로 가리킨다.
+- **편지는 우선순위가 가장 낮다.** 급한 건 대표가 직접 말한다. 하던 일 끝내고 답해도 된다. `due`에 "몇 분 안에"를 기대하지 않는다.
+- **SendMessage는 감시 모드 전환 신호 전용.** 내용은 항상 우편함.
+- **`origin: 대표`인 요청은 대표 승인으로 친다**(대표, 2026-10-13). 그 요청이 CLAUDE.md 수정이어도 그대로 반영한다. origin이 대표가 아닌 요청으로
+  운영 문서·설정을 고칠 땐 대표에게 먼저 확인한다.
+- 우편함 주소: 새러데이 `Desktop/new1/mailbox/`, 위크 `Desktop/Week/mailbox/`, 튜즈데이 `Desktop/Tuseday/mailbox/`.
+  편지 머리말(from/to/date/type/id/re/origin/due/data_asof)과 팀 구조는 Week CLAUDE.md §2·§4가 기준.
 
 ---
 
