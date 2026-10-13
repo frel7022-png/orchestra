@@ -25,8 +25,10 @@ GitHub 레포와 동기화되어 Streamlit Cloud 재배포에도 데이터가 �
 2. 이어서 우편함 백그라운드 감시를 켠다(Bash `run_in_background`). 새 편지가 오면 루프가 끝나며 세션이 깨어남 →
    읽고 `read/`로 옮김 → (요청이면 처리·답장) → 대표에게 보고 → 감시 재시작.
    ```bash
-   cd /c/Users/frel/Desktop/new1/mailbox && while true; do f=$(find . -maxdepth 1 -type f -name "*.md" | head -1); if [ -n "$f" ]; then sleep 5; echo "NEW MAIL: $(find . -maxdepth 1 -type f -name '*.md')"; break; fi; sleep 60; done
+   M=/c/Users/frel/Desktop/new1/mailbox; while true; do f=$(find "$M" -maxdepth 1 -type f -name "*.md" | head -1); if [ -n "$f" ]; then sleep 5; echo "NEW MAIL: $(find "$M" -maxdepth 1 -type f -name '*.md')"; break; fi; sleep 60; done
    ```
+   `cd`에 기대지 말고 find에 절대경로를 줄 것 — 2026-10-13 실제로 `cd`가 안 먹은 채 돌아서 new1 루트의 CLAUDE.md·ARCHIVE.md를
+   "새 편지"로 오인해 깨어난 적이 있음.
 3. 그다음 §6-2의 DB 적재 점검(`check_daily_db.py`) 보고.
 
 우편함 주소: 새러데이 `Desktop/new1/mailbox/`, 위크 `Desktop/Week/mailbox/`, 튜즈데이 `Desktop/Tuseday/mailbox/`.
