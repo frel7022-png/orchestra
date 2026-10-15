@@ -2218,6 +2218,9 @@ manual/                           # report/와 성격이 다름 — **살아있�
   시작일 = 평지 시작).
 - **앱**: 포트폴리오 탭 Volume expander 자리를 Basecamp로 교체(새로고침 버튼 키 `volume_refresh` 그대로,
   `refresh_flow_data()` 공유). `compute_volume_flags` 등 Volume 계산 함수는 core에 남아 있음(테스트 있음, UI에선 안 씀).
-- **아침 리포트**: ① 액션에 Basecamp 섹션(점수 상위 10, 행마다 그래프).
+- **아침 리포트**: ① 액션에 Basecamp 섹션(점수 상위 10, 행마다 그래프). **④ Basecamp 리포트**(2026-10-15 신설, 사용자 요청)
+  `morning_report/basecamp/YYYY-MM-DD.html`(+ `latest_basecamp.html`) — 상위 20, 전일 대비 순위·신규/탈락(`morning_report/basecamp_rank.csv`),
+  받는손·평지 외인몫/기관몫, 종목마다 주가+거래량 막대(평지 녹색, 하락 전 기준·2배 점선). 총평은 `comments/YYYY-MM-DD_basecamp.html`.
+  외인 정보가 들어가서 ①→②→③ 다음 마지막에 읽는다. "리포트 써" 하면 4개 다 쓰고 브라우저로 자동으로 연다(사용자 지시).
 - 회귀 테스트 `tests/test_basecamp.py` 6개(대량 평지가 조용한 평지보다 위 / 급등 고점 제외 / 상태 판정 / 평지 누적 / 받는손 / 오늘 행 제외).
 - 가중치·문턱은 리포트 보면서 사용자와 조금씩 조정하기로 함(2026-10-13).
