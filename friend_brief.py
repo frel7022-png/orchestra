@@ -9,6 +9,9 @@ Watering Detect, Alarm, Pit Stop, Claude's Read, 아침 리포트)은 다루지 
     python C:/Users/frel/Desktop/new1/friend_brief.py period [N]       # 최근 N거래일(기본 5) 지수 vs 내 계좌·내 주식
     python C:/Users/frel/Desktop/new1/friend_brief.py holding 종목명   # 그 종목 보유 현황
     python C:/Users/frel/Desktop/new1/friend_brief.py month [YYYY-MM]  # 그달 실현손익
+    python C:/Users/frel/Desktop/new1/friend_brief.py holdings [N]     # 보유종목 오늘 등락률 상위·하위 N개(기본 10)
+    python C:/Users/frel/Desktop/new1/friend_brief.py holdings all     # 전체 보유 목록(섹터·수량·평단·손익·비중) — 그때그때 질문의 원자료
+    python C:/Users/frel/Desktop/new1/friend_brief.py new [날짜]       # 그날 새로 들어온 종목(기본: 가장 최근 매매일)
 
 숫자는 live_check.live_snapshot()(지수 확정 종가 + 오늘 실시간, 보유는 마지막 매매일지 반영분)을 그대로 쓴다.
 """
@@ -123,6 +126,71 @@ def holding(name):
         print(f"이번에 처음 산 날 {first['날짜']} ({float(first['단가']):,.0f}원) · 매수 {len(buys)}회")
 
 
+def _live_holdings():
+    """보유종목 + 실시간가로 다시 계산한 표(종목·섹터·수량·평단·현재가·오늘등락·손익률·평가금액·비중)."""
+    s = live_check.live_snapshot()
+    h = s["holdings"].copy()
+    h["현재가"] = s["px"].values
+    h["오늘"] = s["chg"].values
+    h["수량"] = pd.to_numeric(h["수량"])
+    h["평단가"] = pd.to_numeric(h["평단가"])
+    h["평가금액"] = h["수량"] * h["현재가"]
+    h["손익"] = (h["현재가"] - h["평단가"]) * h["수량"]
+    h["손익률"] = (h["현재가"] / h["평단가"] - 1) * 100
+    h["비중"] = h["평가금액"] / s["total"] * 100
+    return s, h
+
+
+def _row(r):
+    return (f"  {r['종목명']} 오늘 {r['오늘']:+.2f}% · 지금 {r['현재가']:,.0f}원 · "
+            f"내 손익 {r['손익률']:+.1f}% ({r['손익']:+,.0f}원)")
+
+
+def holdings(n=10):
+    s, h = _live_holdings()
+    head(s)
+    up, dn = h.sort_values("오늘", ascending=False), h.sort_values("오늘")
+    print(f"보유 {len(h)}종목 · 오늘 상승 {int((h['오늘'] > 0).sum())} · 하락 {int((h['오늘'] < 0).sum())} · 보합 {int((h['오늘'] == 0).sum())}")
+    print(f"오늘 많이 오른 {min(n, len(h))}")
+    for _, r in up.head(n).iterrows():
+        print(_row(r))
+    print(f"오늘 많이 빠진 {min(n, len(h))}")
+    for _, r in dn.head(n).iterrows():
+        print(_row(r))
+
+
+def holdings_all():
+    """전체 보유 목록 — 친구의 그때그때 질문(섹터별 종목, 제일 많이 든 종목 등)에 세션이 보고 답하는 원자료."""
+    s, h = _live_holdings()
+    head(s)
+    print(f"예수금 {s['cash']:,.0f}원 ({s['cash'] / s['total'] * 100:.1f}%) · 총자산 {s['total']:,.0f}원")
+    print("종목 | 섹터 | 수량 | 평단 | 현재가 | 오늘 | 손익률 | 평가금액 | 비중(총자산 대비)")
+    for _, r in h.sort_values("평가금액", ascending=False).iterrows():
+        print(f"{r['종목명']} | {r['섹터']} | {r['수량']:g} | {r['평단가']:,.0f} | {r['현재가']:,.0f} | "
+              f"{r['오늘']:+.2f}% | {r['손익률']:+.1f}% | {r['평가금액']:,.0f} | {r['비중']:.1f}%")
+
+
+def new_entries(day=None):
+    """그날 새로 들어온 종목 — 전날 종가 기준 보유 0주였다가 그날 산 것(예전에 팔았다가 다시 산 것 포함). 앱 Holdings 초록 표시와 같은 정의."""
+    tx = core.load_transactions()
+    tx = tx[tx["구분"].isin(["매수", "매도"])].copy()
+    trade_days = sorted(tx["날짜"].unique())
+    day = day or trade_days[-1]
+    tx["수량"] = pd.to_numeric(tx["수량"], errors="coerce").fillna(0)
+    prior = tx[tx["날짜"] < day]
+    net = prior["수량"].where(prior["구분"] == "매수", -prior["수량"]).groupby(prior["종목명"]).sum()
+    held_before = set(net[net > 1e-6].index)
+    buys = tx[(tx["날짜"] == day) & (tx["구분"] == "매수")]
+    new = [n for n in dict.fromkeys(buys["종목명"]) if n not in held_before]
+    print(f"[{day}] 새로 들어온 종목 {len(new)}개 (매매일지 반영분 기준, 마지막 반영일 {trade_days[-1]})")
+    for n in new:
+        g = buys[buys["종목명"] == n]
+        q = float(g["수량"].sum())
+        amt = float((g["수량"] * g["단가"].astype(float)).sum())
+        again = " · 예전에 팔았다가 다시 산 것" if (prior["종목명"] == n).any() else " · 처음 산 것"
+        print(f"  {n} {q:g}주 ({amt:,.0f}원){again}")
+
+
 def month(ym=None):
     tx = core.load_transactions()
     sells = tx[tx["구분"] == "매도"].copy()
@@ -144,6 +212,13 @@ def main():
         period(int(a[1]) if len(a) > 1 else 5)
     elif a[0] == "holding" and len(a) > 1:
         holding(" ".join(a[1:]))
+    elif a[0] == "holdings":
+        if len(a) > 1 and a[1] == "all":
+            holdings_all()
+        else:
+            holdings(int(a[1]) if len(a) > 1 else 10)
+    elif a[0] == "new":
+        new_entries(a[1] if len(a) > 1 else None)
     elif a[0] == "month":
         month(a[1] if len(a) > 1 else None)
     else:
