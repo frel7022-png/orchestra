@@ -73,6 +73,7 @@ def brief():
     print(f"총매입  {cost:,.0f}원")
     print(f"총평가  {val:,.0f}원")
     print(f"총자산  {s['total']:,.0f}원")
+    print(f"어제 대비  {c(s['acct_won'], won=True)} ({c(s['acct'][1] * 100)})")
     print(f"오늘 실현손익  {c(realized, won=True) if realized else '0원'}")
     print(f"보유  {s['n']}종목")
     print()
