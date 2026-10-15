@@ -22,7 +22,7 @@ from portfolio_core import (
     refresh_all_prices, fetch_index_quotes, refresh_dividend_yields, refresh_market_cache,
     compute_metrics, compute_sector_weights,
     compute_index_vs_account, load_index_history, load_history, append_capture_anomalies,
-    write_account_snapshot, resolve_trading_date,
+    write_account_snapshot, resolve_trading_date, market_traded_on, today_kst_str,
 )
 from ui_portfolio_tab import render_portfolio_tab, refresh_updown_data, refresh_fishing_data, refresh_flow_data
 from ui_transactions_tab import render_transactions_tab
@@ -454,31 +454,35 @@ if refresh_clicked_top or auto_refresh_triggered or settings_clicked:
         refresh_market_cache(holdings)  # 종목명→KOSPI/KOSDAQ, 캐시 미스만 (§6-17 지수 대비 계좌)
         st.session_state["index_quotes"] = fetch_index_quotes()
         df_top, stock_val_top, total_assets_top, unreal_top = compute_metrics(holdings, state["cash"])
-        snapshot_history(total_assets_top, total_assets_top + unreal_top)
-        snapshot_sector_history(compute_sector_weights(df_top))
-        iq = st.session_state["index_quotes"]
-        if iq.get("KOSPI") and iq.get("KOSDAQ"):
-            snapshot_index_history(iq["KOSPI"].get("price"), iq["KOSDAQ"].get("price"))
-        snapshot_bigcap_history(fetch_bigcap_quotes())  # 삼성전자/삼성전자우/SK하이닉스 종가 (§6-19 SamHynix extracted)
-        # §6-17: even일(시장이 ±0.1% 안에서만 움직인 날) → report/capture_anomalies.csv에 누적 기록
-        # (분기 단위 수동 검토용). 새로고침 때만, 매 렌더링 아님. 코스피 단독 기준으로 충분(무변동 판정).
-        try:
-            _iva_a = compute_index_vs_account(tx, load_history(), load_index_history(), state["initial"],
-                                              state.get("fee_rate", 0.0))
-            append_capture_anomalies(_iva_a.get("even_anomalies", []))
-            # §6-21 런타임 채널: 이 앱(orchestra)의 라이브 계좌 상태를 Supabase에 upsert →
-            # meritz VIP 패널이 both_accounts.csv 커밋 지연 없이 최신 Orchestra 값을 읽는다.
-            _me_a = _iva_a.get("me")
-            if _me_a is not None and not _me_a.empty:
-                _acc = pd.to_numeric(_me_a["계좌수익"], errors="coerce")
-                _r0 = float(_acc.iloc[0]) if pd.notna(_acc.iloc[0]) else 0.0
-                _cum = (1.0 + float(_acc.iloc[-1])) / (1.0 + _r0) - 1.0
-                _day = float(_me_a["계좌당일"].iloc[-1]) if "계좌당일" in _me_a else None
-                _sb = st.secrets.get("supabase", {})
-                write_account_snapshot("orchestra", _cum, _day, total_assets_top,
-                                       resolve_trading_date(), _sb.get("url", ""), _sb.get("anon_key", ""))
-        except Exception:
-            pass
+        # 오늘 장이 안 열렸으면(주말·공휴일·개장 전) 히스토리 스냅샷을 아예 안 찍는다(2026-10-15 대표 승인).
+        # resolve_trading_date()는 공휴일을 못 걸러서, 평일 공휴일에 새로고침하면 그 휴일 날짜로 행이 생겨
+        # Account:Index·DC/UC가 그날을 "시장 0% even일"로 셌다. 판정 실패(None)면 예전처럼 찍는다.
+        if market_traded_on(today_kst_str()) is not False:
+            snapshot_history(total_assets_top, total_assets_top + unreal_top)
+            snapshot_sector_history(compute_sector_weights(df_top))
+            iq = st.session_state["index_quotes"]
+            if iq.get("KOSPI") and iq.get("KOSDAQ"):
+                snapshot_index_history(iq["KOSPI"].get("price"), iq["KOSDAQ"].get("price"))
+            snapshot_bigcap_history(fetch_bigcap_quotes())  # 삼성전자/삼성전자우/SK하이닉스 종가 (§6-19 SamHynix extracted)
+            # §6-17: even일(시장이 ±0.1% 안에서만 움직인 날) → report/capture_anomalies.csv에 누적 기록
+            # (분기 단위 수동 검토용). 새로고침 때만, 매 렌더링 아님. 코스피 단독 기준으로 충분(무변동 판정).
+            try:
+                _iva_a = compute_index_vs_account(tx, load_history(), load_index_history(), state["initial"],
+                                                  state.get("fee_rate", 0.0))
+                append_capture_anomalies(_iva_a.get("even_anomalies", []))
+                # §6-21 런타임 채널: 이 앱(orchestra)의 라이브 계좌 상태를 Supabase에 upsert →
+                # meritz VIP 패널이 both_accounts.csv 커밋 지연 없이 최신 Orchestra 값을 읽는다.
+                _me_a = _iva_a.get("me")
+                if _me_a is not None and not _me_a.empty:
+                    _acc = pd.to_numeric(_me_a["계좌수익"], errors="coerce")
+                    _r0 = float(_acc.iloc[0]) if pd.notna(_acc.iloc[0]) else 0.0
+                    _cum = (1.0 + float(_acc.iloc[-1])) / (1.0 + _r0) - 1.0
+                    _day = float(_me_a["계좌당일"].iloc[-1]) if "계좌당일" in _me_a else None
+                    _sb = st.secrets.get("supabase", {})
+                    write_account_snapshot("orchestra", _cum, _day, total_assets_top,
+                                           resolve_trading_date(), _sb.get("url", ""), _sb.get("anon_key", ""))
+            except Exception:
+                pass
     if settings_clicked:
         # §6-33: 시세 새로고침 다음으로 Up/Down·Fishing·Volume/Foreigner(+Link) 새로고침까지
         # 이어서 실행 — Quiet Hands/Bench는 이 셋의 session_state를 그대로 재사용하므로

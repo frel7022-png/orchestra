@@ -664,6 +664,11 @@ manual/                           # report/와 성격이 다름 — **살아있�
   `main()` 맨 앞에서 False면 아무것도 적재하지 않고 종료, 조회 실패(None)면 거래일로 보고 그대로
   진행(investor_flow는 5영업일 지나면 못 메우니 실제 거래일을 놓치는 쪽이 더 나쁨). 휴장일 목록을
   하드코딩하지 않아도 되는 방식. 회귀 테스트 `test_market_traded_on_*` 3개.
+- **앱 새로고침도 휴장일엔 스냅샷 안 찍음 (2026-10-15 대표 승인)**: `app.py` 시세 새로고침 핸들러가
+  `market_traded_on(today_kst_str()) is False`(주말·공휴일·평일 09:00 전)면 asset/sector/index/bigcap 스냅샷·capture 로그·
+  account_snapshot을 전부 건너뛴다. 평일 공휴일에 새로고침하면 그 휴일 날짜로 행이 생겨 Account:Index·DC/UC가 "0% even일"로
+  세던 문제. `resolve_trading_date()` 자체엔 네트워크 호출을 안 넣음(영향 범위 최소). 판정 실패(None)면 예전처럼 찍는다.
+  같은 날 live_check·friend_brief도 휴장일엔 마지막 거래일 확정 종가로 "오늘"을 잡고 첫 줄에 "휴장 · 마지막 거래일 MM-DD 종가 기준"을 밝힌다.
 - **빠진 날 자동 메우기 (2026-10-13, 튜즈데이 `load_daily.py` 방식 차용)**: `db_fetch_daily_prices.py`
   마지막 단계 `fill_recent_gaps()` — 오늘 이전 최근 5거래일(코스피 일별시세에 실제로 있는 날짜)마다
   price_history 적재 수를 세서 watchlist의 90% 미만이면 빠진 종목만 `fetch_daily_price_history`로 그날
