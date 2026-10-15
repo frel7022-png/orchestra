@@ -16,13 +16,17 @@ import portfolio_core as core
 
 
 def main():
+    print_trades(sys.argv[1] if len(sys.argv) > 1 else None)
+
+
+def print_trades(day=None):
     tx = core.load_transactions()
     tx = tx[tx["구분"].isin(["매수", "매도", "입금", "출금"])]
     if tx.empty:
         print("거래 기록 없음")
         return
     trade_days = sorted(tx[tx["구분"].isin(["매수", "매도"])]["날짜"].unique())
-    day = sys.argv[1] if len(sys.argv) > 1 else trade_days[-1]
+    day = day or trade_days[-1]
     t = tx[tx["날짜"] == day]
     print(f"[{day}] new1 거래 · 매매일지 반영분 기준 (마지막 반영일 {trade_days[-1]})")
     if t.empty:

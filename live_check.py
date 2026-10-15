@@ -96,6 +96,7 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
         "stock": (stock_cum, float(val.sum()) / float(prev.sum()) - 1),
         "total": tot, "initial": st["initial"], "cash": cash, "eval_pl": float(val.sum() - cost.sum()),
         "n": len(h), "n_up": int((chg > 0).sum()), "n_down": int((chg < 0).sum()), "n_flat": int((chg == 0).sum()),
+        "idx": idx, "bigdf": bigdf, "me": me, "today": today, "holdings": h, "px": px, "chg": chg,
         "worst": [(r.종목명, r.등락) for r in t.head(6).itertuples()],
         "best": [(r.종목명, r.등락) for r in t.tail(4)[::-1].itertuples()],
     }
