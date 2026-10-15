@@ -35,16 +35,11 @@ def head(s):
     print(f"[Orchestra] {s['asof']} 기준 · 보유는 매매일지 {s['holdings_asof']} 반영분")
 
 
-UP, DN = "🔴", "🔵"   # 빨강·파랑 동그라미 — 텔레그램은 글자색이 없어서 앱의 상승 빨강/하락 파랑을 이걸로 대신
-
-
 def c(v, unit="%", d=2, won=False):
-    """부호 있는 숫자 + 색 표시(앱 관례: + 빨강 / − 파랑). v는 이미 % 또는 원 단위."""
+    """부호 있는 숫자. v는 이미 % 또는 원 단위."""
     if v is None or pd.isna(v):
         return "-"
-    mark = UP if v > 0 else (DN if v < 0 else "")
-    body = f"{v:+,.0f}원" if won else f"{v:+.{d}f}{unit}"
-    return f"{mark} {body}" if mark else body
+    return f"{v:+,.0f}원" if won else f"{v:+.{d}f}{unit}"
 
 
 def brief():
@@ -53,21 +48,21 @@ def brief():
     qty = pd.to_numeric(h["수량"])
     cost = float((qty * pd.to_numeric(h["평단가"])).sum())
     val = float((qty * px).sum())
-    now_px = dict(zip(h["종목명"], px))
     anchor_kospi = float(s["idx"]["KOSPI"].iloc[0])
     orch = anchor_kospi * (1 + s["stock"][0]) if s["stock"][0] is not None else None
     tx = core.load_transactions()
     t = tx[tx["날짜"] == s["today"]]
+    sells_all = pd.to_numeric(tx.loc[tx["구분"] == "매도", "실현손익"], errors="coerce")
     realized = pd.to_numeric(t.loc[t["구분"] == "매도", "실현손익"], errors="coerce").sum()
     live = "장중" if s["asof"][11:16] < "15:30" else "장 마감 후"
 
     print(f"Orchestra · {s['asof'][5:]} {live}")
     print(f"(보유는 매매일지 {s['holdings_asof']} 반영분)")
     print()
-    print("보유종목 평가손익")
-    print(f"{c(s['eval_pl'], won=True)} ({s['eval_pl'] / cost * 100:+.2f}%)")
+    print(f"보유종목 평가손익 {s['eval_pl']:+,.0f}원({s['eval_pl'] / cost * 100:+.2f}%)")
+    print(f"누적 실현손익 {sells_all.sum():+,.0f}원")
     if orch:
-        print(f"Orchestra 지수 {orch:,.0f}  {c(s['stock'][1] * 100)}")
+        print(f"Orchestra 지수 {orch:,.0f} ({c(s['stock'][1] * 100)})")
     print()
     print(f"예수금  {s['cash']:,.0f}원 ({s['cash'] / s['total'] * 100:.1f}%)")
     print(f"총매입  {cost:,.0f}원")
@@ -92,42 +87,24 @@ def brief():
     net = prior["수량"].where(prior["구분"] == "매수", -prior["수량"]).groupby(prior["종목명"]).sum()
     held_before = set(net[net > 1e-6].index)
     ever = set(prior["종목명"])
-    held_now = set(h["종목명"])
 
     for kind in ("매수", "매도"):
         g = t[t["구분"] == kind].copy()
         g["q"] = g["수량"].astype(float)
         g["amt"] = g["q"] * g["단가"].astype(float)
         g["rp"] = pd.to_numeric(g["실현손익"], errors="coerce").fillna(0)
-        by = (g.groupby("종목명", sort=False).agg(q=("q", "sum"), amt=("amt", "sum"), rp=("rp", "sum"), n=("q", "size"))
+        by = (g.groupby("종목명", sort=False).agg(q=("q", "sum"), amt=("amt", "sum"), rp=("rp", "sum"))
               .sort_values("amt", ascending=False))
-        head_line = f"{kind} {len(g)}회 · {g['amt'].sum():,.0f}원"
+        line = f"{kind} {len(g)}회 · {g['amt'].sum():,.0f}원"
         if kind == "매도" and len(g):
-            head_line += f" · 실현 {c(g['rp'].sum(), won=True)}"
-        print(head_line)
-        # 폰에서 읽기 쉽게 종목 10개 넘으면 금액 큰 순 10개 + 외 N개 (전체는 trades 명령)
-        for name, r in by.head(10).iterrows():
-            unit = r["amt"] / r["q"]
-            print(f"{name}  {r['q']:g}주 · {r['amt']:,.0f}원")
+            line += f" · 실현 {c(g['rp'].sum(), won=True)}"
+        print(line)
+        for name, r in by.iterrows():
             if kind == "매수":
-                cur = now_px.get(name)
-                vs_now = (cur / unit - 1) * 100 if cur else None
-                if name in held_before:
-                    pts = core.get_holding_trade_points(tx, name)
-                    b = pts[pts["구분"] == "매수"]
-                    first = float(b.iloc[0]["단가"]) if not b.empty else None
-                    vs_first = (unit / first - 1) * 100 if first else None
-                    print(f"  물타기 · 최초 진입가 대비 {c(vs_first, d=1)} · 현재가 {c(vs_now, d=1)}")
-                elif name in ever:
-                    print(f"  재진입 · 현재가 {c(vs_now, d=1)}")
-                else:
-                    print(f"  신규진입 · 현재가 {c(vs_now, d=1)}")
+                tag = "물" if name in held_before else ("재" if name in ever else "신")
+                print(f"{name}({tag}) {r['q']:g}주 · {r['amt']:,.0f}원")
             else:
-                base = r["amt"] - r["rp"]
-                kind2 = "부분매도" if name in held_now else "전량매도"
-                print(f"  {kind2} · 실현 {c(r['rp'], won=True)} ({c(r['rp'] / base * 100 if base else None, d=1)})")
-        if len(by) > 10:
-            print(f"외 {len(by) - 10}개 (전체는 trades)")
+                print(f"{name} {r['q']:g}주 · {r['amt']:,.0f}원 · 실현 {c(r['rp'], won=True)}")
         print()
 
 
