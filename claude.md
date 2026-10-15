@@ -179,6 +179,8 @@ live_check.py                  # 지금 이 순간 시장·계좌 상태 출력(
                                #   "오늘" 숫자로 쓰면 틀림 — 이 스크립트는 지수·대형주를 네이버 일별시세 확정 종가로 다시 받고
                                #   오늘만 실시간으로 덮어씀. 보유 수량·예수금은 마지막 매매일지 반영분 기준. morning_report.py 액션
                                #   리포트 맨 위 "계좌 vs 혼합지수" 칸도 live_snapshot()을 그대로 씀(같은 계산 한 곳).
+tg_trades.py                   # 그날 new1 거래만 출력(읽기 전용, 2026-10-15 신설) — 텔레그램 허브 친구 창구(Desktop/new1_friend)가
+                               #   절대경로로 실행. 다른 계좌 데이터는 읽지도 찍지도 않는다. live_check.py·daily_stats.py와 함께 친구 창구 허용 스크립트.
 db_fetch_daily_prices.py       # watchlist 종목 전체 시세/거래량/수급을 매일 Supabase에 적재하는 cron 스크립트 (§6-9, §6-12 참고).
 backfill_watchlist_from_holdings.py  # watchlist 밖의 보유종목을 찾아 자동 편입+시세 백필 (§6-16, 2026-09-01 신설).
 backfill_bigcap_history.py           # 삼성전자/삼성전자우/SK하이닉스 일별 종가 백필 — SamHynix extracted용 (§6-19, 2026-09-04 신설).
