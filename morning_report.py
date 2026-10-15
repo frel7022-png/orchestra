@@ -6,6 +6,9 @@
   ② 외인 샘플 리포트 link_sample/ (daily_link_report.py — 같은 데이터로 같이 돌린다)
   ③ CFG 리포트     morning_report/cfg/YYYY-MM-DD.html (+ latest_cfg.html)
      ①의 후보 중, 그 하락 구간 동안 외국인이 실제로 모은 종목만. 드문 게 정상.
+  ④ Basecamp 리포트 morning_report/basecamp/YYYY-MM-DD.html (+ latest_basecamp.html, 2026-10-15 신설)
+     ①의 Basecamp 칸을 상위 20개로 넓히고, 전일 대비 순위·신규/탈락, 거래량 막대, 받는손(외인/기관)까지.
+     외인 정보가 들어가므로 ①→②→③ 다음 마지막에 읽는다.
 
 읽는 순서는 ①→②→③(사용자 지시 — 먼저 스스로 판단한 뒤 세션 결론을 본다). 그래서 ①에는
 외인 정보를 넣지 않는다(②의 결론이 ①로 새지 않게). 리포트는 그날 팩트만 쓴다.
@@ -26,6 +29,7 @@ import portfolio_core as core
 HERE = Path(__file__).parent
 OUT = HERE / "morning_report"
 TOP = 10
+BC_TOP = 20   # ④ Basecamp 리포트 명단 길이
 FAST_SHARE = 0.5   # 총 하락의 절반 이상이 최근 3거래일에 났으면 "급락"
 esc = html.escape
 
@@ -90,6 +94,29 @@ def svg_line(pts, refs=(), marks=(), pct_base=None):
     return "".join(out)
 
 
+def svg_vol(vols, baseline, base_start):
+    """거래량 막대. vols=[(날짜, 거래량)], 평지 구간(base_start 이후)은 녹색, 하락 전 기준선·2배선 점선."""
+    vols = [(d, v) for d, v in vols if v == v]
+    if len(vols) < 2 or not baseline:
+        return ""
+    W, H, L, R, T, B = 340, 80, 40, 54, 6, 8
+    iw, ih = W - L - R, H - T - B
+    # 하루 튄 날이 스케일을 먹지 않게 상한 = 기준의 3배(평지가 더 크면 평지 최대), 넘는 막대는 위가 잘린다
+    hi = max(baseline * 3, max((v for d, v in vols if d >= base_start), default=0)) * 1.1
+    bw = iw / len(vols)
+    sy = lambda v: T + ih * (1 - min(v, hi) / hi)
+    out = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="거래량">']
+    for i, (d, v) in enumerate(vols):
+        cls = "vb on" if d >= base_start else "vb"
+        out.append(f'<rect class="{cls}" x="{L + i * bw + bw * 0.15:.1f}" y="{sy(v):.1f}" '
+                   f'width="{bw * 0.7:.1f}" height="{T + ih - sy(v):.1f}"/>')
+    for lab, v, cls in (("기준", baseline, "first"), ("×2", baseline * 2, "last")):
+        out.append(f'<line class="ref {cls}" x1="{L}" x2="{W - R}" y1="{sy(v):.1f}" y2="{sy(v):.1f}"/>'
+                   f'<text class="ax {cls}" x="{W - R + 3}" y="{sy(v) + 3:.1f}">{lab}</text>')
+    out.append(f'<text class="ax" x="{L - 4}" y="{T + 8}" text-anchor="end">거래량</text></svg>')
+    return "".join(out)
+
+
 def card(title, meta, chart, extra=""):
     return (f'<div class="card"><div class="ch">{title}<span class="meta">{meta}</span></div>'
             f'{chart}{extra}</div>')
@@ -128,6 +155,7 @@ svg{width:100%;height:auto;display:block} .pl{fill:none;stroke:var(--dn);stroke-
 .kpi .k{font-size:11.5px;color:var(--soft)} .kpi .v{font-size:1.2rem;font-weight:600;font-variant-numeric:tabular-nums}
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:6px} @media(max-width:560px){.pair{grid-template-columns:1fr}}
 .alarm li{margin:4px 0;font-size:13.5px}
+.vb{fill:var(--rule)} .vb.on{fill:var(--fl)} .who{font-size:11px;font-weight:700;margin-left:5px} .who.f{color:var(--fl)} .who.i{color:var(--warn)}
 """
 
 
@@ -270,11 +298,35 @@ def build(data, link_res):
     res["fishing_n"] = len(fish)
 
     # D2. Basecamp — 죽죽 빠지다 평지에서 거래량이 평소보다 꾸준히 터지는 종목(basecamp.py, 점수 순)
-    camps = basecamp.scan(ph, fh, live, today=today, top_n=TOP)
-    for x in camps:
+    camps = basecamp.scan(ph, fh, live, today=today, top_n=None)
+    for x in camps[:BC_TOP]:
         i0 = trade_days.index(x["고점일"]) if x["고점일"] in trade_days else 0
-        x["pts"] = series_from(ph, x["종목코드"], trade_days[max(0, i0 - 10)], live.get(x["종목코드"]), today)
-    res["basecamp"] = camps
+        start = trade_days[max(0, i0 - 10)]
+        x["pts"] = series_from(ph, x["종목코드"], start, live.get(x["종목코드"]), today)
+        g = fh[(fh["종목코드"] == x["종목코드"]) & (fh["날짜"] >= start) & (fh["날짜"] < today)].sort_values("날짜")
+        x["vols"] = list(zip(g["날짜"], pd.to_numeric(g["거래량"], errors="coerce").astype(float)))
+    res["basecamp"] = camps[:TOP]
+    # ④용 — 전일 순위(basecamp_rank.csv)와 비교해 순위 변동·신규·탈락
+    bpath = OUT / "basecamp_rank.csv"
+    bh = (pd.read_csv(bpath, dtype={"코드": str}) if bpath.exists()
+          else pd.DataFrame(columns=["날짜", "코드", "종목명", "순위", "상태"]))
+    bprev_d = sorted(d for d in bh["날짜"].unique() if d < today)
+    bprev = bh[bh["날짜"] == bprev_d[-1]] if bprev_d else bh.iloc[0:0]
+    prev_rank = dict(zip(bprev["코드"], bprev["순위"]))
+    all_rank = {x["종목코드"]: i for i, x in enumerate(camps, 1)}
+    by_code = {x["종목코드"]: x for x in camps}
+    full = camps[:BC_TOP]
+    for i, x in enumerate(full, 1):
+        x["순위"], x["이전"] = i, prev_rank.get(x["종목코드"])
+    top_codes = {x["종목코드"] for x in full}
+    res["bc_dropped"] = [{"종목명": r["종목명"], "이전": int(r["순위"]), "지금": all_rank.get(r["코드"]),
+                          "상태": by_code[r["코드"]]["상태"] if r["코드"] in by_code else "평지 아님"}
+                         for _, r in bprev.sort_values("순위").iterrows() if r["코드"] not in top_codes]
+    bh = pd.concat([bh[bh["날짜"] != today],
+                    pd.DataFrame([{"날짜": today, "코드": x["종목코드"], "종목명": x["종목명"],
+                                   "순위": x["순위"], "상태": x["상태"]} for x in full])], ignore_index=True)
+    bh.to_csv(bpath, index=False, encoding="utf-8-sig")
+    res["bc_full"], res["bc_n"], res["bc_prev"] = full, len(camps), (bprev_d[-1] if bprev_d else None)
 
     # E. Today's Alarm — 앱과 같은 함수, 입력만 리포트 데이터로 구성
     fp = pd.DataFrame([{"종목명": f["종목명"], "최초가": f["기준가"], "최근가": f["현재가"],
@@ -514,12 +566,93 @@ def write_cfg(res, data):
     (OUT / "latest_cfg.html").write_text(html_, encoding="utf-8")
 
 
+def write_basecamp(res, n_names, m_names):
+    """④ Basecamp 리포트 — 상위 BC_TOP, 전일 대비 순위·신규/탈락, 가격+거래량 그래프, 받는손."""
+    today = res["today"]
+    own = lambda n: " ".join(t for t, ok in (("N", n in n_names), ("M", n in m_names)) if ok)
+    st_cls = {"돌파": "", "다지는 중": "base", "이탈": "down"}
+
+    def delta(x):
+        if res["bc_prev"] is None:
+            return ""
+        if x["이전"] is None or pd.isna(x["이전"]):
+            return '<span class="new">NEW</span>'
+        d = int(x["이전"]) - x["순위"]
+        if d > 0:
+            return f'<span class="up">▲{d}</span>'
+        return f'<span class="dn">▼{-d}</span>' if d < 0 else '<span class="mut">-</span>'
+
+    def who(x):
+        if x.get("받는손") == "외인":
+            return '<span class="who f">외인</span>'
+        if x.get("받는손") == "기관":
+            return '<span class="who i">기관</span>'
+        return ""
+
+    def share(v):
+        return "-" if v is None or pd.isna(v) else f"{v:+.1f}%"
+
+    full = res["bc_full"]
+    cnt = {k: sum(1 for x in full if x["상태"] == k) for k in ("돌파", "다지는 중", "이탈")}
+    rows, cards = [], []
+    for x in full:
+        rows.append(f'<tr><td class="rk">{x["순위"]}</td><td>{delta(x)}</td>'
+                    f'<td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span>{who(x)}</td>'
+                    f'<td>{x["score"]:.2f}</td><td>{x["고점일"][5:]}</td><td>{sign(x["하락률"])}</td>'
+                    f'<td>{x["평지시작"][5:]} · {x["평지일수"]}일</td><td>{x["밴드"]:.1f}%</td><td>×{x["거래량배수"]:.1f}</td>'
+                    f'<td>{x["대량일수"]}/{x["거래량일수"]}일</td><td>{sign(x["외인pp"], 2, "%p")}</td>'
+                    f'<td>{share(x["외인몫"])}</td><td>{share(x["기관몫"])}</td><td>{sign(x["고점대비"])}</td>'
+                    f'<td class="l"><span class="bd st {st_cls[x["상태"]]}">{x["상태"]}</span></td></tr>')
+        cards.append(card(f'{x["순위"]}. {esc(x["종목명"])}{who(x)}',
+                          f'고점 {x["고점일"][5:]} {x["고점"]:,.0f} → 평지 {x["평지시작"][5:]}부터 {x["평지일수"]}일 '
+                          f'({x["평지저"]:,.0f}~{x["평지고"]:,.0f}) · 거래량 ×{x["거래량배수"]:.1f}, '
+                          f'2배↑ {x["대량일수"]}/{x["거래량일수"]}일 · 평지 외인 {share(x["외인몫"])} · '
+                          f'기관 {share(x["기관몫"])} · 지금 {x["현재가"]:,.0f} {x["상태"]}',
+                          svg_line(x["pts"], refs=[("고점", x["고점"], "first"), ("평지고", x["평지고"], "avg"),
+                                                   ("평지저", x["평지저"], "last")]),
+                          svg_vol(x.get("vols", []), x["기준거래량"], x["평지시작"])))
+    drop = "".join(f'<li><b>{esc(d["종목명"])}</b> {d["이전"]}위 → '
+                   f'{str(d["지금"]) + "위" if d["지금"] else "명단 밖"} · {d["상태"]}</li>' for d in res["bc_dropped"])
+    prev_txt = f'전일 리포트 {res["bc_prev"]} 대비' if res["bc_prev"] else "첫 리포트라 순위 변동 없음"
+    none_li = '<li class="mut">없음</li>'
+    body = f"""
+<div class="kpi"><div><div class="k">평지 잡힌 종목</div><div class="v">{res["bc_n"]}</div></div>
+<div><div class="k">상위 {BC_TOP} 중 돌파</div><div class="v">{cnt["돌파"]}</div></div>
+<div><div class="k">다지는 중</div><div class="v">{cnt["다지는 중"]}</div></div>
+<div><div class="k">이탈</div><div class="v">{cnt["이탈"]}</div></div></div>
+
+<h2>점수 상위 {BC_TOP} ({prev_txt})</h2>
+<p class="legend">점수 = 하락 깊이 × 평지 평탄도 × 거래량 배수 · 받는손: <span class="who f">외인</span> 평지 구간 외인 순매수 합&gt;0이고 보유율도 오름 / <span class="who i">기관</span> 기관 순매수 합&gt;0 · 외인몫·기관몫 = 평지 구간 순매수 합 ÷ 거래량 합 · 상태: 돌파(평지 고가 위) / 다지는 중 / 이탈(평지 저가 −3% 아래)</p>
+<div class="scroll"><table><thead><tr><th>#</th><th></th><th class="l">종목</th><th>점수</th><th>고점</th><th>평지까지 하락</th><th>평지</th><th>밴드</th>
+<th>거래량</th><th>2배↑</th><th>평지 외인</th><th>외인몫</th><th>기관몫</th><th>지금(고점 대비)</th><th class="l">상태</th></tr></thead>
+<tbody>{"".join(rows)}</tbody></table></div>
+
+<h2>명단에서 빠진 종목</h2>
+<ul class="alarm">{drop or none_li}</ul>
+
+<h2>그래프</h2>
+<p class="legend">위: 주가 (점선 회색 고점 · 녹색 평지 고가 · 주황 평지 저가) · 아래: 거래량 (녹색 = 평지 구간, 점선 = 하락 전 기준·2배)</p>
+<div class="grid2">{"".join(cards)}</div>
+
+<h2>총평</h2>
+<div class="cm">{comment(f"{today}_basecamp.html")}</div>
+<p class="note">N = new1 보유 · M = meritz 보유. 오늘 거래량은 장중이라 평지 계산과 그래프에서 뺐고, 오늘 실시간 가격은 상태 판정에만 썼어.</p>
+"""
+    html_ = page("Overture · Basecamp", f"{today} · 주가 {res['asof']} 기준 · ④ Basecamp 리포트", body)
+    (OUT / "basecamp").mkdir(parents=True, exist_ok=True)
+    (OUT / "basecamp" / f"{today}.html").write_text(html_, encoding="utf-8")
+    (OUT / "latest_basecamp.html").write_text(html_, encoding="utf-8")
+
+
 def main():
     data = link.load_data()
     link_res = link.main(data)
     res = build(data, link_res)
     write_action(res, data["ph"])
     write_cfg(res, data)
+    mp = HERE.parent / "meritz" / "portfolio_data.csv"
+    m_names = set(pd.read_csv(mp)["종목명"]) if mp.exists() else set()
+    write_basecamp(res, set(core.load_holdings()["종목명"]), m_names)
     # CFG에 오른 종목 기록(보조 자료 — 안 산 CFG 종목이 나중에 어떻게 됐는지도 보려고).
     log = OUT / "cfg_log.csv"
     old = pd.read_csv(log, dtype={"코드": str}) if log.exists() else pd.DataFrame()
