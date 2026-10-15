@@ -12,6 +12,10 @@ Watering Detect, Alarm, Pit Stop, Claude's Read, 아침 리포트)은 다루지 
     python C:/Users/frel/Desktop/new1/friend_brief.py holdings [N]     # 보유종목 오늘 등락률 상위·하위 N개(기본 10)
     python C:/Users/frel/Desktop/new1/friend_brief.py holdings all     # 전체 보유 목록(섹터·수량·평단·손익·비중) — 그때그때 질문의 원자료
     python C:/Users/frel/Desktop/new1/friend_brief.py new [날짜]       # 그날 새로 들어온 종목(기본: 가장 최근 매매일)
+    python C:/Users/frel/Desktop/new1/friend_brief.py stats            # 누적 매수·매도 건수·금액, 이익/손실 건수, 사이클 수
+    python C:/Users/frel/Desktop/new1/friend_brief.py history 종목명   # 그 종목 매수·매도 이력 전부
+    python C:/Users/frel/Desktop/new1/friend_brief.py sectors          # 섹터별 종목 수·금액·비중·손익
+    python C:/Users/frel/Desktop/new1/friend_brief.py top [N]          # 많이 사고판 종목(앱 Top Traded)
 
 숫자는 live_check.live_snapshot()(지수 확정 종가 + 오늘 실시간, 보유는 마지막 매매일지 반영분)을 그대로 쓴다.
 """
@@ -241,6 +245,61 @@ def month(ym=None):
     print(f"누적 실현손익 {allrp:+,.0f}원 (원금 {core.load_state()['initial']:,.0f}원 대비 {allrp / core.load_state()['initial'] * 100:+.2f}%)")
 
 
+def stats():
+    """앱 거래 기록 탭 누적 요약과 같은 정의 + 사이클(한 종목 처음 산 날~전부 판 날) 수."""
+    tx = core.load_transactions()
+    buy, sell = tx[tx["구분"] == "매수"], tx[tx["구분"] == "매도"]
+    days = tx["날짜"].nunique()
+    amt = lambda g: float((pd.to_numeric(g["수량"]) * pd.to_numeric(g["단가"])).sum())
+    rp = pd.to_numeric(sell["실현손익"], errors="coerce")
+    init = core.load_state()["initial"]
+    fa = core.compute_fa_win_rate(tx)
+    print(f"첫 거래 {tx['날짜'].min()} · 거래한 날 {days}일")
+    print(f"누적 매수 {len(buy)}건 (하루 평균 {int(len(buy) / days) if days else 0}건) · {amt(buy):,.0f}원")
+    print(f"누적 매도 {len(sell)}건 (하루 평균 {int(len(sell) / days) if days else 0}건) · {amt(sell):,.0f}원")
+    print(f"전체 거래 {len(buy) + len(sell)}건 중 매도 {len(sell)}건")
+    print(f"매도 {len(sell)}건 중 이익 {int((rp > 0).sum())}건 · 손실 {int((rp < 0).sum())}건")
+    print(f"누적 실현손익 {rp.sum():+,.0f}원 (원금 {init:,.0f}원 대비 {rp.sum() / init * 100:+.2f}%)")
+    print(f"지금까지 거래한 종목 {tx.loc[tx['구분'].isin(['매수', '매도']), '종목명'].nunique()}개 · 지금 보유 {len(core.load_holdings())}개")
+    print(f"사이클(처음 산 날~전부 판 날) {fa['total']}번 중 전부 팔고 끝난 것 {fa['n_out']}번 · 아직 들고 있는 것 {fa['total'] - fa['n_out']}번")
+
+
+def history(name):
+    tx = core.load_transactions()
+    g = tx[(tx["종목명"] == name) & tx["구분"].isin(["매수", "매도"])].sort_values("날짜")
+    if g.empty:
+        print(f"{name}: 거래한 적 없음")
+        return
+    held = name in set(core.load_holdings()["종목명"])
+    rp = pd.to_numeric(g["실현손익"], errors="coerce")
+    print(f"{name} 거래 {len(g)}건 (매수 {int((g['구분'] == '매수').sum())} · 매도 {int((g['구분'] == '매도').sum())}) · "
+          f"실현손익 합 {rp.sum():+,.0f}원 · {'지금 보유 중' if held else '지금 보유 안 함'}")
+    for (_, r), v in zip(g.iterrows(), rp):
+        q, p = float(r["수량"]), float(r["단가"])
+        tail = f" · 실현 {v:+,.0f}원" if r["구분"] == "매도" and pd.notna(v) else ""
+        print(f"{r['날짜']} {r['구분']} {q:g}주 @ {p:,.0f}원{tail}")
+
+
+def sectors():
+    s, h = _live_holdings()
+    head(s)
+    g = (h.groupby("섹터").agg(종목수=("종목명", "size"), 평가금액=("평가금액", "sum"), 손익=("손익", "sum"))
+         .sort_values("평가금액", ascending=False))
+    print(f"예수금 {s['cash']:,.0f}원 ({s['cash'] / s['total'] * 100:.1f}%)")
+    for sec, r in g.iterrows():
+        top = h[h["섹터"] == sec].sort_values("평가금액", ascending=False)["종목명"].iloc[0]
+        print(f"{sec} {int(r['종목수'])}종목 · {r['평가금액']:,.0f}원 (총자산의 {r['평가금액'] / s['total'] * 100:.1f}%) · "
+              f"손익 {r['손익']:+,.0f}원 · 제일 많은 건 {top}")
+
+
+def top(n=10):
+    """앱 Statistics 탭 Top Traded와 같은 함수 — 전부 판 사이클이 많은 종목 순."""
+    t = core.top_traded_stocks(core.load_transactions())
+    print(f"많이 사고판 종목 (전부 판 횟수 순, 상위 {min(n, len(t))})")
+    for i, r in enumerate(t.head(n).itertuples(), 1):
+        print(f"{i}. {r.종목명} {r.매도횟수}회 · 누적 실현 {r.누적실현손익:+,.0f}원 ({r.누적실현손익률:+.1f}%)")
+
+
 def main():
     a = sys.argv[1:]
     if not a:
@@ -258,6 +317,14 @@ def main():
             holdings(int(a[1]) if len(a) > 1 else 10)
     elif a[0] == "new":
         new_entries(a[1] if len(a) > 1 else None)
+    elif a[0] == "stats":
+        stats()
+    elif a[0] == "history" and len(a) > 1:
+        history(" ".join(a[1:]))
+    elif a[0] == "sectors":
+        sectors()
+    elif a[0] == "top":
+        top(int(a[1]) if len(a) > 1 else 10)
     elif a[0] == "month":
         month(a[1] if len(a) > 1 else None)
     else:
