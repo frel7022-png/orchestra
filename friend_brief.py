@@ -65,9 +65,14 @@ def brief():
     for kind in ("매수", "매도"):
         g = t[t["구분"] == kind]
         print(f"오늘 {kind} {len(g)}회")
-        for _, r in g.iterrows():
-            q, p = float(r["수량"]), float(r["단가"])
-            print(f"  {r['종목명']} {q:g}주 ({q * p:,.0f}원)")
+        g = g.assign(_amt=g["수량"].astype(float) * g["단가"].astype(float))
+        # 폰에서 읽기 쉽게 10건 넘으면 금액 큰 순 10개 + 외 N개 (전체는 trades 명령)
+        if len(g) > 10:
+            g = g.sort_values("_amt", ascending=False)
+        for _, r in g.head(10).iterrows():
+            print(f"  {r['종목명']} {float(r['수량']):g}주 ({r['_amt']:,.0f}원)")
+        if len(g) > 10:
+            print(f"  외 {len(g) - 10}개 (전체는 trades)")
 
 
 def period(n=5):
