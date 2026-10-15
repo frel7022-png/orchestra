@@ -24,24 +24,41 @@ def confirmed_series(code: str, start: str, today: str) -> dict:
     return {r["날짜"]: float(r["종가"]) for r in core.fetch_daily_price_history(code, start, today)}
 
 
+def basis_label(now, cal_today: str, today: str, closed: bool) -> str:
+    """숫자 기준 한마디: 장중 / 장 마감 후 / 개장 전 · 휴장(마지막 거래일 MM-DD 종가 기준)."""
+    if not closed:
+        return "장중" if now.strftime("%H:%M") < "15:30" else "장 마감 후"
+    why = "개장 전" if now.weekday() < 5 and now.strftime("%H:%M") < "09:00" else "휴장"
+    return f"{why} · 마지막 거래일 {today[5:]} 종가 기준"
+
+
 def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = None) -> dict:
     """지금 시장·계좌 상태. 누적은 전부 앵커일(index_history 첫날, 8/14) 대비, 당일은 전일 확정 종가 대비.
     holdings/quotes를 넘기면 그걸 쓴다(morning_report가 이미 받은 실시간 시세를 재사용하려고)."""
     now = datetime.now()
-    today = core.today_kst_str()
+    cal_today = core.today_kst_str()
     anchor = str(core.load_index_history()["날짜"].min())
+    # 오늘 장이 안 열렸으면(주말·공휴일·개장 전) 오늘 행을 만들지 않고 마지막 거래일 확정 종가를 "오늘"로 쓴다.
+    # 안 그러면 지수엔 전 거래일 종가를 복사한 가짜 오늘 행(당일 0%)이 생기고, 보유종목 등락률(시세 API의
+    # change_pct = 마지막 거래일 하루치)과 서로 다른 날을 비교하게 된다(2026-10-15 위크·대표 질문으로 발견).
+    # 조회 실패(None)면 장이 열린 것으로 본다.
+    closed = core.market_traded_on(cal_today) is False
 
     # 지수·대형주: 확정 종가 + 오늘 실시간
     iq = core.fetch_index_quotes()
     bq = core.fetch_bigcap_quotes()
-    k = confirmed_series("KOSPI", anchor, today)
-    q = confirmed_series("KOSDAQ", anchor, today)
-    k[today], q[today] = iq["KOSPI"]["price"], iq["KOSDAQ"]["price"]
+    k = confirmed_series("KOSPI", anchor, cal_today)
+    q = confirmed_series("KOSDAQ", anchor, cal_today)
+    if closed:
+        today = max(set(k) & set(q))
+    else:
+        today = cal_today
+        k[today], q[today] = iq["KOSPI"]["price"], iq["KOSDAQ"]["price"]
     dates = sorted(set(k) & set(q))
     idx = pd.DataFrame({"날짜": dates, "KOSPI": [k[d] for d in dates], "KOSDAQ": [q[d] for d in dates]})
-    big = {nm: confirmed_series(code, anchor, today) for nm, code in core.BIGCAP_CODES.items()}
+    big = {nm: confirmed_series(code, anchor, cal_today) for nm, code in core.BIGCAP_CODES.items()}
     for nm in big:
-        if bq.get(nm):
+        if bq.get(nm) and not closed:
             big[nm][today] = bq[nm]
     bdates = sorted(set.intersection(*(set(v) for v in big.values())))
     bigdf = pd.DataFrame({"날짜": bdates, **{nm: [big[nm][d] for d in bdates] for nm in big}})
@@ -96,7 +113,8 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
         "stock": (stock_cum, float(val.sum()) / float(prev.sum()) - 1),
         "total": tot, "initial": st["initial"], "cash": cash, "eval_pl": float(val.sum() - cost.sum()),
         "n": len(h), "n_up": int((chg > 0).sum()), "n_down": int((chg < 0).sum()), "n_flat": int((chg == 0).sum()),
-        "idx": idx, "bigdf": bigdf, "me": me, "today": today, "holdings": h, "px": px, "chg": chg,
+        "idx": idx, "bigdf": bigdf, "me": me, "today": today, "cal_today": cal_today, "closed": closed,
+        "basis": basis_label(now, cal_today, today, closed), "holdings": h, "px": px, "chg": chg,
         "worst": [(r.종목명, r.등락) for r in t.head(6).itertuples()],
         "best": [(r.종목명, r.등락) for r in t.tail(4)[::-1].itertuples()],
     }
@@ -105,7 +123,7 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
 def main():
     s = live_snapshot()
     pct = lambda v: "-" if v is None else f"{v * 100:+.2f}%"
-    print(f"[{s['asof']}] 지수·대형주 = 확정 종가 + 오늘 실시간 · 보유 = 매매일지 {s['holdings_asof']} 반영분")
+    print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 보유 = 매매일지 {s['holdings_asof']} 반영분")
     print(f"코스피 {s['kospi']['change_pct']:+.2f}% ({s['kospi']['price']:,.2f}) · "
           f"코스닥 {s['kosdaq']['change_pct']:+.2f}% ({s['kosdaq']['price']:,.2f})")
     print(f"혼합지수(삼성·하이닉스 제외) 당일 {pct(s['ex'][1])} · 누적 {pct(s['ex'][0])}   (코스피 비중 {s['wk']:.0%})")

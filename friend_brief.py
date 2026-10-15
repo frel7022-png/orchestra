@@ -36,7 +36,7 @@ def pct(v, d=2):
 
 
 def head(s):
-    print(f"[Orchestra] {s['asof']} 기준 · 보유는 매매일지 {s['holdings_asof']} 반영분")
+    print(f"[Orchestra] {s['asof']} {s['basis']} · 보유는 매매일지 {s['holdings_asof']} 반영분")
 
 
 def c(v, unit="%", d=2, won=False):
@@ -58,9 +58,9 @@ def brief():
     t = tx[tx["날짜"] == s["today"]]
     sells_all = pd.to_numeric(tx.loc[tx["구분"] == "매도", "실현손익"], errors="coerce")
     realized = pd.to_numeric(t.loc[t["구분"] == "매도", "실현손익"], errors="coerce").sum()
-    live = "장중" if s["asof"][11:16] < "15:30" else "장 마감 후"
+    day = "오늘" if not s["closed"] else s["today"][5:]
 
-    print(f"Orchestra · {s['asof'][5:]} {live}")
+    print(f"Orchestra · {s['asof'][5:]} {s['basis']}")
     print(f"(보유는 매매일지 {s['holdings_asof']} 반영분)")
     print()
     print(f"보유종목 평가손익 {s['eval_pl']:+,.0f}원({s['eval_pl'] / cost * 100:+.2f}%)")
@@ -73,7 +73,7 @@ def brief():
     print(f"총평가  {val:,.0f}원")
     print(f"총자산  {s['total']:,.0f}원")
     print(f"원금 대비  {c(s['total'] - s['initial'], won=True)} ({c((s['total'] / s['initial'] - 1) * 100)})")
-    print(f"오늘 실현손익  {c(realized, won=True) if realized else '0원'}")
+    print(f"{day} 실현손익  {c(realized, won=True) if realized else '0원'}")
     print(f"보유  {s['n']}종목")
     print()
     ex_day, my_day = s["ex"][1], s["stock"][1]
@@ -84,7 +84,7 @@ def brief():
     print(f"혼합지수 대비  {c((my_day - ex_day) * 100, unit='%p')}")
     print()
     if s["holdings_asof"] < s["today"]:
-        print(f"오늘 매수·매도는 매매일지가 아직 반영 전이야 (마지막 반영 {s['holdings_asof']})")
+        print(f"{day} 매수·매도는 매매일지가 아직 반영 전이야 (마지막 반영 {s['holdings_asof']})")
         return
 
     prior = tx[(tx["날짜"] < s["today"]) & tx["구분"].isin(["매수", "매도"])].copy()
@@ -100,7 +100,7 @@ def brief():
         g["rp"] = pd.to_numeric(g["실현손익"], errors="coerce").fillna(0)
         by = (g.groupby("종목명", sort=False).agg(q=("q", "sum"), amt=("amt", "sum"), rp=("rp", "sum"))
               .sort_values("amt", ascending=False))
-        line = f"{kind} {len(g)}회 · {g['amt'].sum():,.0f}원"
+        line = f"{'' if day == '오늘' else day + ' '}{kind} {len(g)}회 · {g['amt'].sum():,.0f}원"
         if kind == "매도" and len(g):
             line += f" · 실현 {c(g['rp'].sum(), won=True)}"
         print(line)
@@ -194,10 +194,11 @@ def holdings(n=10):
     head(s)
     up, dn = h.sort_values("오늘", ascending=False), h.sort_values("오늘")
     print(f"보유 {len(h)}종목 · 오늘 상승 {int((h['오늘'] > 0).sum())} · 하락 {int((h['오늘'] < 0).sum())} · 보합 {int((h['오늘'] == 0).sum())}")
-    print(f"오늘 많이 오른 {min(n, len(h))}")
+    day = "오늘" if not s["closed"] else s["today"][5:]
+    print(f"{day} 많이 오른 {min(n, len(h))}")
     for _, r in up.head(n).iterrows():
         print(_row(r))
-    print(f"오늘 많이 빠진 {min(n, len(h))}")
+    print(f"{day} 많이 빠진 {min(n, len(h))}")
     for _, r in dn.head(n).iterrows():
         print(_row(r))
 
