@@ -1,0 +1,197 @@
+<title>반도체가 무너진 주</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--paper); color:var(--ink); font-family:"IBM Plex Sans KR",system-ui,sans-serif;
+    line-height:1.72; margin:0; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:800px; margin:0 auto; padding-block:48px 96px;
+    padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px))}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .gain{color:var(--gain)} .loss{color:var(--loss)} .acc{color:var(--accent)} .warn{color:var(--warn)}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:12px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.4rem; line-height:1.2; margin:0 0 16px; text-wrap:balance}
+  .dek{font-size:1.05rem; color:var(--ink-soft); margin:0}
+  .meta{margin-top:20px; padding-top:14px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-faint); display:flex; gap:6px 18px; flex-wrap:wrap}
+  h2{font-size:1.15rem; margin:52px 0 6px; padding-top:18px; border-top:1px solid var(--rule); text-wrap:balance}
+  h2 .no{font-family:"IBM Plex Mono",monospace; color:var(--ink-faint); font-weight:500; margin-right:8px; font-size:.95rem}
+  h3{font-size:.98rem; margin:26px 0 4px}
+  p{margin:10px 0}
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:28px 0 8px}
+  .kpi{background:var(--card); border:1px solid var(--rule); border-radius:12px; padding:12px 14px; box-shadow:var(--shadow); min-width:0}
+  .kpi .k{font-size:12px; color:var(--ink-soft)} .kpi .v{font-size:1.45rem; font-weight:600}
+  .kpi .s{font-size:11.5px; color:var(--ink-faint)}
+  .scroll{overflow-x:auto; margin:14px 0}
+  table{border-collapse:collapse; width:100%; font-size:13px}
+  th,td{padding:7px 9px; border-bottom:1px solid var(--rule-soft); text-align:right; white-space:nowrap}
+  th{font-size:12px; color:var(--ink-soft); font-weight:600; border-bottom:1px solid var(--rule)}
+  td.l, th.l{text-align:left}
+  .callout{background:var(--accent-wash); border-radius:12px; padding:14px 16px; margin:18px 0}
+  .callout.w{background:var(--warn-wash)}
+  ul{padding-left:1.2em} li{margin:5px 0}
+  .stars{color:var(--warn); letter-spacing:2px}
+  .note{font-size:12px; color:var(--ink-faint)}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">Orchestra · 주간 리포트 · 2026년 10월 셋째 주</div>
+  <h1>반도체가 무너진 주</h1>
+  <p class="dek">코스피가 한 주에 14.5% 빠졌어. 오케스트라는 1.0%만 빠졌어. 대부분이 삼성·하이닉스에서 난 폭락이라 우리 쪽은 비켜 갔고, 나머지 시장(혼합지수 −8.8%)과 비교해도 7%p 넘게 덜 빠졌어.</p>
+  <div class="meta">
+    <span>기간 10/12(월)~10/16(금) · 기준 10/8 종가(10/9 한글날 휴장)</span>
+    <span>지수·대형주 확정 종가, 10/16은 15:44 장 마감 후</span>
+    <span>new1 매매일지 10/16 15:04분까지 · meritz 10/15까지</span>
+    <span>작성 새러데이 · 2026-10-16</span>
+  </div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="k">코스피</div><div class="v num loss">−14.46%</div><div class="s num">6,627 → 5,668</div></div>
+  <div class="kpi"><div class="k">혼합지수(삼성·하이닉스 제외)</div><div class="v num loss">−8.79%</div><div class="s">코스피 비중 70%</div></div>
+  <div class="kpi"><div class="k">Orchestra 계좌 (new1)</div><div class="v num loss">−1.00%</div><div class="s num">9,981,272 → 9,881,730원</div></div>
+  <div class="kpi"><div class="k">VIP 펀드</div><div class="v num loss">−11.0%</div><div class="s num">2,023 → 1,800 (하루 늦음)</div></div>
+</div>
+
+<h2><span class="no">01</span>시장 — 반도체 실적 실망과 CPI 쇼크가 겹친 주</h2>
+<p>월요일부터 목요일까지 나흘 내리 빠졌어. 목요일(10/15)엔 미국 9월 CPI 쇼크에 반도체 실적 실망까지 겹쳐서, 코스피가 하루에 <span class="num loss">−7.57%</span>를 찍었어. 외인은 하루에만 3.6조를 팔았어. 금요일엔 반등했는데(장중 +4.5%까지 갔다가 종가 +2.05%), 그날 오른 몫의 78%가 삼성·하이닉스였어.</p>
+<div class="scroll"><table>
+  <tr><th class="l">날짜</th><th>코스피</th><th>코스닥</th><th>혼합지수 ex</th><th>SH 바스켓</th><th>내 주식</th><th>내 계좌</th></tr>
+  <tr><td class="l">10/12 월</td><td class="num loss">−3.65%</td><td class="num loss">−4.83%</td><td class="num loss">−3.18%</td><td class="num loss">−4.65%</td><td class="num loss">−1.34%</td><td class="num loss">−1.00%</td></tr>
+  <tr><td class="l">10/13 화</td><td class="num loss">−5.46%</td><td class="num loss">−1.43%</td><td class="num loss">−2.50%</td><td class="num loss">−7.77%</td><td class="num loss">−0.99%</td><td class="num loss">−0.77%</td></tr>
+  <tr><td class="l">10/14 수</td><td class="num loss">−0.44%</td><td class="num loss">−1.57%</td><td class="num loss">−0.50%</td><td class="num loss">−0.80%</td><td class="num gain">+0.50%</td><td class="num gain">+0.39%</td></tr>
+  <tr><td class="l">10/15 목</td><td class="num loss">−7.57%</td><td class="num loss">−7.65%</td><td class="num loss">−4.42%</td><td class="num loss">−12.14%</td><td class="num loss">−2.44%</td><td class="num loss">−1.91%</td></tr>
+  <tr><td class="l">10/16 금</td><td class="num gain">+2.05%</td><td class="num gain">+4.46%</td><td class="num gain">+1.64%</td><td class="num gain">+3.60%</td><td class="num gain">+2.26%</td><td class="num gain">+1.77%</td></tr>
+  <tr><th class="l">주간</th><th class="num loss">−14.46%</th><th class="num loss">−10.93%</th><th class="num loss">−8.79%</th><th class="num loss">−20.58%</th><th class="num loss">≈ −2.1%</th><th class="num loss">−1.00%</th></tr>
+</table></div>
+<p class="note">SH 바스켓 = 삼성전자·삼성전자우·SK하이닉스 시총가중(앱 Sour Grapes). 한 주에 삼성전자 −18.1%, 하이닉스 −24.6%. 내 주식 = 예수금 빼고 가격만 움직인 몫(Rs)의 일별 곱. 10/16 계좌·주식은 장 마감 후 실시간 계산이야.</p>
+<div class="callout">
+  코스피 −14.5% 중 상당 부분은 반도체 세 종목(시총 절반, 주간 −20.6%) 몫이야. 대표 계좌가 반도체를 안 담는다는 게 이번 주엔 그대로 방패가 됐어. 그런데 반도체를 빼고 봐도 시장은 −8.8%였고, 계좌는 그보다 7.8%p 덜 빠졌어. 방패가 "반도체가 없어서"만은 아니라는 얘기야.
+</div>
+
+<h2><span class="no">02</span>장 — 하락일 방어(DC)가 매일 통했어</h2>
+<p>이번 주 하락일 4일 동안, 내 주식이 시장(일반 혼합지수) 하락의 몇 %를 받았는지 봤어.</p>
+<ul>
+  <li>10/12: <span class="num">0.34</span> (시장 −3.91%에 −1.34%)</li>
+  <li>10/13: <span class="num">0.25</span> (−3.94%에 −0.99%)</li>
+  <li>10/14: <span class="num acc">음수</span> (시장 −0.72%인데 내 주식은 +0.50%)</li>
+  <li>10/15: <span class="num">0.36</span> (−6.74%에 −2.44%). 폭락일에도 시장 하락의 3분의 1만 받았어.</li>
+</ul>
+<p>금요일 반등일엔 상승 참여(UC)가 <span class="num">0.82</span>야. 일반 혼합지수(+2.76%)보단 덜 올랐는데, 반도체 몫이 빠진 혼합지수 ex(+1.64%)보다는 더 올랐어. 반도체 없이 오른 날로 보면 따라간 셈이야.</p>
+<p>보유 72종목 중 금요일 상승 종목이 66개였어(11:00 기준). 기관이 받아내던 종목이 먼저 튀었어. 동국제강(+12%)이 대표적이야. 폭락일에 −3%만 빠졌는데 그날 기관이 11.7만 주(약 10억)를 받았고, 다음 날 Basecamp 평지를 위로 뚫었어.</p>
+
+<h2><span class="no">03</span>매수·매도 — 빠지는 날마다 조금씩, 판 건 작게</h2>
+<div class="scroll"><table>
+  <tr><th class="l">날짜</th><th>매수</th><th>매수 금액</th><th>매도</th><th>매도 금액</th><th>실현</th></tr>
+  <tr><td class="l">10/12</td><td class="num">12건</td><td class="num">137,542</td><td class="num">1건</td><td class="num">26,950</td><td class="num gain">+1,129</td></tr>
+  <tr><td class="l">10/13</td><td class="num">5건</td><td class="num">142,490</td><td class="num">0</td><td class="num">—</td><td class="num">—</td></tr>
+  <tr><td class="l">10/14</td><td class="num">4건</td><td class="num">61,685</td><td class="num">2건</td><td class="num">141,320</td><td class="num gain">+5,657</td></tr>
+  <tr><td class="l">10/15</td><td class="num">16건</td><td class="num">299,440</td><td class="num">0</td><td class="num">—</td><td class="num">—</td></tr>
+  <tr><td class="l">10/16</td><td class="num">13건</td><td class="num">316,921</td><td class="num">3건</td><td class="num">209,600</td><td class="num gain">+11,331</td></tr>
+  <tr><th class="l">합</th><th class="num">50건 · 29종목</th><th class="num">958,078</th><th class="num">6건</th><th class="num">377,870</th><th class="num gain">+18,118</th></tr>
+</table></div>
+<ul>
+  <li><b>매수 패턴이 정확했어.</b> 제일 크게 빠진 목요일에 16건(30만원)으로 제일 많이 샀어. 반등한 금요일에도 13건(32만원)을 샀는데, 거의 다 물타기랑 Basecamp·외인 후보였어.</li>
+  <li><b>매도는 6건, 실현 +18,118원.</b> 하락장이라 회전이 적은 게 정상이야. 제일 큰 건 금요일 <b>에스티팜 +6,917원</b>이었어. 10/7에 96,000원에 팔고, 10/13에 84,300원에 다시 사서, 91,400원에 또 팔았어. Up/Down 재진입이 한 사이클 완성된 사례야. 그다음은 대주전자재료 +4,266원, 빙그레 +3,117원.</li>
+  <li><b>손절은 0건.</b> 판 6건이 전부 이익이었어.</li>
+  <li>누적 실현손익 539,756 → <b>557,873원</b>. FA 승률(한 번 사서 한 번에 판 비율) 44.95% → <b>45.37%</b>, 사이클 218 → 227개.</li>
+  <li>예수금 2,075,338원(총자산의 21%). 폭락 주간에 96만원어치를 사고도 총알이 20% 넘게 남아 있어.</li>
+</ul>
+
+<h2><span class="no">04</span>new1 · meritz · VIP — 세 계좌의 한 주</h2>
+<div class="scroll"><table>
+  <tr><th class="l">10/8 → 10/15 (목요일까지, 셋 다 있는 구간)</th><th>변화</th><th class="l">메모</th></tr>
+  <tr><td class="l">Orchestra (new1)</td><td class="num loss">−3.25%</td><td class="l">예수금 21%, 매수 37건</td></tr>
+  <tr><td class="l">Orchestration (meritz)</td><td class="num loss">−4.58%</td><td class="l">예수금 12%, 매수 21건·매도 0</td></tr>
+  <tr><td class="l">VIP 펀드 (10/8 → 10/16 기준가)</td><td class="num loss">−11.0%</td><td class="l">기준가가 하루 늦어서 10/16 값 = 10/15 폭락 반영</td></tr>
+</table></div>
+<p class="note">Orchestra·Orchestration은 both_accounts.csv(8/14 기준 리베이스) 비교. meritz 10/16 매매일지는 아직 안 들어와서 금요일은 new1만 있어.</p>
+<ul>
+  <li><b>meritz가 new1보다 1.3%p 더 빠진 이유는 단순해.</b> 예수금이 12%로 new1(21%)보다 덜 남아 있었어. 더 많이 담긴 계좌가 폭락일에 더 맞은 거야. 종목을 잘못 골라서가 아니야.</li>
+  <li><b>meritz는 이번 주 매도 0건.</b> "new1이 그 종목 본전에 오기 전엔 meritz는 익절 안 함" 규칙대로 대기했어. 대신 new1 후보(GS건설·와이지-원·우리금융지주·GS리테일·크라운해태 등 14종목)를 21건 받았어. 3층 구조가 설계대로 돌아갔어.</li>
+  <li><b>VIP와의 거리가 확 벌어졌어.</b> 같은 가치투자 펀드가 한 주에 −11%(대형주 비중 때문으로 보여)인데, Orchestra는 −1%야. 8/14부터 누적하면 VIP는 2,026 → 1,800(−11.2%)인데 그 대부분이 이번 주에 났고, Orchestra 계좌는 −2.3%야.</li>
+</ul>
+
+<h2><span class="no">05</span>이번 주 내가 한 일 — 자평</h2>
+<h3>한 일</h3>
+<ul>
+  <li><b>새 분석 기능</b>
+    <ul>
+      <li>Basecamp(빠지다 평지에서 거래량 터지는 종목, 10/13)를 신설하고, ④ Basecamp 리포트(10/15)까지 만들었어.</li>
+      <li>live_check(지금 이 순간 계좌·시장, 10/13)를 만들었어.</li>
+      <li>DB 빠진 날 자동 메우기(10/13)를 넣었어.</li>
+    </ul></li>
+  <li><b>자동화</b>
+    <ul>
+      <li>아침 리포트 4종이 09:30에 자동으로 생성돼(10/15, 작업 스케줄러). 10/16 첫 자동 실행은 성공했어.</li>
+      <li>휴장일·개장 전엔 스냅샷을 안 찍게 했어(10/15).</li>
+    </ul></li>
+  <li><b>종목 리포트</b>: 에스엘·미스토홀딩스 해부(10/12), 두 달의 오케스트라(10/13), 추천 9종목(10/15), 예스티·테크윙(10/15)</li>
+  <li><b>팀</b>
+    <ul>
+      <li>써스데이 교재 편지 9통을 썼고, 조회 도구(agent_view·quote)랑 모니터링 앱을 만들었어.</li>
+      <li>텔레그램 친구 창구 브리프(friend_brief)를 만들었어.</li>
+      <li>회의 3번을 열었어. 튜즈데이랑 나스닥 첫 장, 써스데이랑 첫 판단 복기, 리포트 스케줄.</li>
+    </ul></li>
+  <li><b>오늘(10/16) 새로 만든 것</b>
+    <ul>
+      <li>추천 성적표(picks.py)</li>
+      <li>폭락일 성적표(stress_days.py)</li>
+      <li>픽 추적(tracking/): 날짜로 자르지 않고 경로 전체를 따라가. 외인은 세게 이탈할 때만 경고해.</li>
+    </ul></li>
+</ul>
+<h3>잘한 것</h3>
+<ul>
+  <li>동국제강(Basecamp 평지 + 기관 받는손)이랑 에스티팜(Up/Down + 외인 명단 2주 연속)은 리포트에 나온 그대로 대표가 판단해서 둘 다 먹었어.</li>
+  <li>추천을 기록으로 남기기 시작했어. 이제 내 추천도 채점받아.</li>
+</ul>
+<h3>못한 것</h3>
+<ul>
+  <li><b>09:30 리포트가 "어제자 같다"는 지적을 받았어.</b> 숫자는 실시간이었지만, 장 시작 30분 시점이라 그 뒤 반등을 못 담았어. 상태 배지(급락·빠지는 중)도 전날 폭락을 그대로 끌고 왔어.</li>
+  <li><b>편지 시각을 두 번 짐작으로 적었어</b>(위크 지적 1번, 튜즈데이 답장 12:25). 규칙은 실측이야.</li>
+  <li>10/15 커밋에 대표 작업 중이던 history/00_소개.md가 섞여 들어갔어. 아직 답을 못 받았어.</li>
+  <li>추천 일관성: 10개 추천에선 제이에스링크를 "떨어지는 칼"로 뺐는데, 신규 5개에선 "CFG 원픽형"으로 넣었어. 잣대가 흔들렸어.</li>
+  <li>처음엔 추천을 +3·+5일로 채점하려 했어. 대표가 "자르는 시점에 따라 결론이 뒤집힌다"고 바로잡아 줬어.</li>
+</ul>
+<p>자평 <span class="stars">★★★</span> (5개 중). 기능이랑 자동화는 크게 늘었는데, 내 판단의 일관성이랑 기본 규칙(시각 실측)에서 구멍이 났어.</p>
+
+<h2><span class="no">06</span>총평</h2>
+<p>이번 주는 시험대였어. 코스피가 한 주에 14.5%, 반도체를 빼도 8.8% 빠진 장에서 계좌는 1.0%만 빠졌어. 하락일마다 시장 낙폭의 4분의 1에서 3분의 1만 받았고, 제일 크게 빠진 날 제일 많이 샀어. 그러고도 예수금 21%가 남아 있어. 실현손익은 1.8만원으로 작지만, 판 건 전부 이익이었어. 에스티팜처럼 팔고, 빠지면 다시 사고, 회복하면 또 파는 회전이 하락장 한가운데서 한 번 완성됐어.</p>
+<p>제일 크게 배운 건 "누가 받았나"야. 폭락일에 덜 빠진 종목 중에서도 기관이나 외인이 실제로 물량을 받아낸 종목이 다음 날 먼저 튀었어. 이걸 자동으로 기록하는 폭락일 성적표를 오늘 만들었고, 아직 결과는 반반이야. 다음 주부터 쌓아서 보자.</p>
+<p>세 계좌로 보면 구조가 설계대로 돌았어. new1이 먼저 받고, meritz는 new1 후보를 한 칸 아래에서 받으면서 매도는 참았어. VIP와의 차이는 한 주에 10%p 가까이 벌어졌어. 다만 반도체가 다시 끌고 올라가는 장이 오면 지금 지수 대비 우위는 빠르게 줄 거야. 오늘도 코스피 +2.05% 중 대부분이 반도체 몫이었고, 계좌는 일반 혼합지수보다 덜 올랐어. 그게 이 계좌가 감수하는 대가야.</p>
+<p>이번 주 계좌 <span class="stars">★★★★</span>: 강한 방어에, 자금도 하락일에 맞게 배치했어. 별 하나를 뺀 건 실현 규모가 작았고 반등일 상승 참여가 1에 못 미쳐서야.</p>
+
+<h2><span class="no">07</span>제안 — 다음 주 시작에 같이 논의</h2>
+<div class="callout w">
+  <p><b>1. 폭락일 성적표 "받음"을 외인+기관 합계가 아니라 둘 중 큰 쪽으로 보기.</b></p>
+  <p>근거: 이번 주 최고 사례 동국제강이 지금 잣대에선 상위권에 못 들었어. 10/15에 기관 +11.7만 주, 외인 −10만 주라 합치면 받음이 3%뿐이었거든. "한쪽이 크게 받았다"를 놓치는 구멍이야. 받는손을 나눠서 봐야 이번 주 같은 신호가 잡혀. 써스데이가 지적한 Basecamp 받는손 색 문제(σ 문턱)와 같은 뿌리라서 같이 정하면 좋겠어.</p>
+</div>
+<p>그 밖엔 <b>없음</b>. 매도가 근접 알람이랑 14:00 리포트 재실행은 대표가 이미 "나중에"로 정했으니 다시 꺼내지 않을게.</p>
+<p class="note">데이터: index_history·bigcap_history 확정 종가(10/16은 live_check 15:44), asset_history·transactions(new1 10/16 15:04분), meritz transactions·asset_history(10/15까지), both_accounts.csv, fund_nav_history.csv. DC/UC는 앱 Account:Index와 같은 계산(compute_index_vs_account).</p>
+</div>
