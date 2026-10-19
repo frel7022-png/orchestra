@@ -24,7 +24,7 @@ def cell_lines(since: str | None = None, until: str | None = None) -> list[tuple
     """[(날짜, 커밋, `셀:` 줄)] — 커밋 메시지 본문에서 `셀:`로 시작하는 줄."""
     cmd = ["git", "-C", str(HERE), "log", "--format=%x1e%ad%x1f%h%x1f%B", "--date=short"]
     if since:
-        cmd.append(f"--since={since}")
+        cmd.append(f"--since={since} 00:00")  # 날짜만 주면 git이 지금 시각을 붙인다
     if until:
         cmd.append(f"--until={until} 23:59")
     out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8").stdout
