@@ -1,7 +1,9 @@
 """픽 추적 — 새러데이가 추천한 종목을 날짜로 자르지 않고 경로 전체로 따라간다 (2026-10-16 대표 지시).
 
 대표 철학(유니버스 3층): 1층 외인·기관이 모으고 → 2층 new1이 그 흔적이 쌓인 *뒤* 더 좋은 자리를 선점한다.
-그래서 픽의 결과는 3일 뒤가 아니라 10일·20일 뒤에 드러날 수 있다. +N일 고정 채점 대신 픽 이후 경로를 매일 쌓는다.
+그래서 픽의 결과는 3일 뒤가 아니라 10일·20일 뒤에 드러날 수 있다. 픽 이후 경로를 매일 쌓는다.
+(2026-10-19 대표 확정: 경로는 그대로 두고, 성적은 picks.py score가 5·20·60거래일 체크포인트에서 두 기준으로 따로 매긴다.
+ 10-16에 적었던 "+N일 고정 채점 대신 경로만"은 대체됨 — 대표 말 "기간에 따라 뒤집힌다"를 채점 폐지로 넓게 읽었던 것.)
 
     python tracking.py           # 카드 갱신(tracking/카드별 CSV + tracking/summary.csv) + 요약 출력
     python tracking.py 파마리서치  # 그 카드 경로 전체
@@ -14,8 +16,10 @@
 - 기준 보유율 = 그 종목 가격추적 시작일(Fishing·Link와 같은 기준일) 값. 1층이 쌓은 양 = 픽 이후 고점 − 기준.
 - 이탈 강도 z = (픽 이후 고점 − 지금) ÷ (하루 변화 σ × √고점 이후 거래일수). σ는 그 종목 전 기간.
 - 반납률 = (픽 이후 고점 − 지금) ÷ (픽 이후 고점 − 기준) × 100.
-- 경고: z ≥ 2 그리고 반납률 ≥ 50% (둘 다). 주의: z ≥ 1.5 또는 반납률 ≥ 30%. 그 밖: 모으는 중(픽 이후 +) / 유지.
-카드 상태(날짜가 아니라 사건으로): 추적 → 진입(new1이 픽 이후 매수) → 졸업(그 뒤 매도로 실현손익 +) / 경고 / 종료(tracking/closed.csv에 대표가 넣은 종목).
+- 근거 사라짐: z ≥ 2 그리고 반납률 ≥ 50% (둘 다). 주의: z ≥ 1.5 또는 반납률 ≥ 30%. 그 밖: 모으는 중(픽 이후 +) / 유지.
+  외인 이탈은 그 픽이 "틀렸다"는 판정이 아니라 "추천 근거(1층)가 사라졌다"는 표시다(2026-10-19 대표 확정, 10-16 공동 계획 2-3).
+  성적(맞음·틀림)은 picks.py score의 5·20·60거래일 체크포인트에서 따로 매긴다. 예전 이름 "경고(이탈)"은 대체됨.
+카드 상태(날짜가 아니라 사건으로): 추적 → 진입(new1이 픽 이후 매수) → 졸업(그 뒤 매도로 실현손익 +) / ·근거 사라짐 / 종료(tracking/closed.csv에 대표가 넣은 종목).
 """
 import math
 import sys
@@ -62,7 +66,7 @@ def _foreign_state(fl: pd.DataFrame, base_date: str, pick_date: str) -> dict:
     acc = hi - base
     give = drop / acc * 100 if acc > 0 else float("nan")
     if z == z and z >= Z_WARN and give == give and give >= GIVE_WARN:
-        st = "경고(이탈)"
+        st = "근거 사라짐"
     elif (z == z and z >= Z_CAUTION) or (give == give and give >= GIVE_CAUTION):
         st = "주의"
     elif now > at_pick:
@@ -84,8 +88,8 @@ def _card_state(name: str, pick_date: str, tx: pd.DataFrame, closed: set, fstate
         later = sells[sells["날짜"] >= buys["날짜"].min()]
         if not later.empty and pd.to_numeric(later["실현손익"], errors="coerce").sum() > 0:
             state = "졸업"
-    if fstate.startswith("경고") and state != "졸업":
-        state += "·경고"
+    if fstate == "근거 사라짐" and state != "졸업":
+        state += "·근거 사라짐"
     return state
 
 

@@ -15,8 +15,12 @@
 - 종목 수익률 = 추천가 → 평가 시점 가격(평가일 확정 종가, '지금'은 실시간).
 - 벤치 수익률 = 혼합지수(삼성·하이닉스 제외, 코스피 비중 wk) 추천 시점 → 평가 시점.
   추천 시점 벤치는 기록할 때 찍은 실시간 수준(벤치K·벤치Q). 비어 있으면(소급 기록) 추천일 종가로 근사.
-- 초과 = 종목 − 벤치(%p). 평가 시점은 지금 / 추천일 +5거래일 / +10거래일.
+- 초과 = 종목 − 벤치(%p). 평가 시점은 지금 / 추천일 +5 / +20 / +60거래일(고정 체크포인트).
+- 두 번째 기준 = 같은 기간 관심종목(watchlist) 단순평균 수익률. 시작은 추천일 확정 종가(장중 추천이어도 — 근사),
+  끝은 체크포인트일 확정 종가(지금은 실시간). 컬럼 `…초과관심%p`. 두 기준 중 하나로 결론 내지 않는다.
 - wk = 지금 new1 보유종목의 코스피 평가금액 비중(live_check와 같은 정의). 고정이 아니라 채점할 때마다 그 값.
+- 2026-10-19 대표 확정(10-16 공동 계획 2-2): 경로 추적(tracking.py)은 그대로 두고 성적은 이 체크포인트에서 매긴다.
+  예전 +5/+10 두 칸은 대체됨.
 """
 import sys
 from datetime import datetime
@@ -30,7 +34,7 @@ HERE = Path(__file__).parent
 LOG = HERE / "picks_log.csv"
 SCORE = HERE / "picks_score.csv"
 COLS = ["회차", "날짜", "시각", "순위", "종목명", "종목코드", "추천가", "구분", "근거", "벤치K", "벤치Q", "메모"]
-HORIZONS = (5, 10)
+HORIZONS = (5, 20, 60)   # 체크포인트(거래일) — 대표 확정 2026-10-19
 
 
 def load_log() -> pd.DataFrame:
@@ -92,12 +96,35 @@ def record(round_id: str, label: str, rows: list[tuple], memo: str = "") -> pd.D
     return new
 
 
-def score(round_id: str | None = None) -> pd.DataFrame:
+def _universe(data: dict | None) -> tuple[dict, dict]:
+    """관심종목 확정 종가 {코드: {날짜: 종가}}와 실시간가 {코드: 가격}. data = daily_link_report.load_data() 결과."""
+    if data is None:
+        import daily_link_report as link
+        data = link.load_data()
+    ph = data["ph"]
+    closes = {str(c): dict(zip(g["날짜"], pd.to_numeric(g["종가"], errors="coerce")))
+              for c, g in ph.groupby(ph["종목코드"].astype(str))}
+    return closes, {str(k): float(v) for k, v in (data.get("live") or {}).items()}
+
+
+def _universe_ret(uc: dict, d0: str, d1: str | None, live: dict) -> float | None:
+    """관심종목 단순평균 수익률(%) d0 종가 → d1 종가(d1=None이면 실시간)."""
+    rs = []
+    for c, m in uc.items():
+        a = m.get(d0)
+        b = live.get(c) if d1 is None else m.get(d1)
+        if a and b and a > 0:
+            rs.append(b / a - 1)
+    return sum(rs) / len(rs) * 100 if rs else None
+
+
+def score(round_id: str | None = None, data: dict | None = None) -> pd.DataFrame:
     log = load_log()
     if round_id:
         log = log[log["회차"] == round_id]
     if log.empty:
         return log
+    uc, ulive = _universe(data)
     closes, now = bench_levels(live=True)
     wk = _wk()
     days = sorted(closes)
@@ -121,6 +148,9 @@ def score(round_id: str | None = None) -> pd.DataFrame:
             # 소급 기록이 추천 당일이면 벤치 시작(추천일 종가)이 아직 없다 — 초과는 장 마감 뒤부터
             if b0 and now:
                 row["지금초과%p"] = row["지금%"] - bret(b0, now)
+            u = _universe_ret(uc, d0, None, ulive)
+            if u is not None:
+                row["지금초과관심%p"] = row["지금%"] - u
         after = [d for d in days if d > d0]
         for h in HORIZONS:
             if len(after) >= h and b0:
@@ -129,6 +159,9 @@ def score(round_id: str | None = None) -> pd.DataFrame:
                 if px:
                     row[f"+{h}일%"] = (px / p0 - 1) * 100
                     row[f"+{h}일초과%p"] = row[f"+{h}일%"] - bret(b0, closes[d])
+                    u = _universe_ret(uc, d0, d, ulive)
+                    if u is not None:
+                        row[f"+{h}일초과관심%p"] = row[f"+{h}일%"] - u
         out.append(row)
     df = pd.DataFrame(out)
     if not round_id:
@@ -153,10 +186,10 @@ def main() -> int:
     pd.set_option("display.width", 250)
     pd.set_option("display.max_rows", 500)
     print(df.round(2).to_string(index=False))
-    for col in ("지금초과%p", "+5일초과%p", "+10일초과%p"):
+    for col in ["지금초과%p", "지금초과관심%p"] + [f"+{h}일초과{k}%p" for h in HORIZONS for k in ("", "관심")]:
         if col in df and df[col].notna().any():
             s = df[col].dropna()
-            print(f"{col}: {len(s)}건 평균 {s.mean():+.2f}%p · 벤치 이긴 비율 {(s > 0).mean() * 100:.0f}%")
+            print(f"{col}: {len(s)}건 평균 {s.mean():+.2f}%p · 이긴 비율 {(s > 0).mean() * 100:.0f}%")
     return 0
 
 
