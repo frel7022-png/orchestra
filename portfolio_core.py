@@ -1363,6 +1363,69 @@ def add_link_watch_entry(row: dict) -> pd.DataFrame:
     return df
 
 
+REV_DAYS = 5        # 반전 조짐: 최근 이 거래일 동안
+REV_UP_DAYS = 3     # 그중 외인 보유율이 오른 날이 이 이상(대표 9/11 "3~5일씩 조금씩 다시 쌓이는")
+
+
+def reversal_signs(cand: pd.DataFrame, price_hist: pd.DataFrame, flow_hist: pd.DataFrame) -> pd.DataFrame:
+    """반전 조짐 — **뽑는 도구**(판정·점수 없음, 2026-10-20 대표: "판정을 받을 만한 종목을 뽑는 도구는 만든다").
+    대표 9/11 요청: 누적으로 주가·외인 비중이 같이 떨어지던 종목 — Link "이탈" 구간이면서 기준일 이후 주가가 자기 σ×√일수,
+    외인이 (최근 창 앞까지) 자기 σ_f×√일수 넘게 빠진 종목 — 중
+    ① 최근 REV_DAYS거래일에 외인 보유율이 REV_UP_DAYS일 이상 오르고, 그 합이 자기 하루 외인 변동폭 σ_f×√REV_DAYS 이상(잡음 아님),
+    ② 주가 하락이 잔잔해짐 — 최근 REV_DAYS일 하루 평균 수익률이 누적 하루 평균보다 덜 가파르고,
+       최근 REV_DAYS일 움직임이 자기 하루 변동폭 σ×√REV_DAYS 안(크게 빠지지도 튀지도 않음 — 고정 % 대신 종목 σ).
+    cand = compute_link_candidates 결과. 반환: 종목코드·종목명·P·dF·외인증가일·최근외인pp·최근주가%·누적일평균%·최근일평균%·이유.
+    정렬은 외인 증가일 → 최근 외인 %p(순서일 뿐 점수 아님). 확정 종가만 쓴다(장중 실시간 안 씀)."""
+    cols = ["종목코드", "종목명", "P", "dF", "외인증가일", "최근외인pp", "최근주가%", "누적일평균%", "최근일평균%", "이유"]
+    if cand is None or cand.empty or price_hist is None or flow_hist is None:
+        return pd.DataFrame(columns=cols)
+    out = []
+    for _, r in cand[cand["구간"] == "이탈"].iterrows():
+        code = str(r["종목코드"])
+        f = flow_hist[flow_hist["종목코드"].astype(str) == code].sort_values("날짜")
+        f = f[f["날짜"] >= r["기준일"]]
+        fv = pd.to_numeric(f["외국인보유율"], errors="coerce").dropna().tolist()
+        p = price_hist[price_hist["종목코드"].astype(str) == code].sort_values("날짜")
+        p = p[p["날짜"] >= r["기준일"]]
+        pv = [float(x) for x in pd.to_numeric(p["종가"], errors="coerce").dropna() if x > 0]
+        if len(fv) < REV_DAYS + 1 or len(pv) < max(REV_DAYS * 2, SIGMA_MIN_DAYS):
+            continue
+        tail = fv[-(REV_DAYS + 1):]
+        ups = sum(b > a for a, b in zip(tail, tail[1:]))
+        f_recent = tail[-1] - tail[0]
+        fd = [b2 - a2 for a2, b2 in zip(fv, fv[1:])][-max(SIGMA_MIN_DAYS, REV_DAYS * 4):]
+        f_sd = (sum((x - sum(fd) / len(fd)) ** 2 for x in fd) / (len(fd) - 1)) ** 0.5 if len(fd) > 1 else 0.0
+        # 외인 증가는 그 종목 평소 하루 외인 변동폭(σ_f)×√REV_DAYS 이상이어야 잡음이 아니다(분모를 바꿔 본다)
+        if ups < REV_UP_DAYS or f_recent <= 0 or f_recent < f_sd * math.sqrt(REV_DAYS):
+            continue
+        # "같이 누적으로 떨어지고 있었는데"(대표 9/11): 최근 창 앞까지 외인이 자기 σ_f×√일수 넘게 빠졌어야 한다
+        pre = fv[:-REV_DAYS]
+        if len(pre) < 2 or pre[-1] - pre[0] > -f_sd * math.sqrt(len(pre) - 1):
+            continue
+        lr = [math.log(b / a) for a, b in zip(pv, pv[1:])]
+        sd = (sum((x - sum(lr) / len(lr)) ** 2 for x in lr) / (len(lr) - 1)) ** 0.5
+        # 주가도 누적으로 자기 σ×√일수 넘게 빠졌어야 한다(거의 안 빠진 "이탈"은 빼기)
+        if sum(lr) > -sd * math.sqrt(len(lr)):
+            continue
+        cum_avg = sum(lr) / len(lr)
+        rec = lr[-REV_DAYS:]
+        rec_avg = sum(rec) / len(rec)
+        rec_ret = sum(rec)
+        # "잔잔해짐" = 하락이 누적보다 덜 가파르고, 최근 움직임이 자기 σ×√REV_DAYS 안(크게 빠지지도 튀지도 않음)
+        if not (rec_avg > cum_avg and abs(rec_ret) < sd * math.sqrt(REV_DAYS)):
+            continue
+        rec_pct = (math.exp(rec_ret) - 1) * 100
+        out.append({
+            "종목코드": code, "종목명": r["종목명"], "P": float(r["P"]), "dF": float(r["dF"]),
+            "외인증가일": ups, "최근외인pp": f_recent, "최근주가%": rec_pct,
+            "누적일평균%": cum_avg * 100, "최근일평균%": rec_avg * 100,
+            "이유": (f"누적 주가 {r['P']:+.1f}%·외인 {r['dF']:+.2f}%p(이탈) / 최근 {REV_DAYS}일 외인 {f_recent:+.2f}%p({ups}일 증가) / "
+                    f"최근 {REV_DAYS}일 주가 {rec_pct:+.1f}%(하루 평균 {cum_avg * 100:+.2f}% → {rec_avg * 100:+.2f}%)"),
+        })
+    df = pd.DataFrame(out, columns=cols)
+    return df.sort_values(["외인증가일", "최근외인pp"], ascending=False).reset_index(drop=True) if len(df) else df
+
+
 def link_watch_status(watch_log: pd.DataFrame, price_hist: pd.DataFrame,
                        flow_hist: pd.DataFrame, live_quotes: dict | None = None) -> pd.DataFrame:
     """감시목록 각 종목의 '플래그 시점 기준가/기준비중' 대비 지금까지 변화를 계산 — 읽기 전용

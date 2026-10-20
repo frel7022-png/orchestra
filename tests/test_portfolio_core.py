@@ -2205,3 +2205,26 @@ def test_updown_threshold_scales_with_stock_sigma_and_falls_back():
     assert core.updown_threshold(None, "UP") == core.UPDOWN_FALLBACK[1]
     short = ph[ph["날짜"] <= dates[5]]
     assert core.daily_sigma_map(short) == {}                                   # 자료가 짧으면 σ 안 잼
+
+
+def test_reversal_signs_picks_exit_stocks_where_foreign_rebuilds_and_fall_calms():
+    """반전 조짐(뽑는 도구, 2026-10-20): 이탈 구간 + 최근 외인 증가(자기 변동폭 넘게) + 하락 잔잔. 이유 한 줄."""
+    import math as _m
+    import portfolio_core as core
+    dates = pd.bdate_range("2026-08-03", periods=40).strftime("%Y-%m-%d").tolist()
+    # A: 35일 꾸준히 빠지다 최근 5일 잔잔(±0.2%), 외인은 35일 빠지다 최근 5일 매일 +0.1%p
+    pa = [100 * _m.exp(-0.006 * i + (0.003 if i % 2 else -0.003)) for i in range(35)]
+    pa += [pa[-1] * (1.002 if i % 2 else 0.999) for i in range(5)]
+    fa = [10 - 0.01 * i + (0.002 if i % 2 else -0.002) for i in range(35)] + [10 - 0.35 + 0.1 * (i + 1) for i in range(5)]
+    # B: 같은 이탈인데 최근에도 외인 계속 빠짐 → 안 뽑힘
+    fb = [10 - 0.01 * i + (0.002 if i % 2 else -0.002) for i in range(40)]
+    ph = pd.DataFrame([{"종목코드": c, "종목명": n, "날짜": d, "종가": v}
+                       for c, n, vals in (("A", "가", pa), ("B", "나", pa)) for d, v in zip(dates, vals)])
+    fh = pd.DataFrame([{"종목코드": c, "종목명": n, "날짜": d, "외국인보유율": v}
+                       for c, n, vals in (("A", "가", fa), ("B", "나", fb)) for d, v in zip(dates, vals)])
+    cand = pd.DataFrame([{"종목코드": c, "종목명": n, "기준일": dates[0], "P": -18.0, "dF": -0.1, "구간": "이탈"}
+                         for c, n in (("A", "가"), ("B", "나"))])
+    rs = core.reversal_signs(cand, ph, fh)
+    assert rs["종목명"].tolist() == ["가"]
+    r = rs.iloc[0]
+    assert r["외인증가일"] == 5 and r["최근외인pp"] > 0 and "이탈" in r["이유"]

@@ -309,7 +309,8 @@ def main(data: dict | None = None) -> dict:
     turning = sorted((v for v in stats.values() if v["꺾임"] and v["종목코드"] not in pinned_codes),
                      key=lambda v: -v["dF"])  # 따로 관리 중인 종목은 위 칸에만
     write_html(today, today_df, stats, ph, fh, live, prev_rank, added, swapped, dropped,
-               track, holds_n, holds_m, len(prev_dates) == 0, illusion, turning, pinned, reacc, hn, hm)
+               track, holds_n, holds_m, len(prev_dates) == 0, illusion, turning, pinned, reacc, hn, hm,
+               core.reversal_signs(cand, ph, fh))
     print(f"[완료] {today} 명단 {len(today_df)}개 · 신규 {len(added)} · 탈락 {len(dropped)}")
     for _, r in today_df.iterrows():
         print(f"  {r['순위']:>2}. {r['종목명']} [{r['단계']}] P {r['P']:+.1f}% dF {r['dF']:+.2f}%p 반납 {r['반납률']:.0%}")
@@ -317,7 +318,7 @@ def main(data: dict | None = None) -> dict:
 
 
 def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, dropped, track,
-               holds_n, holds_m, first_run, illusion, turning, pinned, reacc, hn, hm):
+               holds_n, holds_m, first_run, illusion, turning, pinned, reacc, hn, hm, rev=None):
     esc = html.escape
     def sign(v, d=1, unit="%"):
         cls = "up" if v > 0 else ("dn" if v < 0 else "")
@@ -397,6 +398,12 @@ def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, droppe
             f'주가 기준일 대비 {v["P"]:+.1f}% · {own_txt}</span></div>'
             f'{svg_chart(price_series(ph, v["종목코드"], v["기준일"]), foreign_series(fh, v["종목코드"], v["기준일"]), px, today)}</div>')
     re_html = "".join(re_cards) or '<p class="note">없음</p>'
+    # 반전 조짐(2026-10-20, 대표 9/11 요청) — Link "이탈" 구간에서 외인이 다시 쌓이고 하락이 잔잔해진 종목. 그래프 없이 이유 한 줄(부하 작게)
+    re_names = {v["종목명"] for v in reacc}
+    rev_rows = "".join(
+        f'<li><b>{esc(r["종목명"])}</b>{" ★재매집" if r["종목명"] in re_names else ""} — {esc(r["이유"])}</li>'
+        for _, r in (rev if rev is not None else pd.DataFrame()).iterrows())
+    rev_html = f'<ul class="rev">{rev_rows}</ul>' if rev_rows else '<p class="note">없음</p>'
     pin_cards = []
     for _, pr in pinned.iterrows():
         v = stats.get(pr["종목코드"])
@@ -469,6 +476,9 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 <h2>다시 모으기 시작한 종목: 물 탈 때</h2>
 <p class="note">외인이 고점 이후 많이 덜어냈다가, 저점에서 다시 늘어나는 종목. 최근 {REACC_STREAK}거래일 이상 연속 증가했거나 반납분의 {REACC_RECOVER:.0%} 이상을 회복. 주가는 기준일보다 아래.</p>
 <div class="grid2">{re_html}</div>
+<h3 style="font-size:.9rem;margin:14px 0 4px">반전 조짐 — 이탈 구간에서 외인이 다시 쌓이고 하락이 잔잔해진 종목</h3>
+<p class="note">누적으로 주가·외인이 같이 빠지던(이탈) 종목 중, 최근 {core.REV_DAYS}거래일 외인이 {core.REV_UP_DAYS}일 이상 오르고 그 합이 자기 평소 외인 변동폭을 넘으며, 주가 하루 평균이 누적보다 덜 가파르고 자기 변동폭 안에서 움직인 종목. ★ = 위 재매집에도 있음. 순서는 외인 증가일 → 최근 외인 %p.</p>
+{rev_html}
 
 <h2>따로 관리 중</h2>
 <p class="note">추세를 보려고 따로 지정한 종목. 그만하자고 할 때까지 매일 표시.</p>
