@@ -18,7 +18,7 @@ START, END = "<!-- 저장고 표: brain_log.py storage가 만든다 -->", "<!-- 
 
 
 def cell_files() -> list[Path]:
-    return sorted(p for p in BRAIN.glob("*/*.md") if not p.name.startswith("_"))
+    return sorted(p for p in BRAIN.glob("*/*.md") if not p.name.startswith("_") and p.parent.name != "기록관")   # 기록관은 셀이 아니라 원문 보관
 
 
 def cell_lines(since: str | None = None, until: str | None = None) -> list[tuple[str, str, str]]:
