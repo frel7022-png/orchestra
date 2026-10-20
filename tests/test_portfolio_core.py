@@ -2186,3 +2186,22 @@ def test_cfg_lot_exit_ignores_partial_sells_before_the_buy_and_applies_fee():
     assert abs(cmp["cfg"]["평균수익률"] - (100 * 0.998 / 90 - 1) * 100) < 1e-9
     first = (((80 * 1 + 100 * 2) / 3) * 0.998 / 100 - 1) * 100
     assert abs(cmp["rest"]["평균수익률"] - first) < 1e-9
+
+
+def test_updown_threshold_scales_with_stock_sigma_and_falls_back():
+    """Up/Down 문턱 = 종목 하루 변동폭 σ의 배수(2026-10-20 대표). σ 없으면 옛 고정 −2%/+3%."""
+    import portfolio_core as core
+    dates = pd.bdate_range("2026-08-03", periods=30).strftime("%Y-%m-%d")
+    quiet = [100 * (1.01 if i % 2 else 0.99) ** 1 for i in range(30)]     # 하루 ±1% 안팎
+    wild = [100 * (1.04 if i % 2 else 0.96) for i in range(30)]           # 하루 ±4% 안팎
+    ph = pd.DataFrame([{"종목명": n, "날짜": d, "종가": v} for n, vals in (("조용", quiet), ("출렁", wild))
+                       for d, v in zip(dates, vals)])
+    sig = core.daily_sigma_map(ph)
+    assert sig["조용"] < sig["출렁"]
+    r_q = {"pct": -2.5, "sigma": sig["조용"]}
+    r_w = {"pct": -2.5, "sigma": sig["출렁"]}
+    assert core.updown_hit(r_q, "DOWN") and not core.updown_hit(r_w, "DOWN")   # 같은 −2.5%, 뜻이 다름
+    assert core.updown_hit({"pct": -2.1}, "DOWN") and not core.updown_hit({"pct": 2.9}, "UP")   # σ 없음 → 고정 문턱
+    assert core.updown_threshold(None, "UP") == core.UPDOWN_FALLBACK[1]
+    short = ph[ph["날짜"] <= dates[5]]
+    assert core.daily_sigma_map(short) == {}                                   # 자료가 짧으면 σ 안 잼

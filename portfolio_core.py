@@ -19,6 +19,7 @@ import ast
 import difflib
 import io
 import json
+import math
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -2019,6 +2020,41 @@ def get_current_prices_for_names(names: list[str]) -> dict:
         if code in quotes:
             result[n] = quotes[code]["price"]
     return result
+
+
+# Up/Down 문턱 — 고정 %가 아니라 그 종목 하루 변동폭(σ)의 배수(2026-10-20 대표 "응 진행하고").
+# 같은 −2%라도 출렁이는 종목엔 하루 잡음, 조용한 종목엔 의미 있는 하락 — 관심종목 σ 가운데(약 2.2%)에서
+# 옛 고정 문턱(−2% / +3%)과 비슷하게 걸리도록 맞춤. σ를 못 재면(관심종목 밖·자료 부족) 옛 고정 문턱.
+UPDOWN_K_DOWN, UPDOWN_K_UP = 1.0, 1.5
+UPDOWN_FALLBACK = (2.0, 3.0)
+SIGMA_MIN_DAYS = 20
+
+
+def daily_sigma_map(price_hist: pd.DataFrame) -> dict:
+    """{종목명: 하루 로그수익률 표준편차(%)} — price_history(load_watchlist_history_db) 종가로. 수익률이 SIGMA_MIN_DAYS개 미만이면 뺀다."""
+    out = {}
+    if price_hist is None or price_hist.empty or not {"종목명", "날짜", "종가"} <= set(price_hist.columns):
+        return out
+    for name, g in price_hist.sort_values("날짜").groupby("종목명"):
+        c = pd.to_numeric(g["종가"], errors="coerce").dropna()
+        c = c[c > 0]
+        r = (c / c.shift(1)).dropna().map(math.log)
+        if len(r) >= SIGMA_MIN_DAYS:
+            out[name] = float(r.std() * 100)
+    return out
+
+
+def updown_threshold(sigma: float | None, mode: str) -> float:
+    """Up/Down 문턱(% 크기). mode = "DOWN" | "UP"."""
+    if sigma is None or sigma != sigma or sigma <= 0:
+        return UPDOWN_FALLBACK[0] if mode == "DOWN" else UPDOWN_FALLBACK[1]
+    return sigma * (UPDOWN_K_DOWN if mode == "DOWN" else UPDOWN_K_UP)
+
+
+def updown_hit(r: dict, mode: str) -> bool:
+    """Up/Down 결과 한 줄(pct, sigma)이 그 방향 문턱을 넘었나. sigma 없는 옛 캐시 줄은 고정 문턱."""
+    th = updown_threshold(r.get("sigma"), mode)
+    return r["pct"] <= -th if mode == "DOWN" else r["pct"] >= th
 
 
 def get_closed_out_last_sells(holdings_df: pd.DataFrame, tx_df: pd.DataFrame) -> pd.DataFrame:

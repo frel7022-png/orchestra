@@ -13,6 +13,7 @@ from portfolio_core import (
     load_cfg_tags, holding_is_cfg,
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
+    daily_sigma_map, updown_hit, updown_threshold,
     compute_sector_weights, load_watchlist, refresh_watchlist_prices,
     get_watchlist_prev_day_ranks, load_dividend_cache,
     get_holding_trade_summary, get_holding_trade_summary_all_time,
@@ -396,6 +397,12 @@ def _render_link_panel(ph, fh, live_quotes, refresh_fn, T):
                "최근 3거래일은 반대로 가는 중(방향 전환 초입일 수 있음). ★=이미 감시 중")
 
 
+def _z_tag(r: dict) -> str:
+    """Up/Down 줄 끝 "· 1.4σ"(문턱을 σ로 잰 경우만)."""
+    z = r.get("z")
+    return "" if z is None else " · %.1fσ" % abs(z)
+
+
 def refresh_updown_data(holdings, tx) -> None:
     """Up/Down "새로고침" 버튼과 완전히 같은 로직 — 모듈 최상위 함수로 빼서 app.py의
     "Setting"(전체 새로고침, §6-33)도 그대로 재사용할 수 있게 함. 로직 복제 금지 원칙."""
@@ -403,14 +410,22 @@ def refresh_updown_data(holdings, tx) -> None:
     results = []
     if not closed.empty:
         prices = get_current_prices_for_names(closed["종목명"].tolist())
+        # 문턱 = 그 종목 하루 변동폭 σ의 배수(2026-10-20). σ는 관심종목 DB 종가로 — Fishing이 이미 불러 둔 게 있으면 그걸, 없으면 한 번 조회
+        hist = st.session_state.get("fishing_hist")
+        if hist is None or getattr(hist, "empty", True):
+            sb = st.secrets.get("supabase", {})
+            hist = load_watchlist_history_db(sb.get("url", ""), sb.get("anon_key", "")) if sb.get("url") else None
+        sig = daily_sigma_map(hist)
         for _, row in closed.iterrows():
             cp = prices.get(row["종목명"])
             if cp is None:
                 continue
             pct = (cp - row["매도가"]) / row["매도가"] * 100
+            s_ = sig.get(row["종목명"])
             results.append({
                 "종목명": row["종목명"], "매도일": row["매도일"],
                 "매도가": row["매도가"], "현재가": cp, "pct": pct,
+                "sigma": s_, "z": (pct / s_) if s_ else None,
             })
     st.session_state["updown_results"] = results
     st.session_state["updown_checked_at"] = now_kst_str()
@@ -925,13 +940,12 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         else:
             if updown_checked_at:
                 st.caption(f"마지막 조회: {updown_checked_at}")
-            # DOWN은 ±2%, UP은 ±3% (2026-09-10 사용자 요청 — 하락 쪽을 더 촘촘히)
-            down_threshold, up_threshold = 2.0, 3.0
+            # 문턱 = 종목 하루 변동폭 σ의 배수(DOWN 1σ·UP 1.5σ, 2026-10-20 대표) — 옛 고정 ±2%/±3%(2026-09-10)는 σ를 못 잴 때만
             if updown_mode == "DOWN":
-                filtered = sorted([r for r in updown_results if r["pct"] <= -down_threshold], key=lambda r: r["pct"])
+                filtered = sorted([r for r in updown_results if updown_hit(r, "DOWN")], key=lambda r: r["pct"])
                 updown_color = DOWN_COLOR
             else:
-                filtered = sorted([r for r in updown_results if r["pct"] >= up_threshold], key=lambda r: -r["pct"])
+                filtered = sorted([r for r in updown_results if updown_hit(r, "UP")], key=lambda r: -r["pct"])
                 updown_color = UP_COLOR
 
             if not filtered:
@@ -940,7 +954,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 rows_html = "".join(
                     f'<div class="updown-row"><span class="name">{r["종목명"]}</span>'
                     f'<span class="pct" style="color:{updown_color}">{"+" if r["pct"] >= 0 else ""}{r["pct"]:.1f}%</span>'
-                    f'<span class="detail">{r["매도가"]:,.0f} → {r["현재가"]:,.0f}</span></div>'
+                    f'<span class="detail">{r["매도가"]:,.0f} → {r["현재가"]:,.0f}{_z_tag(r)}</span></div>'
                     for r in filtered
                 )
                 st.markdown(rows_html, unsafe_allow_html=True)
@@ -1008,10 +1022,10 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         unsafe_allow_html=True)
             updown_results_fa = st.session_state.get("updown_results")
             encore_pop = ([{"종목명": r["종목명"], "매도일": r["매도일"], "pct": r["pct"]}
-                           for r in updown_results_fa if r["pct"] <= -2.0]
+                           for r in updown_results_fa if updown_hit(r, "DOWN")]
                           if updown_results_fa else [])
             if not encore_pop:
-                st.caption("Up/Down에서 새로고침을 먼저 눌러주세요(매도 후 -2%↓ 종목이 없을 수도 있음).")
+                st.caption("Up/Down에서 새로고침을 먼저 눌러주세요(매도 후 문턱(종목 σ) 아래 종목이 없을 수도 있음).")
             else:
                 encore_rows = _fa_rank(flow_hist_fa, encore_pop, "매도일", "pct")
                 if not encore_rows:
@@ -1091,7 +1105,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     # (2026-09-10 사용자 요청). Up/Down 새로고침을 눌러 결과가 있을 때만.
                     _ud = st.session_state.get("updown_results") or []
                     _ud_names = {r["종목명"] for r in _ud
-                                 if r["pct"] <= -2.0 or r["pct"] >= 3.0}
+                                 if updown_hit(r, "DOWN") or updown_hit(r, "UP")}
 
                     row_parts = []
                     for i, f in enumerate(flagged, 1):
