@@ -169,6 +169,11 @@ def main() -> int:
             print(f"{d} {h}  {ln}")
     elif a and a[0] == "history":
         print(history_skeleton(a[1]))
+    elif a and a[0] == "history-old":
+        # 3개월 넘은 HISTORY 하루 파일 — 지우기 전 대표에게 묻는다(원-2026-10-20-24). 목차 줄은 남긴다.
+        cut = (datetime.date.today() - datetime.timedelta(days=92)).isoformat()
+        old = sorted(p.stem for p in (BRAIN / "HISTORY").glob("????-??-??.md") if p.stem < cut)
+        print("3개월 넘은 HISTORY 파일: " + (", ".join(old) if old else "없음"))
     elif a and a[0] == "storage":
         write_storage()
         print(f"저장고 표 갱신 → {MAP}")
