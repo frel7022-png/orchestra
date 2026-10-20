@@ -1132,6 +1132,18 @@ def compute_foreign_flags(hist: pd.DataFrame, price_hist: pd.DataFrame | None = 
     return results
 
 
+def universe_center(values) -> dict:
+    """관심종목 바다의 가운데 — 같은 구간 종목별 값(수익률·외인 %p 등)을 받아 {"평균", "가운데", "n"}.
+    정의는 여기 한 곳(셀: 뇌_초안/관측소/바다.md). 쓰는 쪽이 어느 걸 쓰는지 이름으로 꺼낸다 —
+    picks 채점(초과관심)은 "평균"(기록 순간 고정한 규칙이라 바꾸지 않음), sea 바다 비교는 "가운데"(몇 종목이 튀면 평균이 끌려감).
+    종목별 값을 재는 창(기준일 처리)은 쓰는 쪽마다 다르다 — 이 함수는 모으는 법만 맡는다(2026-10-20 셀회의 6번)."""
+    import statistics
+    v = [float(x) for x in values if x is not None and x == x]
+    if not v:
+        return {"평균": None, "가운데": None, "n": 0}
+    return {"평균": sum(v) / len(v), "가운데": statistics.median(v), "n": len(v)}
+
+
 def foreign_pct_change_since(flow_hist: pd.DataFrame, name: str, since_date: str) -> float | None:
     """종목명 name의 외국인보유율이 since_date 대비 지금까지 몇 %p 움직였는지(2026-09-16,
     Foreign Arrows §6-28 확장). compute_foreign_flags의 "기준일pp"와 같은 계산이지만, 기준일이

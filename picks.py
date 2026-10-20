@@ -195,7 +195,8 @@ def _universe_ret(uc: dict, d0: str, d1: str | None, live: dict) -> float | None
         b = live.get(c) if d1 is None else m.get(d1)
         if a and b and a > 0:
             rs.append(b / a - 1)
-    return sum(rs) / len(rs) * 100 if rs else None
+    m = core.universe_center(rs)["평균"]   # 채점 규칙 = 단순평균(기록 순간 고정, 바꾸지 않는다 — 2026-10-20 셀회의)
+    return m * 100 if m is not None else None
 
 
 def _row_horizons(r) -> tuple[int, int, int]:

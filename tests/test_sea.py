@@ -43,3 +43,10 @@ def test_tide_labels():
     assert sea.tide({"방향": -1}, {"KOSPI": -10.0}).startswith("역풍")
     assert sea.tide({"방향": 1}, {"KOSPI": 10.0}).startswith("순풍")
     assert sea.tide({"방향": -1}, {"KOSPI": 10.0}).startswith("엇갈림")
+
+
+def test_universe_center_gives_both_mean_and_median_and_skips_nan():
+    import portfolio_core as core
+    c = core.universe_center([1.0, 2.0, 9.0, float("nan"), None])
+    assert c == {"평균": 4.0, "가운데": 2.0, "n": 3}
+    assert core.universe_center([])["가운데"] is None

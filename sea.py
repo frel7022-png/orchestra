@@ -136,13 +136,13 @@ def relative_foreign(fh: pd.DataFrame, start: str, ph: pd.DataFrame | None = Non
     df = pd.DataFrame(rows)
     if df.empty:
         return df, {}
-    med = float(df["dF"].median())
+    med = core.universe_center(df["dF"])["가운데"]   # 바다 비교 = 가운데 값(정의는 core 한 곳)
     df["상대외인"] = df["dF"] - med
     df["외인변화율%"] = df["dF"] / df["외인시작"].where(df["외인시작"] > 0) * 100   # 비중이 낮은 종목은 %p가 작게 나와서 같이 본다
     df["버팀"] = (df["dF"] >= 0) & (med < 0)   # 바다가 외인을 빼는데 이 종목은 안 빠짐 — 지금은 "안 움직인 종목"이라 다른 보고엔 안 잡힌다
     info = {"외인중앙": med, "종목수": len(df)}
     if "주가%" in df:
-        info["주가중앙"] = float(df["주가%"].median())
+        info["주가중앙"] = core.universe_center(df["주가%"])["가운데"]
     return df.sort_values("상대외인", ascending=False).reset_index(drop=True), info
 
 
