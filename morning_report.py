@@ -662,6 +662,15 @@ def main():
     if not old.empty:
         old = old[old["날짜"] != res["today"]]
     pd.concat([old, pd.DataFrame(rows)], ignore_index=True).to_csv(log, index=False, encoding="utf-8-sig")
+    # 후보 장부(바라보는 눈 빌딩 저장고) — 그날 순위에 오른 종목을 하루 한 번. 실패해도 리포트는 그대로.
+    try:
+        import ledger
+        rp = HERE / "link_sample" / "roster.csv"
+        ro = pd.read_csv(rp, dtype={"종목코드": str}) if rp.exists() else pd.DataFrame()
+        ro = ro[ro["날짜"] == res["today"]] if not ro.empty else ro
+        ledger.daily(res["today"], ledger.rows_from_report(res, ro, TOP))
+    except Exception as e:
+        print(f"[경고] 후보 장부 갱신 실패: {e}")
     print(f"[완료] {res['today']} ① Up/Down {len(res['updown'])} · Watering {len(res['watering'])} · "
           f"Fishing {len(res['fishing'])} · Basecamp {len(res['basecamp'])} · meritz {len(res['meritz'])} / ③ CFG {len(res['cfg'])}")
     for x in res["cfg"]:
