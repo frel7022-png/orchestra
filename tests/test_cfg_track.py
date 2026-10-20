@@ -26,3 +26,15 @@ def test_track_one_closed_cycle_result_and_events():
     assert row["결과%"] == round(1000 / 19000 * 100, 2)
     assert row["외인변화pp"] == 1.5
     assert [e["구분"] for e in ev] == ["매수", "매수", "매도"]
+
+
+def test_sell_lines_reports_full_exit_once(monkeypatch):
+    tx = pd.DataFrame([
+        ("2026-10-19", "인투셀", "매수", 1, 15080, None),
+        ("2026-10-20", "인투셀", "매도", 1, 16780, 1666),
+    ], columns=["날짜", "종목명", "구분", "수량", "단가", "실현손익"])
+    monkeypatch.setattr(cfg_track.core, "load_transactions", lambda: tx)
+    monkeypatch.setattr(cfg_track.core, "load_cfg_tags", lambda: pd.DataFrame({"종목명": ["인투셀"], "태그일": ["2026-10-19"]}))
+    df = pd.DataFrame([{"종목명": "인투셀", "상태": "끝", "종료일": "2026-10-20", "결과%": 11.05, "태그가대비%": 11.27}])
+    assert cfg_track.sell_lines("2026-10-20", df) == ["외인 보고 산 인투셀 — 사이클 끝(전량), 결과 +11.05% · 태그가 대비 +11.27%"]
+    assert cfg_track.sell_lines("2026-10-21", df) == []

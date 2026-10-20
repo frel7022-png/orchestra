@@ -118,8 +118,27 @@ def build(fh=None):
     return df
 
 
+def sell_lines(day: str, df: pd.DataFrame | None = None) -> list[str]:
+    """그날 매도가 있었던 CFG 태그 종목 → 매매일지 반영 보고 끝에 붙일 한 줄씩(2026-10-20 섀도에서 빠진 칸)."""
+    tx = core.load_transactions()
+    tags = core.load_cfg_tags()
+    sold = set(tx[(tx["날짜"] == day) & (tx["구분"] == "매도")]["종목명"]) & set(tags["종목명"])
+    df = build() if df is None else df
+    out = []
+    for _, r in df[df["종목명"].isin(sold)].iterrows():
+        if r["상태"] == "끝" and r["종료일"] != day:
+            continue  # 예전에 끝난 사이클 줄
+        kind = "사이클 끝(전량)" if r["상태"] == "끝" else "일부 매도"
+        out.append(f"외인 보고 산 {r['종목명']} — {kind}, 결과 {r['결과%']:+.2f}% · 태그가 대비 {r['태그가대비%']:+.2f}%")
+    return out
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
+    if "--sells" in sys.argv:
+        for ln in sell_lines(sys.argv[sys.argv.index("--sells") + 1]) or ["그날 CFG 종목 매도 없음"]:
+            print(ln)
+        sys.exit(0)
     df = build()
     cols = ["종목명", "태그일", "상태", "매수횟수", "태그뒤_물타기", "결과%", "태그가대비%", "외인변화pp"]
     print(df[[c for c in cols if c in df.columns]].to_string(index=False))
