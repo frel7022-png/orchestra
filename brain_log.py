@@ -5,6 +5,7 @@
     python brain_log.py heads                # 셀 머리(제목 ~ "## 꼬리표" 전) 줄 수 — 15 넘으면 표시
     python brain_log.py links                # 셀 사이 길(다음 셀 신호) 표 → 셀관리.md + 뇌_초안 안 끊긴 경로 검사(2026-10-20 셀회의)
 """
+import datetime
 import re
 import subprocess
 import sys
@@ -18,7 +19,7 @@ START, END = "<!-- 저장고 표: brain_log.py storage가 만든다 -->", "<!-- 
 
 
 def cell_files() -> list[Path]:
-    return sorted(p for p in BRAIN.glob("*/*.md") if not p.name.startswith("_") and p.parent.name not in ("기록관", "설계도실", "ARCHIVE"))   # 기록관은 셀이 아니라 원문 보관
+    return sorted(p for p in BRAIN.glob("*/*.md") if not p.name.startswith("_") and p.parent.name not in ("기록관", "설계도실", "ARCHIVE", "HISTORY"))   # 기록관은 원문 보관, HISTORY는 날짜별 서사(셀 아님)
 
 
 def cell_lines(since: str | None = None, until: str | None = None) -> list[tuple[str, str, str]]:
@@ -134,6 +135,28 @@ def write_links(out: dict, inc: dict) -> None:
     MAP.write_text(s, encoding="utf-8")
 
 
+def history_skeleton(day: str) -> str:
+    """HISTORY 하루 파일 뼈대 — 그날 커밋(id·제목)과 거기 나온 대표 원문 번호·바뀐 셀을 git log에서 뽑는다.
+    손으로 쓰는 건 흐름·물어본 것·남은 것만(2026-10-20 위크 회의 — 서사는 셀에서 빼서 HISTORY로)."""
+    nxt = (datetime.date.fromisoformat(day) + datetime.timedelta(days=1)).isoformat()
+    log = subprocess.run(["git", "-c", "core.quotepath=off", "log", f"--since={day} 00:00", f"--until={nxt} 00:00", "--reverse",
+                          "--name-only", "--format=@@%h %s"], cwd=BRAIN.parent, capture_output=True,
+                         text=True, encoding="utf-8").stdout
+    commits, cells, wons = [], set(), []
+    for ln in log.splitlines():
+        if ln.startswith("@@"):
+            commits.append(ln[2:])
+            wons += [w for w in re.findall(r"원-\d{4}-\d{2}-\d{2}-\d+", ln) if w not in wons]
+        elif ln.startswith("뇌_초안/") and ln.count("/") == 2 and not ln.split("/")[2].startswith("_"):
+            top = ln.split("/")[1]
+            if top not in ("기록관", "설계도실", "ARCHIVE", "HISTORY"):
+                cells.add(ln[len("뇌_초안/"):-3])
+    out = [f"## 진행된 일 (커밋 {len(commits)}개, git log)"] + [f"- {c}" for c in commits]
+    out += ["", "## 바뀐 셀", "- " + (", ".join(sorted(cells)) or "(없음)"),
+            "", "## 대표 원문 번호(커밋 메시지에 나온 것)", "- " + (", ".join(wons) or "(없음)")]
+    return "\n".join(out)
+
+
 def main() -> int:
     for st in (sys.stdout, sys.stderr):
         try:
@@ -144,6 +167,8 @@ def main() -> int:
     if a and a[0] == "log":
         for d, h, ln in cell_lines(a[1] if len(a) > 1 else None, a[2] if len(a) > 2 else None):
             print(f"{d} {h}  {ln}")
+    elif a and a[0] == "history":
+        print(history_skeleton(a[1]))
     elif a and a[0] == "storage":
         write_storage()
         print(f"저장고 표 갱신 → {MAP}")
