@@ -3,6 +3,7 @@
     python brain_log.py log [시작일] [끝일]   # 커밋 메시지의 `셀:` 줄 모음 — 셀 이력·하루 일기·주간 "뇌 변경 보고"의 원천
     python brain_log.py storage              # 셀마다의 `저장고:` 줄(원본)을 모아 셀관리.md 저장고 표를 다시 만든다
     python brain_log.py heads                # 셀 머리(제목 ~ "## 꼬리표" 전) 줄 수 — 15 넘으면 표시
+    python brain_log.py links                # 셀 사이 길(다음 셀 신호) 표 → 셀관리.md + 뇌_초안 안 끊긴 경로 검사(2026-10-20 셀회의)
 """
 import re
 import subprocess
@@ -61,6 +62,78 @@ def write_storage() -> None:
     MAP.write_text(s, encoding="utf-8")
 
 
+LSTART, LEND = "<!-- 길 표: brain_log.py links가 만든다 -->", "<!-- 길 표 끝 -->"
+REF = re.compile(r"`((?:\.\./)?(?:뇌_초안/)?(?:[^`/\s]+/)?[^`/\s]+\.md)`")
+
+
+def _cell_key(p: Path) -> str:
+    return f"{p.parent.name}/{p.stem}"
+
+
+def _sections(text: str) -> dict[str, list[str]]:
+    out, cur = {}, None
+    for ln in text.split("\n"):
+        if ln.startswith("## "):
+            cur = ln[3:].strip()
+            out[cur] = []
+        elif cur:
+            out[cur].append(ln)
+    return out
+
+
+def _resolve(ref: str, here: Path) -> Path:
+    if ref.startswith("뇌_초안/"):
+        return BRAIN / ref[len("뇌_초안/"):]
+    return (here.parent / ref).resolve()
+
+
+def links() -> tuple[dict, dict, list]:
+    """셀마다 "다음 셀로 가는 신호" 칸이 가리키는 셀(나감)·그 반대(들어옴), 그리고 뇌_초안 안의 끊긴 경로.
+    끊긴 경로 = `…/이름.md` 꼴로 적혔는데 그 파일이 없는 것(셀·게시판·줄기 전부 검사)."""
+    cells = cell_files()
+    keys = {_cell_key(p) for p in cells}
+    out = {}
+    for p in cells:
+        sig = sum((v for k, v in _sections(p.read_text(encoding="utf-8")).items() if k.startswith("다음 셀")), [])
+        hits = set()
+        for ln in sig:
+            for m in REF.finditer(ln):
+                t = _resolve(m.group(1), p)
+                k = f"{t.parent.name}/{t.stem}"
+                if k in keys and k != _cell_key(p):
+                    hits.add(k)
+        out[_cell_key(p)] = hits
+    inc = {k: {a for a, v in out.items() if k in v} for k in keys}
+    broken = []
+    for p in sorted(BRAIN.rglob("*.md")):
+        for i, ln in enumerate(p.read_text(encoding="utf-8").split("\n"), 1):
+            for m in REF.finditer(ln):
+                ref = m.group(1)
+                head = ref.split("/")[0]
+                if "/" not in ref or not (head in ("..", "뇌_초안") or (BRAIN / head).is_dir()):
+                    continue   # 폴더 없는 이름(`claude.md`·`_게시판.md`)이나 도시 밖 경로(`Week/…`)는 검사 대상 아님
+                if not _resolve(ref, p).exists():
+                    broken.append((str(p.relative_to(BRAIN)), i, ref))
+    return out, inc, broken
+
+
+def links_table(out: dict, inc: dict) -> str:
+    rows = ["| 셀 | 나감(신호 칸) | 들어옴(신호 칸) |", "|---|---|---|"]
+    for k in sorted(out):
+        rows.append(f"| `{k}` | {', '.join(sorted(out[k])) or '**없음**'} | {', '.join(sorted(inc[k])) or '**없음**'} |")
+    return "\n".join(rows)
+
+
+def write_links(out: dict, inc: dict) -> None:
+    s = MAP.read_text(encoding="utf-8")
+    block = f"{LSTART}\n{links_table(out, inc)}\n{LEND}"
+    if LSTART in s:
+        s = re.sub(re.escape(LSTART) + r".*?" + re.escape(LEND), lambda _: block, s, flags=re.S)
+    else:
+        s = s.replace("## 저장고", "## 길 (다음 셀 신호 — 뉴런)\n" + block + "\n\n## 저장고", 1)
+    MAP.write_text(s, encoding="utf-8")
+
+
 def main() -> int:
     for st in (sys.stdout, sys.stderr):
         try:
@@ -74,6 +147,15 @@ def main() -> int:
     elif a and a[0] == "storage":
         write_storage()
         print(f"저장고 표 갱신 → {MAP}")
+    elif a and a[0] == "links":
+        out, inc, broken = links()
+        write_links(out, inc)
+        print(links_table(out, inc))
+        print(f"\n길 표 갱신 → {MAP}")
+        for f, i, ref in broken:
+            print(f"끊긴 경로: {f}:{i}  {ref}")
+        print(f"끊긴 경로 {len(broken)}개")
+        return 1 if broken else 0
     elif a and a[0] == "heads":
         bad = 0
         for p in cell_files():

@@ -158,6 +158,39 @@ def tide(leg: dict, mkt: dict) -> str:
     return f"엇갈림(환율{'↑' if leg['방향'] > 0 else '↓'}·외인 {'유입' if fsum > 0 else '이탈'})"
 
 
+# ---------- 주가 전체(지수) · 배(내 계좌) ----------
+def index_moves(idx: pd.DataFrame, bigdf: pd.DataFrame, wk: float, start: str) -> dict:
+    """start 종가(그날 이하 가장 최근) → 마지막 행(오늘은 실시간) 변화 %. 코스피·코스닥·혼합(일반)·혼합(ex).
+    idx·bigdf는 live_check.live_snapshot이 만든 것 그대로(확정 종가 + 오늘 실시간) — 계산을 따로 만들지 않는다."""
+    ex = core.synthetic_kospi_ex_bigcap(idx, bigdf)
+
+    def chg(df, col):
+        b = df[df["날짜"] <= start]
+        a0 = float((b if len(b) else df).iloc[-1 if len(b) else 0][col])
+        return (float(df[col].iloc[-1]) / a0 - 1) * 100
+
+    kp, kq, kx = chg(idx, "KOSPI"), chg(idx, "KOSDAQ"), chg(ex, "KOSPI")
+    return {"코스피": kp, "코스닥": kq, "혼합(일반)": wk * kp + (1 - wk) * kq, "혼합(ex)": wk * kx + (1 - wk) * kq}
+
+
+def ship(snap: dict, start: str) -> dict:
+    """배 = 내 계좌·내 주식. start 이후 변화 %(앱 '내 계좌·내 주식'과 같은 정의 — compute_index_vs_account의 me 기준).
+    바다가 아니다. 계좌를 벤치와 겨루는 판정은 누구와_싸우나(위크·대표 2026-10-20)."""
+    me = snap.get("me")
+    out = {}
+    if me is None or me.empty:
+        return out
+    b = me[me["날짜"] <= start]
+    if not len(b):
+        return out
+    for k, col in (("내 계좌", "acct"), ("내 주식", "stock")):
+        now = snap[col][0]
+        base = float(b[{"acct": "계좌수익", "stock": "주식수익"}[col]].iloc[-1])
+        if now is not None:
+            out[k] = ((1 + now) / (1 + base) - 1) * 100
+    return out
+
+
 # ---------- 실행 ----------
 def load_data() -> dict:
     sec = tomllib.load(open(HERE / ".streamlit/secrets.toml", "rb"))["supabase"]
@@ -182,8 +215,19 @@ def state(data: dict | None = None, fx: pd.DataFrame | None = None) -> dict:
     big = leg["큰흐름"]
     big_mkt = market_foreign(data["mf"], big["시작"], end)
     big_rel, big_info = relative_foreign(data["fh"], big["시작"], data["ph"], data["live"])
-    return {"leg": leg, "mkt": mkt, "rel": rel, "info": info, "tide": tide(leg, mkt), "end": end,
-            "big": {"mkt": big_mkt, "rel": big_rel, "info": big_info}}
+    out = {"leg": leg, "mkt": mkt, "rel": rel, "info": info, "tide": tide(leg, mkt), "end": end,
+           "big": {"mkt": big_mkt, "rel": big_rel, "info": big_info}}
+    try:
+        import live_check
+        snap = data.get("snap") or live_check.live_snapshot()
+        for k, st in ((None, leg["시작"]), ("big", big["시작"])):
+            d = out if k is None else out["big"]
+            d["idx"] = index_moves(snap["idx"], snap["bigdf"], snap["wk"], st)
+            d["idx_from"] = max(st, str(snap["idx"]["날짜"].iloc[0]))   # 지수 자료는 index_history 시작(8/14)부터
+            d["ship"] = ship(snap, st)
+    except Exception as e:   # 지수·계좌는 덤 — 실패해도 바다(환율·외인)는 낸다
+        out["idx_err"] = str(e)
+    return out
 
 
 def save(s: dict) -> None:
@@ -198,7 +242,9 @@ def save(s: dict) -> None:
            "큰흐름시작": leg["큰흐름"]["시작"], "큰흐름환율변화%": round(leg["큰흐름"]["변화%"], 2),
            "큰흐름코스피외인억": round(s["big"]["mkt"].get("KOSPI", 0)),
            "큰흐름관심외인중앙pp": round(s["big"]["info"].get("외인중앙", 0), 3),
-           "큰흐름관심주가중앙%": round(s["big"]["info"].get("주가중앙", 0), 2)}
+           "큰흐름관심주가중앙%": round(s["big"]["info"].get("주가중앙", 0), 2),
+           **{f"{k}%": round(v, 2) for k, v in s.get("idx", {}).items()},
+           **{f"{k}%": round(v, 2) for k, v in s.get("ship", {}).items()}}
     log = OUT / "state_log.csv"
     old = pd.read_csv(log) if log.exists() else pd.DataFrame(columns=list(row))
     keep = old[old["날짜"] != today]
@@ -219,13 +265,22 @@ def report(s: dict, name: str | None = None) -> None:
     print("  시장 외인 순매수  " + " · ".join(f"{k} {v:+,.0f}억" for k, v in sorted(mkt.items())))
     print(f"  관심종목 {info.get('종목수', 0)}개  외인 비중 가운데 {info.get('외인중앙', 0):+.2f}%p · "
           f"주가 가운데 {info.get('주가중앙', float('nan')):+.1f}%  · 버팀 {int(rel['버팀'].sum())}종목")
+    _idx_ship(s)
     _table(rel, name, f"작은 구간({leg['시작']}~) 상대 외인")
     b, bi = leg["큰흐름"], s["big"]["info"]
     edge = " (자료 첫날 — 진짜 꼭짓점은 더 앞일 수 있음)" if b.get("자료끝") else ""
     print(f"\n[큰 흐름] 환율 {b['시작']} {b['시작값']:,.1f} → {leg['지금값']:,.1f}  {b['변화%']:+.1f}% ({b['거래일']}거래일){edge}")
     print("  시장 외인 순매수  " + " · ".join(f"{k} {v:+,.0f}억" for k, v in sorted(s["big"]["mkt"].items())))
     print(f"  관심종목 외인 비중 가운데 {bi.get('외인중앙', 0):+.2f}%p · 주가 가운데 {bi.get('주가중앙', float('nan')):+.1f}%")
+    _idx_ship(s["big"])
     _table(s["big"]["rel"], name, f"큰 흐름({b['시작']}~) 상대 외인")
+
+
+def _idx_ship(d: dict) -> None:
+    if d.get("idx"):
+        print(f"  지수({d.get('idx_from', '')}~)  " + " · ".join(f"{k} {v:+.1f}%" for k, v in d["idx"].items()))
+    if d.get("ship"):
+        print("  배(바다 아님, 겨루기는 누구와_싸우나)  " + " · ".join(f"{k} {v:+.1f}%" for k, v in d["ship"].items()))
 
 
 def _table(rel: pd.DataFrame, name: str | None, title: str) -> None:

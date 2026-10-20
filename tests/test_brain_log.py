@@ -16,3 +16,10 @@ def test_storage_table_reads_each_cells_storage_line(tmp_path):
     t = bl.storage_table(sorted(d.glob("*.md")))
     assert "| `수급/외인_판단` | `a.csv`(`a.py`) |" in t
     assert "빈칸" not in t
+
+
+def test_links_no_broken_paths_in_city():
+    """뇌_초안 안 경로가 끊기지 않았는지 — 빌딩 이사·이름 바꾸기 뒤 반드시 0 (2026-10-20 셀회의)."""
+    out, inc, broken = bl.links()
+    assert broken == []
+    assert all(k in inc for k in out)
