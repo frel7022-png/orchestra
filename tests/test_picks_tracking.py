@@ -117,3 +117,43 @@ def test_weak_foreign_dip_is_not_basis_gone():
     fl = _flow(base + rise + [14.9])
     st = tracking._foreign_state(fl, fl["날짜"].iloc[0], fl["날짜"].iloc[10])
     assert st["외인상태"] != "근거 사라짐"
+
+
+def _score_fixture(monkeypatch):
+    days = ["2026-10-01", "2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07"]
+    log = pd.DataFrame([{
+        "회차": "R1", "날짜": "2026-10-01", "시각": "10:00", "순위": 1, "종목명": "가나다", "종목코드": "000001",
+        "추천가": 1000.0, "구분": "신규", "근거": "이유", "벤치K": 100.0, "벤치Q": 100.0, "메모": "",
+        "단기일": 2, "중기일": 3, "장기일": 9, "기간근거": "테스트",
+    }])
+    monkeypatch.setattr(picks, "load_log", lambda: log)
+    bench = {d: (100.0, 100.0) for d in days}
+    bench["2026-10-05"] = (102.0, 102.0)
+    monkeypatch.setattr(picks, "bench_levels", lambda live=True: (bench, (101.0, 101.0)))
+    monkeypatch.setattr(picks, "_wk", lambda: 1.0)
+    monkeypatch.setattr(picks.core, "fetch_quotes", lambda codes: ({"000001": {"price": 1200}}, None))
+    monkeypatch.setattr(picks.core, "fetch_daily_price_history",
+                        lambda code, s, e: [{"날짜": "2026-10-05", "종가": 1100.0}])
+    ph = pd.DataFrame([{"종목코드": "U1", "날짜": "2026-10-01", "종가": 100.0}, {"종목코드": "U1", "날짜": "2026-10-05", "종가": 105.0}])
+    return {"ph": ph, "live": {"U1": 110.0}}
+
+
+def test_side_by_side_view_adds_columns_without_changing_recorded_scores(monkeypatch):
+    """나란히 보기(2026-10-20 대표): 고정 길이 칸만 더하고, 기존 채점 칸 값은 그대로 — 판정 칸은 없다."""
+    data = _score_fixture(monkeypatch)
+    monkeypatch.setattr(picks, "VIEW_DAYS", ())
+    before = picks.score("R1", data=data)
+    monkeypatch.setattr(picks, "VIEW_DAYS", (2, 30))
+    after = picks.score("R1", data=data)
+    for c in before.columns:
+        if c == "경과일":
+            continue
+        a, b = before.iloc[0][c], after.iloc[0][c]
+        assert (pd.isna(a) and pd.isna(b)) or a == b, c
+    assert after.iloc[0]["+2일초과%p"] == pytest.approx(8.0)   # 단기(2일)와 같은 날 → 같은 값
+    view = picks.side_by_side(after)
+    row = view.iloc[0]
+    assert row["+30일"] == picks.NOT_YET
+    assert row["장기"].startswith(picks.NOT_YET) and "(9일)" in row["장기"]
+    assert list(view.columns)[-1] == "지금(체크포인트 아님)"
+    assert not any("판정" in c or "이긴" in c for c in view.columns)

@@ -3,7 +3,8 @@
 세션이 대표에게 종목을 추천할 때마다 picks_log.csv에 한 줄씩 남기고, 나중에 혼합지수(삼성·하이닉스 제외) 대비로 채점한다.
 칭찬용이 아니라 "어떤 근거 조합이 실제로 맞았나"를 가리려는 장부 — 틀린 추천도 그대로 남긴다(지우지 않음).
 
-    python picks.py score          # 전체 채점표 출력 + picks_score.csv 저장
+    python picks.py score          # 여러 길이 나란히 표(+10일·+30일·단기·중기·장기, 지금은 맨 끝) + picks_score.csv 저장
+    python picks.py score --full   # 옛 전체 칸
     python picks.py score 회차ID    # 그 회차만
     python picks.py fill           # 기간이 빈 옛 기록에 종목별 기간 채우기(그 추천일까지 데이터만)
 
@@ -50,6 +51,8 @@ WAVE_CLAMP = ((3, 30), (5, 60), (15, 120))
 WAVE_MIN_LEGS = 6                  # 반 파도가 이보다 적으면 표본 부족 → 폴백
 WAVE_LOOKBACK_DAYS = 730           # 기록 시점 이전 달력일
 HORIZONS_FALLBACK = (13, 26, 78)   # 관심종목 181개 반 파도 중간값 13거래일 기준(2026-10-19 실측)
+VIEW_DAYS = (10, 30)               # 나란히 보기용 고정 길이(거래일) — 판정 아님, 같은 추천을 여러 길이로 펼쳐 보는 안경(대표 2026-10-20)
+NOT_YET = "—(아직)"
 
 
 def load_log() -> pd.DataFrame:
@@ -259,6 +262,17 @@ def score(round_id: str | None = None, data: dict | None = None) -> pd.DataFrame
             if u is not None:
                 row["지금초과관심%p"] = row["지금%"] - u
         after = [d for d in days if d > d0]
+        row["경과일"] = len(after)
+        for n in VIEW_DAYS:   # 고정 길이 안경 — 기존 칸(단기·중기·장기·지금)은 건드리지 않고 칸만 더한다
+            if len(after) >= n and b0:
+                d = after[n - 1]
+                px = hist.get(c, {}).get(d)
+                if px:
+                    row[f"+{n}일%"] = (px / p0 - 1) * 100
+                    row[f"+{n}일초과%p"] = row[f"+{n}일%"] - bret(b0, closes[d])
+                    u = _universe_ret(uc, d0, d, ulive)
+                    if u is not None:
+                        row[f"+{n}일초과관심%p"] = row[f"+{n}일%"] - u
         for t, h in zip(TERMS, _row_horizons(r)):
             row[f"{t}일"] = h
             if len(after) >= h and b0:
@@ -275,6 +289,30 @@ def score(round_id: str | None = None, data: dict | None = None) -> pd.DataFrame
     if not round_id:
         df.to_csv(SCORE, index=False, encoding="utf-8-sig")
     return df
+
+
+def side_by_side(df: pd.DataFrame) -> pd.DataFrame:
+    """같은 추천을 여러 길이로 나란히 펼친다 — 판정을 찍지 않는 안경(대표 2026-10-20: 판정은 기간에 의해 변화한다).
+    칸 순서: 경과 → +10일 → +30일 → 단기·중기·장기(종목별 체크포인트) → 지금(맨 끝, 체크포인트 아님).
+    칸마다 "혼합지수 ex 대비 / 관심종목 평균 대비"(%p). 아직 안 온 길이는 NOT_YET."""
+    def cell(r, pre):
+        a, b = r.get(f"{pre}초과%p"), r.get(f"{pre}초과관심%p")
+        if a is None or pd.isna(a):
+            return NOT_YET
+        bs = "" if b is None or pd.isna(b) else f" / {b:+.1f}"
+        return f"{a:+.1f}{bs}"
+
+    rows = []
+    for _, r in df.iterrows():
+        o = {"회차": r["회차"], "종목명": r["종목명"], "경과": int(r["경과일"]) if pd.notna(r.get("경과일")) else ""}
+        for n in VIEW_DAYS:
+            o[f"+{n}일"] = cell(r, f"+{n}일")
+        for t in TERMS:
+            h = r.get(f"{t}일")
+            o[t] = cell(r, t) + (f" ({int(h)}일)" if pd.notna(h) else "")
+        o["지금(체크포인트 아님)"] = cell(r, "지금")
+        rows.append(o)
+    return pd.DataFrame(rows)
 
 
 def main() -> int:
@@ -296,11 +334,22 @@ def main() -> int:
         return 0
     pd.set_option("display.width", 250)
     pd.set_option("display.max_rows", 500)
-    print(df.round(2).to_string(index=False))
-    for col in ["지금초과%p", "지금초과관심%p"] + [f"{t}초과{k}%p" for t in TERMS for k in ("", "관심")]:
-        if col in df and df[col].notna().any():
-            s = df[col].dropna()
-            print(f"{col}: {len(s)}건 평균 {s.mean():+.2f}%p · 이긴 비율 {(s > 0).mean() * 100:.0f}%")
+    if "--full" in args:
+        print(df.round(2).to_string(index=False))
+        return 0
+    print("여러 길이로 나란히 — 칸마다 혼합지수 ex 대비 / 관심종목 평균 대비(%p). 판정 아님(판정은 기간에 의해 변화한다).")
+    print(side_by_side(df).to_string(index=False))
+    print("\n길이별로 닿은 건수(평균은 참고 — 닿지 않은 길이로 결론 내지 않는다):")
+    for pre in [f"+{n}일" for n in VIEW_DAYS] + list(TERMS) + ["지금"]:
+        col = f"{pre}초과%p"
+        n = int(df[col].notna().sum()) if col in df else 0
+        if pre == "지금":
+            print(f"  지금(체크포인트 아님): {n}건 — 평균은 찍지 않는다")
+        elif n:
+            print(f"  {pre}: {n}/{len(df)}건 · ex 대비 평균 {df[col].mean():+.2f}%p · 관심 대비 평균 {df[f'{pre}초과관심%p'].mean():+.2f}%p")
+        else:
+            print(f"  {pre}: 0/{len(df)}건 {NOT_YET}")
+    print("(전체 칸: python picks.py score --full)")
     return 0
 
 
