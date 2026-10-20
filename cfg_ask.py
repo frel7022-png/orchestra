@@ -1,7 +1,7 @@
 """CFG 태그 물어볼 종목 찾기 — 매매일지 반영 끝에 한 번 (2026-10-20, 위크 회의).
 
 그날 새로 산(사이클 첫 매수) 종목 중, 직전 LOOKBACK 거래일 아침 리포트(액션·외인·CFG·Basecamp)에
-이름이 나왔던 것만 골라 "리포트 보고 산 거야?"를 물을 후보로 찍는다. 이미 cfg_tagged.csv에 있으면 뺀다.
+이름이 나왔던 것만 골라 하루 한 줄로 묶어 묻는다(종목 옆 괄호 = 어느 리포트). 대표가 답한 것만 태그 — 추측 태그 금지. 이미 cfg_tagged.csv에 있으면 뺀다.
 리포트 HTML에 종목명이 들어 있는지만 본다(어느 칸이었는지는 대표 답으로).
 
 사용: python cfg_ask.py [YYYY-MM-DD]   (기본 = transactions 마지막 날짜)
@@ -53,10 +53,18 @@ def candidates(day: str | None = None) -> list[tuple[str, list[str]]]:
     return [(n, h) for n in new_buys(tx, day) if n not in tagged and (h := report_hits(n, day))]
 
 
-if __name__ == "__main__":
-    day = sys.argv[1] if len(sys.argv) > 1 else None
-    rows = candidates(day)
+def ask_line(rows: list[tuple[str, list[str]]]) -> str:
+    """대표에게 하루 한 줄로 묻는 문장. 종목 옆 괄호 = 나왔던 리포트 종류(날짜 빼고, 중복 없이)."""
     if not rows:
-        print("물어볼 종목 없음")
+        return "물어볼 종목 없음"
+    parts = []
     for n, h in rows:
-        print(f"{n}: {', '.join(h)} → 리포트 보고 산 거야? (CFG 태그)")
+        kinds = list(dict.fromkeys(x.split()[0] for x in h))
+        parts.append(f"{n}({'·'.join(kinds)})")
+    return f"오늘 새로 산 것 중 리포트에 나왔던 것: {', '.join(parts)} — 이 중 외인 보고 산 게 있어?"
+
+
+if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")
+    day = sys.argv[1] if len(sys.argv) > 1 else None
+    print(ask_line(candidates(day)))

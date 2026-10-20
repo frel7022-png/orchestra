@@ -28,3 +28,9 @@ def test_report_hits_uses_last_n_reports_up_to_day(tmp_path, monkeypatch):
     monkeypatch.setattr(cfg_ask, "REPORT_DIRS", {"액션": d})
     # 10-15까지 최근 3개 = 10-13·14·15 → 10-14만, 10-01(오래됨)·10-16(이후)은 안 잡힘
     assert cfg_ask.report_hits("인투셀", "2026-10-15") == ["액션 10-14"]
+
+
+def test_ask_line_one_line_with_report_kinds():
+    line = cfg_ask.ask_line([("인투셀", ["액션 10-15", "액션 10-16"]), ("A", ["외인 10-19", "CFG 10-19"])])
+    assert line == "오늘 새로 산 것 중 리포트에 나왔던 것: 인투셀(액션), A(외인·CFG) — 이 중 외인 보고 산 게 있어?"
+    assert cfg_ask.ask_line([]) == "물어볼 종목 없음"
