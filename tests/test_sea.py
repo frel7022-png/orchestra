@@ -1,4 +1,5 @@
 """관측소 바다(sea.py) — 바다 구간·시장 외인 합·관심종목 가운데 값 대비 상대 외인."""
+import pytest
 import pandas as pd
 
 import sea
@@ -50,3 +51,23 @@ def test_universe_center_gives_both_mean_and_median_and_skips_nan():
     c = core.universe_center([1.0, 2.0, 9.0, float("nan"), None])
     assert c == {"평균": 4.0, "가운데": 2.0, "n": 3}
     assert core.universe_center([])["가운데"] is None
+
+
+def test_eye_card_lays_out_facts_per_window_without_verdict():
+    """눈 한 장(2026-10-20): 길이마다 주가·바다·외인 사실만, 판정·점수 칸 없음, 짧은 자료는 전체 길이로."""
+    import eye_card
+    days = [f"2026-09-{d:02d}" for d in range(1, 31)][:25]
+    ph = pd.DataFrame([{"종목코드": c, "종목명": n, "날짜": d, "종가": 100.0 + (i if c == "A" else 0)}
+                       for c, n in (("A", "가"), ("B", "나")) for i, d in enumerate(days)])
+    fh = pd.DataFrame([{"종목코드": c, "종목명": n, "날짜": d, "외국인보유율": (10.0 + i * 0.1) if c == "A" else 5.0}
+                       for c, n in (("A", "가"), ("B", "나")) for i, d in enumerate(days)])
+    mf = pd.DataFrame([{"시장": "KOSPI", "날짜": d, "외국인순매수": -10} for d in days])
+    idx = pd.DataFrame({"날짜": days, "KOSPI": [100.0] * 25, "KOSDAQ": [100.0] * 25})
+    c = eye_card.card("가", data={"ph": ph, "fh": fh, "mf": mf, "live": {}},
+                      snap={"idx": idx, "bigdf": pd.DataFrame(), "wk": 1.0})
+    labels = [r["기간"] for r in c["rows"]]
+    assert labels == ["10일", "전체(24일)"]                       # 30·60일은 자료가 모자라 빠지고 전체가 붙는다
+    r10 = c["rows"][0]
+    assert r10["주가%"] == pytest.approx((124 / 114 - 1) * 100)
+    assert r10["외인pp"] == pytest.approx(1.0)
+    assert not any(k in r10 for k in ("판정", "점수", "이긴"))
