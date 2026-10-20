@@ -2237,7 +2237,9 @@ def test_watering_card_state_green_band_and_blue_at_first_entry():
     # 평단 ±0.5% 안 = 녹색
     assert watering_card_state(3, 1000, 1004, 1200) == "green"
     assert watering_card_state(3, 1000, 996, 1200) == "green"
-    # 평단 위로 벗어났지만 최초진입가 아래 = 흰색
-    assert watering_card_state(3, 1000, 1100, 1200) is None
+    # 평단 위 ~ 최초진입가 아래 = 녹색(흰색 구간 없음)
+    assert watering_card_state(3, 1000, 1100, 1200) == "green"
+    # 평단 −0.5% 아래 = 흰색
+    assert watering_card_state(3, 1000, 994, 1200) is None
     # 최초진입가 도달 = 파랑
     assert watering_card_state(2, 1000, 1200, 1200) == "blue"
