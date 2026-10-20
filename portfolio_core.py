@@ -2309,6 +2309,24 @@ CFG_TAG_PATH = HERE / "cfg_tagged.csv"
 CFG_TAG_COLUMNS = ["종목명", "태그일", "메모"]
 
 
+WATER_GREEN_BAND = 0.5  # %, 평단 ±이 안이면 녹색(본전 근처)
+
+
+def watering_card_state(n_buy: int, avg: float, cur: float, first_px: float) -> str | None:
+    """물타기 카드 색(2026-10-20 대표 재정의). 현재 사이클 매수 2회 이상일 때만:
+    - "blue"  = 현재가 ≥ 최초진입가 — 물타며 시드를 키웠는데 최초진입가 자리만 와도 익절인 구간
+                (아무것도 안 했으면 못 버는 구간에서 번 것, 물타기가 노리는 곳).
+    - "green" = 현재가가 평단 ±WATER_GREEN_BAND% 안 — 본전 근처까지 올라옴.
+    그 밖엔 None(흰색). 대체됨: 2회 이상 + 현재가 ≥ 최초진입가 = 녹색(2026-09-04)."""
+    if n_buy < 2 or not avg or not cur:
+        return None
+    if first_px and cur >= first_px:
+        return "blue"
+    if abs(cur / avg - 1) * 100 <= WATER_GREEN_BAND:
+        return "green"
+    return None
+
+
 def load_cfg_tags() -> pd.DataFrame:
     if not CFG_TAG_PATH.exists():
         return pd.DataFrame(columns=CFG_TAG_COLUMNS)

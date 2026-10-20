@@ -2228,3 +2228,16 @@ def test_reversal_signs_picks_exit_stocks_where_foreign_rebuilds_and_fall_calms(
     assert rs["종목명"].tolist() == ["가"]
     r = rs.iloc[0]
     assert r["외인증가일"] == 5 and r["최근외인pp"] > 0 and "이탈" in r["이유"]
+
+
+def test_watering_card_state_green_band_and_blue_at_first_entry():
+    from portfolio_core import watering_card_state
+    # 매수 1회면 색 없음
+    assert watering_card_state(1, 1000, 1000, 1200) is None
+    # 평단 ±0.5% 안 = 녹색
+    assert watering_card_state(3, 1000, 1004, 1200) == "green"
+    assert watering_card_state(3, 1000, 996, 1200) == "green"
+    # 평단 위로 벗어났지만 최초진입가 아래 = 흰색
+    assert watering_card_state(3, 1000, 1100, 1200) is None
+    # 최초진입가 도달 = 파랑
+    assert watering_card_state(2, 1000, 1200, 1200) == "blue"

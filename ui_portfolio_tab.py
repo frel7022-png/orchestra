@@ -10,7 +10,7 @@ import basecamp
 
 from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR, DIVIDEND_MID_COLOR, CASH_LABEL, SECTOR_PALETTE, SECTOR_TARGETS
 from portfolio_core import (
-    load_cfg_tags, holding_is_cfg,
+    load_cfg_tags, holding_is_cfg, watering_card_state,
     group_sector, today_kst_str, now_kst_str,
     load_sector_history, get_current_prices_for_names, get_closed_out_last_sells,
     daily_sigma_map, updown_hit, updown_threshold,
@@ -1472,17 +1472,17 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             _div_inner = _dv_html + _sep + _fr_html
             dividend_row_html = f'<div class="dividend-row">{_div_inner}</div>' if _div_inner else ""
 
-            # 물타기(현재 사이클 매수 2회+) 했는데 반등해서 현재가 ≥ 최초진입가면 카드 옅은 녹색
+            # 물타기(현재 사이클 매수 2회+) 카드 색 — 평단 ±0.5% 녹색, 최초진입가 도달 파랑(2026-10-20 대표)
             _pts = get_holding_trade_points(tx, r["종목명"])
             _buys = _pts[_pts["구분"] == "매수"] if not _pts.empty else _pts
-            _watered_ok = (len(_buys) >= 2
-                           and float(r["현재가"]) >= float(_buys.iloc[0]["단가"]))
+            _wstate = watering_card_state(len(_buys), float(r["평단가"]), float(r["현재가"]),
+                                          float(_buys.iloc[0]["단가"]) if len(_buys) else 0.0)
             # CFG로 산 사이클(cfg_tagged.csv, new1 전용 테스트)은 옅은 빨강 — 성적 추적이 목적이라
             # 물타기 회복 녹색보다 우선(2026-10-02 사용자 확정).
             if holding_is_cfg(tx, r["종목명"], _cfg_tags):
                 _card_cls = "stock-card cfg-tag"
             else:
-                _card_cls = "stock-card watered-ok" if _watered_ok else "stock-card"
+                _card_cls = {"blue": "stock-card watered-first", "green": "stock-card watered-ok"}.get(_wstate, "stock-card")
 
             # 이익 종목만: (1) 그리드 위 우측정렬 줄에 "최초 진입일(보유 거래일수)",
             # (2) 손익 금액 옆에 세금 차감 후 실현액 병기. 손실 종목은 둘 다 없음.
