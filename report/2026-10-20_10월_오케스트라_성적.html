@@ -1,0 +1,140 @@
+<title>10월의 오케스트라</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--paper); color:var(--ink); font-family:"IBM Plex Sans KR",system-ui,sans-serif;
+    line-height:1.72; margin:0; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:800px; margin:0 auto; padding-block:48px 96px;
+    padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px))}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .gain{color:var(--gain)} .loss{color:var(--loss)} .acc{color:var(--accent)} .warn{color:var(--warn)}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:12px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.4rem; line-height:1.2; margin:0 0 16px; text-wrap:balance}
+  .dek{font-size:1.05rem; color:var(--ink-soft); margin:0}
+  .meta{margin-top:20px; padding-top:14px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-faint); display:flex; gap:6px 18px; flex-wrap:wrap}
+  h2{font-size:1.15rem; margin:52px 0 6px; padding-top:18px; border-top:1px solid var(--rule); text-wrap:balance}
+  h2 .no{font-family:"IBM Plex Mono",monospace; color:var(--ink-faint); font-weight:500; margin-right:8px; font-size:.95rem}
+  h3{font-size:.98rem; margin:26px 0 4px}
+  p{margin:10px 0}
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:28px 0 8px}
+  .kpi{background:var(--card); border:1px solid var(--rule); border-radius:12px; padding:12px 14px; box-shadow:var(--shadow); min-width:0}
+  .kpi .k{font-size:12px; color:var(--ink-soft)} .kpi .v{font-size:1.45rem; font-weight:600}
+  .kpi .s{font-size:11.5px; color:var(--ink-faint)}
+  .scroll{overflow-x:auto; margin:14px 0}
+  table{border-collapse:collapse; width:100%; font-size:13px}
+  th,td{padding:7px 9px; border-bottom:1px solid var(--rule-soft); text-align:right; white-space:nowrap}
+  th{font-size:12px; color:var(--ink-soft); font-weight:600; border-bottom:1px solid var(--rule)}
+  td.l, th.l{text-align:left}
+  .callout{background:var(--accent-wash); border-radius:12px; padding:14px 16px; margin:18px 0}
+  .callout.w{background:var(--warn-wash)}
+  ul{padding-left:1.2em} li{margin:5px 0}
+  .stars{color:var(--warn); letter-spacing:2px}
+  .note{font-size:12px; color:var(--ink-faint)}
+</style>
+<div class="wrap">
+<header>
+  <div class="kicker">Orchestra · 분석 리포트 · 2026년 10월 (10/1~10/20 장중)</div>
+  <h1>10월의 오케스트라</h1>
+  <p class="dek">10월 들어 코스피는 −17.7% 빠졌고, 삼성·하이닉스를 뺀 혼합지수도 −9.9% 빠졌어. Orchestra 계좌는 −0.3%야. 하락일엔 시장 낙폭의 3분의 1만 받았고, 9월까진 약했던 상승일 참여도 10월엔 따라붙었어. 대가는 예수금이었어. 25.8%였던 비중이 15.6%까지 내려왔어.</p>
+  <div class="meta">
+    <span>기준 9/30 확정 종가 → 10/20 11:56 실시간</span>
+    <span>new1 매매일지 10/20 11:41분까지</span>
+    <span>혼합지수 ex = 코스피(삼성·하이닉스 제외) 71% + 코스닥 29%</span>
+    <span>작성 새러데이 · 2026-10-20</span>
+  </div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="k">코스피</div><div class="v num loss">−17.68%</div><div class="s">코스닥 −7.35%</div></div>
+  <div class="kpi"><div class="k">혼합지수 ex</div><div class="v num loss">−9.93%</div><div class="s">일반 혼합지수 −14.71%</div></div>
+  <div class="kpi"><div class="k">Orchestra 계좌</div><div class="v num loss">−0.28%</div><div class="s num">9,911,540 → 9,880,968원</div></div>
+  <div class="kpi"><div class="k">내 주식 (예수금 제외)</div><div class="v num loss">−0.47%</div><div class="s">벤치보다 9.5%p 덜 빠짐</div></div>
+</div>
+
+<h2><span class="no">01</span>날마다 — 하락일 7일 중 6일을 막았어</h2>
+<div class="scroll"><table>
+  <tr><th class="l">날짜</th><th>혼합지수 ex</th><th>내 계좌</th><th>내 주식</th><th class="l">바구니</th><th>캡처(계좌)</th></tr>
+  <tr><td class="l">10/01</td><td class="num gain">+2.34%</td><td class="num gain">+0.55%</td><td class="num gain">+0.74%</td><td class="l">상승</td><td class="num">0.23</td></tr>
+  <tr><td class="l">10/02</td><td class="num gain">+0.16%</td><td class="num gain">+0.33%</td><td class="num gain">+0.45%</td><td class="l">상승</td><td class="num gain">2.02</td></tr>
+  <tr><td class="l">10/06</td><td class="num gain">+1.15%</td><td class="num gain">+0.39%</td><td class="num gain">+0.53%</td><td class="l">상승</td><td class="num">0.34</td></tr>
+  <tr><td class="l">10/07</td><td class="num loss">−1.67%</td><td class="num gain">+0.08%</td><td class="num gain">+0.12%</td><td class="l">하락</td><td class="num acc">−0.05</td></tr>
+  <tr><td class="l">10/08</td><td class="num loss">−2.41%</td><td class="num loss">−0.66%</td><td class="num loss">−0.90%</td><td class="l">하락</td><td class="num">0.27</td></tr>
+  <tr><td class="l">10/12</td><td class="num loss">−3.00%</td><td class="num loss">−0.99%</td><td class="num loss">−1.34%</td><td class="l">하락</td><td class="num">0.33</td></tr>
+  <tr><td class="l">10/13</td><td class="num loss">−2.21%</td><td class="num loss">−0.75%</td><td class="num loss">−0.99%</td><td class="l">하락</td><td class="num">0.34</td></tr>
+  <tr><td class="l">10/14</td><td class="num loss">−0.47%</td><td class="num gain">+0.38%</td><td class="num gain">+0.50%</td><td class="l">하락</td><td class="num acc">−0.80</td></tr>
+  <tr><td class="l">10/15</td><td class="num loss">−3.92%</td><td class="num loss">−1.85%</td><td class="num loss">−2.44%</td><td class="l">하락</td><td class="num">0.47</td></tr>
+  <tr><td class="l">10/16</td><td class="num gain">+1.24%</td><td class="num gain">+2.51%</td><td class="num gain">+3.19%</td><td class="l">상승</td><td class="num gain">2.02</td></tr>
+  <tr><td class="l">10/19</td><td class="num gain">+0.70%</td><td class="num gain">+0.88%</td><td class="num gain">+1.10%</td><td class="l">상승</td><td class="num gain">1.25</td></tr>
+  <tr><td class="l">10/20 장중</td><td class="num loss">−1.09%</td><td class="num loss">−1.22%</td><td class="num loss">−1.51%</td><td class="l">하락</td><td class="num loss">1.12</td></tr>
+</table></div>
+<p class="note">캡처 = 내 계좌 당일 ÷ 혼합지수 ex 당일. 하락일엔 1보다 작을수록 잘 막은 거고, 상승일엔 1보다 클수록 잘 따라간 거야. 10/20은 매매일지 반영 시점(11:4x) 스냅샷이라 live_check(벤치 −1.34%, 계좌 −1.50%)와 조금 달라.</p>
+
+<div class="scroll"><table>
+  <tr><th class="l">캡처 (Σ내 ÷ Σ벤치)</th><th>10월 계좌</th><th>10월 주식</th><th>8/14~ 계좌</th><th>8/14~ 주식</th><th>10월 승률</th></tr>
+  <tr><td class="l">DC 하락일</td><td class="num loss">0.34</td><td class="num loss">0.44</td><td class="num">0.26</td><td class="num">0.38</td><td class="num">6/7 방어</td></tr>
+  <tr><td class="l">UC 상승일</td><td class="num gain">0.83</td><td class="num gain">1.07</td><td class="num">0.35</td><td class="num">0.50</td><td class="num">3/5 참여</td></tr>
+</table></div>
+<div class="callout">10월에 달라진 건 상승일이야. 8/14 이후 전체로 보면 오르는 날엔 시장의 35%(주식 기준 50%)만 따라갔어. "방패는 단단한데 창이 없다"는 게 이 계좌의 고질이었거든. 10월 상승일 5일은 계좌 0.83, 주식 1.07이야. 주식만 보면 시장보다 더 올랐어. 10/16·10/19 반등 때는 반도체가 아니라 나머지 종목이 올랐고, 그게 대표 종목들이었어.</div>
+<p>하락일 방어도 여전해. 10/07·10/14는 시장이 빠졌는데 오히려 올랐어. 폭락일 10/15(벤치 −3.92%)에도 −1.85%로 절반 아래만 받았어. 하나 걸리는 건 <b>오늘(10/20)</b>이야. 캡처가 1.12라서 10월 하락일 중 처음으로 시장보다 더 빠졌어. 현대백화점 −7.8%, 롯데쇼핑 −6.1%, CJ대한통운 −4.3% 같은 유통·소비 쪽이 오늘 같이 밀렸고, 이 섹터가 대표 계좌의 큰 덩어리라서 그래. 오늘 장이 아직 안 끝났으니 마감 후 다시 볼게.</p>
+
+<h2><span class="no">02</span>돈의 흐름 — 빠질 때마다 조금씩 넣었어</h2>
+<div class="scroll"><table>
+  <tr><th class="l">날짜</th><th>총매입(원가)</th><th>예수금</th><th>예수금 비중</th></tr>
+  <tr><td class="l">9/30</td><td class="num">7,806,472</td><td class="num">2,710,103</td><td class="num">25.8%</td></tr>
+  <tr><td class="l">10/06</td><td class="num">8,090,841</td><td class="num">2,448,681</td><td class="num">23.2%</td></tr>
+  <tr><td class="l">10/07</td><td class="num">7,860,254</td><td class="num">2,698,351</td><td class="num">25.6%</td></tr>
+  <tr><td class="l">10/13</td><td class="num">8,156,570</td><td class="num">2,403,166</td><td class="num">22.8%</td></tr>
+  <tr><td class="l">10/15</td><td class="num">8,382,315</td><td class="num">2,183,078</td><td class="num">20.7%</td></tr>
+  <tr><td class="l">10/19</td><td class="num">8,593,856</td><td class="num">1,986,148</td><td class="num">18.8%</td></tr>
+  <tr><td class="l">10/20</td><td class="num">8,935,621</td><td class="num">1,646,184</td><td class="num warn">15.6%</td></tr>
+</table></div>
+<p>10월 12거래일 동안 매수 <span class="num">95건 · 2,217,038원</span>, 매도 <span class="num">23건 · 1,155,430원</span>, 실현 <span class="num gain">+65,230원</span>이야. 산 돈이 판 돈의 두 배쯤이야. 빠지는 장에서 Cost Basis를 키우는 게 이 계좌 설계 그대로라, 방향은 맞아. 10/07에 OCI홀딩스·아스테라시스 같은 익절로 예수금이 한 번 다시 찼고(25.6%), 그 뒤 하락일마다 넣었어.</p>
+<p>속도는 숫자로 남겨둘게. 10/15부터 오늘까지 4거래일 동안 비중이 20.7% → 15.6%로 5%p 줄었어. 오늘 하루에만 34만 원이 들어갔어. 9월(20거래일)엔 실현이 +156,935원이었는데, 10월(12거래일)은 +65,230원이야. 하락장이라 익절할 자리가 줄었고, 씨앗이 쌓이는 속도보다 배치하는 속도가 빨라. Pit Stop에서 Refill 선이 처지는 구간이야.</p>
+
+<h2><span class="no">03</span>판 것들 — 10월에 끝난 사이클 19개</h2>
+<div class="scroll"><table>
+  <tr><th class="l">버킷</th><th>사이클</th><th class="l">메모</th></tr>
+  <tr><td class="l">FA (한 번 사서 한 번에 팜)</td><td class="num">12</td><td class="l">10월 끝난 사이클의 63%</td></tr>
+  <tr><td class="l">MA (물타서 한 번에 팜)</td><td class="num">4</td><td class="l"></td></tr>
+  <tr><td class="l">MO (나눠 팜)</td><td class="num">3</td><td class="l"></td></tr>
+  <tr><th class="l">합</th><th class="num">19</th><th class="l num gain">실현 +69,912원</th></tr>
+</table></div>
+<p>제일 많이 번 사이클은 OCI홀딩스(+11,512원, FA), 아스테라시스(+10,715원, MO), 앱클론(+8,010원, MO), 에스티팜(+6,917원, FA), 엘앤씨바이오(+5,290원, FA)야. OCI홀딩스와 앱클론은 판 뒤로 각각 −16%, −21% 더 빠져서 지금 Up/Down 상위에 올라 있어. 팔 자리를 잘 잡았던 거야.</p>
+<p>FA 누적 승률은 <span class="num">45.1%</span>(106/235)야. 9/16 처음 쟀을 때는 39%였는데, 장이 더 나빠진 10월에 오히려 올랐어. 10월 한 달만 보면 끝난 사이클의 63%가 FA야. 처음 판단이 물 안 타고 끝나는 비율이 높아지고 있어.</p>
+
+<h2><span class="no">04</span>정리</h2>
+<ul>
+  <li><b>방어</b>: 하락일 DC 0.34, 7일 중 6일 방어. 벤치가 −9.9%인 달에 계좌는 −0.3%야.</li>
+  <li><b>참여</b>: 상승일 UC 0.83(주식 1.07). 8/14 이후 전체 0.35에서 크게 좋아졌어. 10월에 제일 크게 바뀐 지표야.</li>
+  <li><b>매매</b>: FA 승률 45%로 올라가는 중이고, 판 종목들이 판 뒤 더 빠졌어.</li>
+  <li><b>지켜볼 것</b>: 예수금 15.6%. 하락일마다 넣는 속도가 익절로 채우는 속도보다 빨라. 그리고 오늘처럼 유통·소비가 한꺼번에 밀리는 날엔 방패가 얇아져(캡처 1.12).</li>
+</ul>
+<p>한 줄로 하면, 10월은 "반도체 없는 방패"가 진짜 시험을 받은 달이고 통과했어. 반도체를 빼고 비교해도 9.6%p를 앞섰어.</p>
+</div>

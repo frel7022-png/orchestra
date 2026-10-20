@@ -1,0 +1,129 @@
+<title>방어 평지 5종목</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+  :root{
+    --paper:#f6f7f9; --card:#ffffff; --ink:#191b21; --ink-soft:#565b67; --ink-faint:#8b909c;
+    --rule:#e0e3ea; --rule-soft:#eceef3;
+    --gain:#c9313d; --loss:#2c5fc4;
+    --accent:#15794c; --accent-wash:#e8f4ec;
+    --warn:#b4690e; --warn-wash:#fbf0e2;
+    --shadow:0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+      --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+      --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#13151a; --card:#1a1d24; --ink:#e8eaef; --ink-soft:#a2a7b3; --ink-faint:#6e7480;
+    --rule:#2b2f38; --rule-soft:#22252d; --gain:#f0555f; --loss:#6f9bef;
+    --accent:#4cc38a; --accent-wash:#17251d; --warn:#e0a45e; --warn-wash:#2a2013;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--paper); color:var(--ink); font-family:"IBM Plex Sans KR",system-ui,sans-serif;
+    line-height:1.72; margin:0; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:800px; margin:0 auto; padding-block:48px 96px;
+    padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px))}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .gain{color:var(--gain)} .loss{color:var(--loss)} .acc{color:var(--accent)} .warn{color:var(--warn)}
+  .kicker{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; margin-bottom:12px}
+  h1{font-family:"Newsreader",Georgia,serif; font-style:italic; font-weight:400; font-size:2.4rem; line-height:1.2; margin:0 0 16px; text-wrap:balance}
+  .dek{font-size:1.05rem; color:var(--ink-soft); margin:0}
+  .meta{margin-top:20px; padding-top:14px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-faint); display:flex; gap:6px 18px; flex-wrap:wrap}
+  h2{font-size:1.15rem; margin:52px 0 6px; padding-top:18px; border-top:1px solid var(--rule); text-wrap:balance}
+  h2 .no{font-family:"IBM Plex Mono",monospace; color:var(--ink-faint); font-weight:500; margin-right:8px; font-size:.95rem}
+  h3{font-size:.98rem; margin:26px 0 4px}
+  p{margin:10px 0}
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:28px 0 8px}
+  .kpi{background:var(--card); border:1px solid var(--rule); border-radius:12px; padding:12px 14px; box-shadow:var(--shadow); min-width:0}
+  .kpi .k{font-size:12px; color:var(--ink-soft)} .kpi .v{font-size:1.45rem; font-weight:600}
+  .kpi .s{font-size:11.5px; color:var(--ink-faint)}
+  .scroll{overflow-x:auto; margin:14px 0}
+  table{border-collapse:collapse; width:100%; font-size:13px}
+  th,td{padding:7px 9px; border-bottom:1px solid var(--rule-soft); text-align:right; white-space:nowrap}
+  th{font-size:12px; color:var(--ink-soft); font-weight:600; border-bottom:1px solid var(--rule)}
+  td.l, th.l{text-align:left}
+  .callout{background:var(--accent-wash); border-radius:12px; padding:14px 16px; margin:18px 0}
+  .callout.w{background:var(--warn-wash)}
+  ul{padding-left:1.2em} li{margin:5px 0}
+  .stars{color:var(--warn); letter-spacing:2px}
+  .note{font-size:12px; color:var(--ink-faint)}
+</style>
+<div class="wrap">
+<header>
+  <div class="kicker">Orchestra · 추천 리포트 · 2026-10-20 11:55</div>
+  <h1>방어 평지 5종목</h1>
+  <p class="dek">코스피가 −2.7% 빠진 오늘 장중에 골랐어. 지난 추천 성적표가 알려준 것부터 반영했어. 많이 빠졌는데 외인이 모으는 종목은 계속 더 빠졌고, 평지에서 버티는 방어주가 이겼어. 그래서 오늘은 뒤쪽에서만 5개 골랐어.</p>
+  <div class="meta">
+    <span>주가 11:54 실시간 · 외인 investor_flow 10/19까지</span>
+    <span>폭락일 버팀 = stress_scores 8/18~10/15</span>
+    <span>picks_log 회차 2026-10-20_1155 기록 완료</span>
+    <span>작성 새러데이</span>
+  </div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="k">코스피 오늘</div><div class="v num loss">−2.70%</div><div class="s num">5,612</div></div>
+  <div class="kpi"><div class="k">혼합지수 ex 오늘</div><div class="v num loss">−1.34%</div><div class="s">코스피 비중 71%</div></div>
+  <div class="kpi"><div class="k">지난 추천 25건</div><div class="v num loss">−1.61%p</div><div class="s">혼합지수 ex 대비 평균 · 이긴 비율 32%</div></div>
+</div>
+
+<h2><span class="no">01</span>지난 추천이 알려준 것</h2>
+<p>10/16 추천 22줄과 9/11 Link 감시 3줄을 지금 시세로 채점했어. 혼합지수 ex 대비 지금 초과 수익을 보면 두 무리로 갈려.</p>
+<div class="scroll"><table>
+  <tr><th class="l">무리</th><th class="l">종목 (지금 초과 %p)</th><th>대략</th></tr>
+  <tr><td class="l">이긴 쪽</td><td class="l">롯데쇼핑 +3.6 · KT밀리의서재 +3.3 · 크라운해태홀딩스 +1.0 · GS리테일 +0.5 · 금강공업 +0.3</td><td class="num gain">평지·방어주</td></tr>
+  <tr><td class="l">진 쪽</td><td class="l">제이에스링크 −7.6 · 월덱스 −5.0 · 파마리서치 −5.0 · SGC에너지 −4.3 · 와이지-원 −1.9</td><td class="num loss">깊은 하락 + 외인 다이버전스</td></tr>
+</table></div>
+<div class="callout w">오늘 CFG 1~4위(파마리서치 −31.8%, SGC에너지 −36.7%, 제이에스링크 −46.8%, 와이지-원 −29.8%)도 전부 "깊이 빠졌는데 외인이 모으는" 쪽이야. 오늘도 셋 다 −3~−4.5% 빠지는 중이라 이번 추천에선 뺐어. 외인이 사는 건 맞는데, 그게 가격으로 나타나는 시점은 아직 안 왔어.</div>
+<p>그래서 오늘 기준은 이거야. ① 오늘 같은 하락일에 시장보다 덜 빠지거나 역행하고 ② 폭락일 버팀 점수가 상위권이고 ③ 외인이 기준일 대비 줄지 않았고 ④ 가능하면 Basecamp 평지 위에 있는 종목.</p>
+
+<h2><span class="no">02</span>추천 5종목</h2>
+<div class="scroll"><table>
+  <tr><th class="l">#</th><th class="l">종목</th><th class="l">구분</th><th>추천가</th><th>오늘</th><th>외인 기준일</th><th>최근3일</th><th>폭락일 버팀</th><th>채점 기간</th></tr>
+  <tr><td class="l">1</td><td class="l">오리온</td><td class="l">new1 물타기</td><td class="num">111,300</td><td class="num gain">+1.27%</td><td class="num">+0.03%p</td><td class="num loss">−0.10%p</td><td class="num">상위 31%</td><td class="num">13/26/78</td></tr>
+  <tr><td class="l">2</td><td class="l">한국가스공사</td><td class="l">신규</td><td class="num">36,450</td><td class="num loss">−0.95%</td><td class="num gain">+0.54%p</td><td class="num gain">+0.10%p</td><td class="num acc">상위 18%</td><td class="num">18/36/108</td></tr>
+  <tr><td class="l">3</td><td class="l">CJ프레시웨이</td><td class="l">new1 비중확대</td><td class="num">22,100</td><td class="num loss">−1.56%</td><td class="num gain">+0.48%p</td><td class="num gain">+0.09%p</td><td class="num">상위 35%</td><td class="num">11/22/66</td></tr>
+  <tr><td class="l">4</td><td class="l">골프존홀딩스</td><td class="l">신규</td><td class="num">7,650</td><td class="num loss">−0.78%</td><td class="num gain">+0.94%p</td><td class="num gain">+0.06%p</td><td class="num">상위 31%</td><td class="num">24/48/120</td></tr>
+  <tr><td class="l">5</td><td class="l">GS리테일</td><td class="l">new1 물타기</td><td class="num">21,350</td><td class="num gain">+0.71%</td><td class="num gain">+0.73%p</td><td class="num loss">−0.07%p</td><td class="num">상위 55%</td><td class="num">12/25/75</td></tr>
+</table></div>
+<p class="note">외인 기준일 = 그 종목 price_history 첫날 대비 외인 보유율 변화(Foreigner "기준일pp"와 같은 값). 폭락일 버팀 = 혼합지수 ex가 −1.8% 넘게 빠진 날들에서 버팀점수 순위의 평균. 채점 기간 = 단기/중기/장기 거래일(종목별 파도 길이, 기록 순간 고정).</p>
+
+<h3>1. 오리온 — 오늘 시장을 거슬러 오른 종목</h3>
+<p><b>회사</b>: 초코파이·포카칩을 만드는 제과사야. 중국·베트남·러시아 매출이 국내보다 크고, 꾸준히 흑자를 내.</p>
+<p>코스피 −2.7%인 날 <span class="num gain">+1.27%</span>로 올랐어. Basecamp에선 12일 평지를 위로 뚫은 "돌파" 상태고, 그 평지를 받아낸 손은 기관이야. 외인 보유율은 38.9%에서 거의 안 움직였어. 빠지지도 늘지도 않은 거야. new1은 2주를 평단 126,400원에 들고 있어서 지금 −11.9%고, Watering Detect 1위(마지막 매수가 대비 −7.7%)야. 하루 변동 σ가 1.9%밖에 안 되는 종목이라, 이 정도 낙폭이면 이 종목 기준으로는 큰 거야.</p>
+
+<h3>2. 한국가스공사 — 폭락일에 가장 잘 버틴 종목</h3>
+<p><b>회사</b>: 천연가스를 수입해서 도매로 파는 공기업이야. 국내 도매는 사실상 독점이야. 흑자지만 민수용 미수금(못 받은 요금) 부담이 꼬리표처럼 따라다녀.</p>
+<p>8월 이후 폭락일들에서 버팀 순위가 평균 상위 18%야. 이번 후보군에서 제일 높아. 외인은 기준일 대비 +0.54%p고 최근 3일도 +0.10%p로 계속 모으는 중이야. 오늘은 −0.95%로 시장 낙폭의 3분의 1만 받았어. 10/16 "신규 7"에도 넣었던 종목인데 그때보다 1% 싸졌어(채점은 −0.55%p).</p>
+
+<h3>3. CJ프레시웨이 — 가장 긴 평지</h3>
+<p><b>회사</b>: CJ그룹 계열 식자재 유통·단체급식 회사야. 이 업계 1위권이고 흑자야.</p>
+<p>Basecamp 평지가 <span class="num">23일</span>째야. 명단에서 제일 길고, 받는손은 외인이야. 외인 +0.48%p, 최근 3일 +0.09%p로 조용히 늘고 있어. 오늘 new1이 22,150원에 1주 들어갔으니 추천은 "비중확대"야. 10/16 추천 두 번(22,300·22,200)은 지금 거의 본전(−0.36·+0.08%p)이야. 평지가 그만큼 단단하다는 뜻이기도 하고, 아직 터지진 않았다는 뜻이기도 해.</p>
+
+<h3>4. 골프존홀딩스 — 외인 증가 폭이 제일 큰 방어주</h3>
+<p><b>회사</b>: 스크린골프 1위 골프존의 지주사야. 흑자 회사야.</p>
+<p>외인 기준일 대비 <span class="num gain">+0.94%p</span>로, 오늘 다섯 종목 중 외인 증가 폭이 제일 커. 폭락일 버팀은 상위 31%고, 오늘은 −0.78%로 버티는 중이야. 반 파도가 24거래일로 느린 종목이라 채점 기간도 길게(24/48/120일) 잡혔어. 금방 결론이 나는 종목은 아니야.</p>
+
+<h3>5. GS리테일 — 지난 추천에서 이긴 종목, 한 번 더</h3>
+<p><b>회사</b>: GS25 편의점과 GS샵 홈쇼핑을 하는 유통사야. 흑자야.</p>
+<p>오늘 <span class="num gain">+0.71%</span>로 역행했고, Basecamp 평지 7일째야. 10/16 추천가(21,300)랑 지금이 거의 같은데, 그사이 벤치가 빠져서 초과 +0.53%p로 이긴 쪽에 있어. new1은 12주를 평단 24,096원에 들고 있어서 −11.4%야. 걸리는 게 하나 있어. 외인이 최근 3일 −0.07%p로 살짝 빠졌어. 큰 폭은 아닌데 다음 리포트에서 다시 볼게.</p>
+
+<h2><span class="no">03</span>빠진 후보와 이유</h2>
+<ul>
+  <li><b>KT밀리의서재</b>: 외인 최근 3일 +0.32%p로 제일 빠르게 모이고 있고, 10/16 추천 승자(+3.3%p)야. 그런데 new1이 이미 이익(+2.3%)이라 물타기 자리가 아니어서 6번으로 남겨둘게.</li>
+  <li><b>크라운해태홀딩스·조광페인트</b>: 오늘 new1이 이미 샀어. 크라운해태는 오늘 −0.2%로 잘 버티는 중이야.</li>
+  <li><b>우양</b>: 오늘 +0.66%, Basecamp 평지에 거래량 2.3배인데 외인이 기준일 대비 −1.31%p야. 받는손이 안 보여서 뺐어.</li>
+  <li><b>하나금융지주</b>: 평지 7일, 기관이 받는 중인데 지난 추천 성적이 본전(−0.12%p)이고 외인 최근 3일이 마이너스야.</li>
+</ul>
+<p class="note">추천은 picks_log.csv 회차 2026-10-20_1155에 기록했어(추천가·벤치 = 11:55 실시간). 틀려도 지우지 않고, 종목별 단기·중기·장기 체크포인트에서 혼합지수 ex와 관심종목 평균 두 기준으로 채점해.</p>
+</div>
