@@ -23,3 +23,28 @@ def test_links_no_broken_paths_in_city():
     out, inc, broken = bl.links()
     assert broken == []
     assert all(k in inc for k in out)
+
+
+def test_code_links_cell_to_code_and_back():
+    """셀→코드 문이 살아 있는지 — 줄 번호 문 없음, @뇌 이름표는 코드에 정확히 하나, 심볼은 그 모듈에 있음,
+    코드 이름표는 어느 셀이든 가리킴(2026-10-21 위크·새러데이 합의). import 없이 파일만 읽어 실데이터 무접촉."""
+    assert bl.code_link_problems() == []
+
+
+def test_code_link_checker_flags_line_refs_and_missing_tags(tmp_path, monkeypatch):
+    brain = tmp_path / "뇌_초안"
+    (brain / "일과").mkdir(parents=True)
+    (brain / "HISTORY").mkdir()
+    (tmp_path / "mod.py").write_text('"""doc"""\ndef f():\n    # @뇌 갈래\n    return 1\nX = 2\n', encoding="utf-8")
+    (brain / "일과" / "a.md").write_text("`mod.f` `mod.X` `mod.__doc__` `@뇌 갈래` `mod.py:3` `mod.없음` `@뇌 없는표`\n",
+                                       encoding="utf-8")
+    (brain / "HISTORY" / "h.md").write_text("`mod.py:9`\n", encoding="utf-8")   # 기록 칸은 검사 밖
+    monkeypatch.setattr(bl, "HERE", tmp_path)
+    monkeypatch.setattr(bl, "BRAIN", brain)
+    probs = bl.code_link_problems()
+    assert any("줄 번호 문" in p and "mod.py:3" in p for p in probs)
+    assert any("심볼 없음" in p and "mod.없음" in p for p in probs)
+    assert any("이름표 없음" in p and "없는표" in p for p in probs)
+    assert len(probs) == 3
+    (brain / "일과" / "a.md").write_text("`mod.f`\n", encoding="utf-8")
+    assert any("고아 이름표" in p for p in bl.code_link_problems())

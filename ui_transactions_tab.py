@@ -234,10 +234,11 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
 
     st.divider()
 
+    # @뇌 지수대비계좌_선
     # ---- 지수 대비 계좌 (§6-17): 코스피/코스닥 vs 내 계좌·주식 수익 (누적 + 당일) ----
     #  · 코스피(노랑)/코스닥(초록) = anchor일 종가 대비 누적등락(0 중심)
     #  · 내 주식(검정)  = 보유주식 100% 투자로 환산한 누적수익 Rs — 지수와 1:1 비교 가능
-    #  · 내 계좌(점선)  = 총자산/최초자본 - 1 (요약카드 값, 예수금이 눌러주는 완충선)
+    #  · 내 계좌(빨강 실선)  = 총자산/최초자본 - 1 (요약카드 값, 예수금이 눌러주는 완충선)
     #  위에 4줄 표로 각 선의 "누적 / 당일"을 같이 보여주고, 내 주식·내 계좌 값은 보유비중을
     #  반영한 혼합 지수(코스피·코스닥 가중평균)보다 높으면 빨강 / 낮으면 파랑으로 칠한다.
     idx_hist = load_index_history()
@@ -329,13 +330,14 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             + "</table>"
         )
 
+        # @뇌 캡처표_색
         # ---- 하락 / 상승 캡처 + even 초과수익 + 승률 (2026-09-07, CR 대체) ----
         # 바구니마다 미니 표: 행 = 내 계좌 / 내 주식, 열 = 누적 / 당일 / Pct(승률).
         #   DC 누적 = Σ내당일/Σ벤치당일 (하락일 전체 — 일별 비율 평균이 아님, 튐 방지),
         #   UC 누적 = Σ내당일/Σ벤치당일 (상승일 전체),  even 누적 = even일 초과수익(%p) 단순평균.
         #   당일 = 오늘이 그 바구니면 그날 값(하락/상승은 일별 c, even은 %p), 아니면 —.
         #   Pct = ERA(하락 c<1) / 승률(상승 c>=1) / even 승률(e>=+0.1%).
-        # 숫자 색: 하락 표 = 빨강, 상승 표 = 파랑(사용자 지정, 국내 관례 반대), even 표 = 회색.
+        # 숫자 색: 하락(DC) 표 = 파랑(DOWN_COLOR), 상승(UC) 표 = 빨강(UP_COLOR), even 표 = 회색 (2026-09-08 국내 관례로 스왑).
         # "합친 지수" 없음(사용자 판단 2026-09-07) — 값들을 같이 읽음. 이 표들은 아래 fig2(선그래프)
         # 밑, fig_s(일별 캡처 막대) 바로 위에 렌더링됨 — 캡처 막대의 데이터 짝(사용자 요청 2026-09-07).
         cap_a, cap_s = iva["cap"]["acct"], iva["cap"]["stock"]
@@ -371,6 +373,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             )
 
         caps_html = (
+            # @뇌 캡처표_셋
             _cap_tbl("DC ERA", DOWN_COLOR, "하락", "dc", "era", False)
             + _cap_tbl("UC ERA", UP_COLOR, "상승", "uc", "pct", False)
             + _cap_tbl("even 평균 · 승률 (±0.1%)", T["muted2"], "even", "even", "evr", True)
@@ -416,6 +419,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         ))
         # 혼합지수 = wk·코스피 + (1−wk)·코스닥 (보유비중 가중). wk 없으면 코스피 단독.
         _bw = wk if wk is not None else 1.0
+        # @뇌 혼합지수_선
         _blend_cum = [_bw * k + (1 - _bw) * q for k, q in zip(idxc["코스피"], idxc["코스닥"])]
 
         def _blend_day(d):
@@ -451,7 +455,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11),
-            showlegend=False,  # 위 표(●코스피 ●코스닥 ●혼합지수 ●내 주식 ┈내 계좌)가 곧 범례
+            # @뇌 지수대비_범례
+            showlegend=False,  # 위 표(●코스피 ●코스닥 ●혼합지수 ●내 주식 ●내 계좌)가 곧 범례
             hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], align="left",
                             font=dict(size=11, color=T["text"])),
             xaxis=dict(showgrid=False, tickfont=dict(size=9, color=T["muted"]), fixedrange=True),
@@ -460,7 +465,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             hovermode="x unified",
             dragmode=False,
         )
-        # ---- 일별 캡처 막대 (2026-09-07) : 하락일 빨강 / 상승일 파랑, y = 캡처 c, y=1 얇은 선 ----
+        # @뇌 일별캡처_막대
+        # ---- 일별 캡처 막대 (2026-09-07, 색은 09-08 스왑) : 하락일 파랑 / 상승일 빨강, y = 캡처 c, y=1 얇은 선 ----
         # 내 계좌 기준. even일은 그래프에서 완전히 제외(단위가 %p라 캡처 축과 안 섞임 — 값은 리스트로).
         # 하락일(DC) 파랑이 1 아래 = 방어 잘함, 상승일(UC) 빨강이 1 위 = 참여 잘함.
         _xs, _ys, _cols, _cd = [], [], [], []
@@ -485,7 +491,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             margin=dict(l=40, r=8, t=8, b=30),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=T["text"], size=11),
-            showlegend=False,  # 빨강=하락일·파랑=상승일, 위 리스트가 곧 범례
+            showlegend=False,  # 파랑=하락일·빨강=상승일, 위 리스트가 곧 범례
             bargap=0.3,
             hoverlabel=dict(bgcolor=T["card"], bordercolor=T["border"], align="left",
                             font=dict(size=11, color=T["text"])),
@@ -686,6 +692,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                     height=262,
                 )
 
+    # @뇌 vip_vs_orchestra
     # ---- VIP vs Orchestra (§6-21): VIP 펀드 vs new1 계좌(Orchestra), 둘 다 8/14=0.
     #      Orchestration(meritz)은 여기선 안 보여줌 — meritz 앱에서만 3-way (사용자 요청 2026-09-08).
     #      both_accounts.csv / sync_both_accounts.py 인프라는 meritz가 읽으므로 그대로 유지. ----

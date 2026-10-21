@@ -237,6 +237,7 @@ def _render_holding_detail(r: dict, tx: pd.DataFrame, T: dict):
         name="현재가", line=dict(color=T["muted"], width=1.8),
         hovertemplate="%{x}<br>%{y:,.0f}원<extra></extra>",
     ))
+    # @뇌 물타기그래프_평단선
     fig.add_trace(go.Scatter(
         x=avg_x, y=avg_y, mode="lines", name="평단가",
         line=dict(color=DOWN_COLOR, width=2, shape="hv"),
@@ -499,6 +500,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     today_str = today_kst_str()
     today_tx = tx[tx["날짜"].astype(str) == today_str]
 
+    # @뇌 신규진입_강조
     # 오늘 신규 진입한 종목("어제 종가 기준 보유수량이 0이었던 종목") — 카드 정렬 최상단 +
     # 초록색 강조에 씀. 처음 사보는 건지(ESR켄달스퀘어리츠/앱클론) 예전에 샀다가 전량매도한
     # 뒤 오늘 다시 산 건지(삼성전자/NAVER/두산에너빌리티 같은 단타 종목)는 구분하지 않는다 —
@@ -522,6 +524,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     daily_color = UP_COLOR if daily_pnl > 0 else (DOWN_COLOR if daily_pnl < 0 else T["muted"])
     daily_sign = "+" if daily_pnl > 0 else ""
 
+    # @뇌 어제대비_총자산
     # 어제 대비 포트폴리오 총자산 변화 (직전 asset_history 스냅샷 대비). 이 화면은 포트폴리오
     # 현황용이라 "최초 자본 대비 누적손익"(그건 거래 기록 탭에도 나옴) 대신 전일 대비를 보여준다.
     # 오늘 실현한 이익도 총자산에 이미 반영돼 있으므로 자동으로 +로 잡힌다 —
@@ -534,12 +537,13 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     day_sign = "+" if day_change > 0 else ""
 
     # ---- Today's Take: 오늘 내 주식 성과 vs 시장(혼합지수·DC/UC), 기본 + 반도체 제외(W/O SH) ----
-    # 원(내 주식 어제 대비)은 위 day_change 그대로, %는 Account:Index의 "내 주식 당일"(Rs).
+    # 원은 위 day_change 그대로(= 총자산 − 직전 asset_history 총자산, 예수금 포함 계좌 기준 — 내 주식만이 아님), %는 Account:Index의 "내 주식 당일"(Rs).
     # 혼합지수 당일 / DC(하락일 c)·UC(상승일 c)·—(even) 를 기본 벤치와 삼성·하이닉스 제외 벤치
     # 두 가지로 보여준다. compute_index_vs_account를 여기서 2번 호출(가벼움).
     _idx_h = load_index_history()
     _asset_h = load_history()
     _mc = load_market_cache()
+    # @뇌 투데이스테이크_벤치
     _hv = holdings.copy()
     _hv["_v"] = (pd.to_numeric(_hv["수량"], errors="coerce").fillna(0)
                  * pd.to_numeric(_hv["현재가"], errors="coerce").fillna(0))
@@ -555,6 +559,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                                        state["initial"], _fr, kospi_weight=_wk)
               if _idx_ex_h is not None else None)
 
+    # @뇌 orchestra_지수
     # ---- "Orchestra 지수" — 8/14 종가(≈6,978)를 앵커로 "내 주식"(Rs) 누적수익률을 지수
     # 포인트로 환산(2026-09-15 사용자 요청, 처음엔 코스피/Ex-반도체도 같이 뒀다가 "그렇게까지
     # 필요 없다"고 정리 — Orchestra 지수 값 + 어제 대비 등락%만 남김). 보유종목 평가손익
@@ -677,6 +682,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         #      고정, +빨강/−파랑) = (Orchestra Refill÷Index Refill − 1)×100. ----
         with st.container(key="seed_engine_wrap"):
             with st.expander("⛽ Pit Stop", expanded=False):
+                # @뇌 핏스탑_벤치
                 _bench_cum = blended_benchmark_cum(_iva_s["index"], _wk) if _iva_s else None
                 _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0),
                                           load_history(), bench_cum=_bench_cum)
@@ -689,6 +695,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         return (_se[col] / _ta * 100).fillna(0).tolist()
 
                     _FUEL_C = "#c99a00"  # 진한 노란색
+                    # @뇌 surplus
                     # Surplus = Orchestra Refill÷Index Refill − 1 (%). 내가 벤치보다 못하면 음수
                     # 가능(2026-09-17 상승장 예시로 검증됨). Index Refill≈0이면 발산 → 300%
                     # 소프트캡(축에서 잘림). 우측 축은 0% 중앙, ±30 고정(peak가 25 넘으면 ±40).
@@ -745,6 +752,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         height=272,
                     )
 
+        # @뇌 투데이스테이크_혼합줄
         st.markdown(f"""
         <div class="summary-box sc-bot">
         <div class="capital-line" style="line-height:1.75">
@@ -959,6 +967,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                 )
                 st.markdown(rows_html, unsafe_allow_html=True)
 
+    # @뇌 watering_detect_세지표
     # ---- Watering Detect: 물타기 중인 종목이 "마지막으로 물탄 지점"보다 더 빠졌는지 감지
     # (2026-09-16, meritz도 동일하게 있음). Up/Down이 "매도 후" 변화를 보듯, 이건 "보유 중"
     # 물타기 종목이 마지막 매수가 대비 -1% 이상 더 밀렸는지를 본다 — 다음 물타기 판단 참고용.
@@ -983,11 +992,12 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             )
             st.markdown(rows_html, unsafe_allow_html=True)
 
+    # @뇌 quiet_hands_세모집단
     # ---- Quiet Hands (포리너 프로젝트 확장, 2026-09-16, new1 전용) — "떨어지는데 외국인은
     # 사는" 다이버전스(§6-28 Link와 같은 신호)를 내가 이미 관여 중인 세 모집단에 좁혀서 본다.
     # 셋 다 하락(DOWN) 기준만 본다 — 상승 중인 종목에 외국인이 느는 건 이 패널의 관심사가 아님.
     # Convoy = Watering Detect 모집단(최초진입일 기준), Undertow = Fishing 하락 -3%↓ 모집단
-    # (기준일 기준), Encore = Up/Down 매도후하락 -2%↓ 모집단(마지막 매도일 기준, 2026-09-16
+    # (기준일 기준), Encore = Up/Down 매도후하락 모집단(문턱은 σ 배수 updown_hit, 2026-10-20 — 옛 -2%)(마지막 매도일 기준, 2026-09-16
     # Up/Down 안에 있던 걸 여기로 이동 — 세 구획을 한곳에 모아달라는 사용자 요청). 기준일
     # 데이터가 investor_flow 커버리지보다 이르면 foreign_pct_change_since가 알아서 가장 이른
     # 값으로 대체한다. 3%p 이상만 보여주되, 하나도 없으면 문턱을 무시하고 외인비중 상승 큰 순
@@ -1131,6 +1141,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                         )
                     st.markdown("".join(row_parts), unsafe_allow_html=True)
 
+    # @뇌 bench_모집단
     # ---- Bench: 한 번도 매수한 적 없는 관심종목 (소외종목) ----
     # watchlist 중 transactions에 매수 이력이 0인 종목만. Fishing과 같은 행 포맷이지만
     # ±3% 필터·순위변동 배지는 없다(전부 표시). 정렬: 매수횟수 asc(지금은 전부 0이라 사실상
@@ -1326,6 +1337,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     if updated_vals:
         last_updated = max(updated_vals)
 
+    # @뇌 holdings_등락3구간
     # 전역 CSS(app.py의 `div[data-testid="stColumn"] { flex:1 1 0 !important; }`)가 모든
     # st.columns() 비율을 강제로 동일폭으로 만들어버리므로, 이 줄만 st.container(key=...)로
     # 감싸서 app.py의 [class*="st-key-holdings_title_row"] 스코프 CSS로 비율을 다시 덮어씀.

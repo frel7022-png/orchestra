@@ -169,6 +169,7 @@ def build(data, link_res):
     tx = core.load_transactions()
     h = core.load_holdings()
     state = core.load_state()
+    # @뇌 meritz_보유_읽기
     mp = HERE.parent / "meritz" / "portfolio_data.csv"
     hm = pd.read_csv(mp, dtype={"종목코드": str}) if mp.exists() else pd.DataFrame(columns=["종목명", "평단가"])
     m_names = set(hm["종목명"])
@@ -211,6 +212,7 @@ def build(data, link_res):
     res["index"] = {"ex": {"벤치": snap["ex"], "계좌": snap["acct"], "주식": snap["stock"]},
                     "main": {"벤치": snap["main"]}, "asof": snap["holdings_asof"], "snap": snap}
 
+    # @뇌 updown_후보
     # B. Up/Down 재진입 후보 — 마지막 매도가 대비 많이 빠진 순
     closed = core.get_closed_out_last_sells(h, tx)
     need = [name2code.get(n) for n in closed["종목명"] if name2code.get(n) and name2code.get(n) not in live]
@@ -259,6 +261,7 @@ def build(data, link_res):
     fish = []
     for c, g in ph.groupby("종목코드"):
         g = g.sort_values("날짜")
+        # @뇌 fishing_기준가
         base_d, base_px = g["날짜"].iloc[0], float(g["종가"].iloc[0])
         px = live.get(c)
         pts = series_from(ph, c, base_d, px, today)
@@ -333,6 +336,7 @@ def build(data, link_res):
                         "전일대비": f["전일"], "기준일": f["기준일"]} for f in fish])
     res["alarm"] = core.compute_todays_alarm(tx, hl, fp, fh, ph)
 
+    # @뇌 meritz_진입후보
     # F. meritz 진입 후보 — new1 보유 중 평단 대비 많이 빠졌는데 meritz엔 없는 종목
     mz = []
     for _, r in hl.iterrows():
@@ -362,6 +366,7 @@ def build(data, link_res):
         a, b = float(g["외국인보유율"].iloc[0]), float(g["외국인보유율"].iloc[-1])
         return {"시작": g["날짜"].iloc[0], "시작값": a, "지금": b, "d": b - a,
                 "rel": (b - a) / a * 100 if a else 0, "끝": g["날짜"].iloc[-1]}
+    # @뇌 cfg_후보_출처
     srcs = ([("Up/Down", x["코드"], x["종목명"], x["매도일"], x["pct"], "매도가 대비") for x in res["updown"]]
             + [("Watering", x["코드"], x["종목명"], x["마지막일"], x["pct_last"], "마지막 매수가 대비") for x in res["watering"]]
             + [("Fishing", x["코드"], x["종목명"], x["기준일"], x["cum"], "기준일 대비") for x in res["fishing"]]
@@ -478,6 +483,7 @@ def write_action(res, ph):
     items = []
     for r in al.get("watering", []):
         items.append(f'<li>물타기 급락: <b>{esc(r["종목명"])}</b> 전일 {sign(r["등락률"])} · 마지막 매수가 대비 {sign(r["pct_last"])}</li>')
+    # @뇌 알람_외인_폭락줄
     for key, lab, fld, unit in (("quiet_hands", "외인 급증(최근3일)", "최근3일pp", "%p"), ("fishing", "관심종목 전일 폭락", "전일대비", "%")):
         blk = al.get(key, {})
         for r in blk.get("items", []):

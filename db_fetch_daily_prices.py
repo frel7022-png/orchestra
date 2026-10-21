@@ -1,5 +1,5 @@
 """
-watchlist 테이블(Supabase)의 전 종목(153개) 시세/거래량/수급을 조회해서 오늘자로 적재.
+watchlist 테이블(Supabase)의 전 종목(2026-10 기준 181개) 시세/거래량/수급을 조회해서 오늘자로 적재.
 같은 날 여러 번 실행해도 안전(각 테이블이 stock_code+trade_date 또는 market+trade_date
 unique라 upsert로 덮어씀). GitHub Actions cron이 매일 이 스크립트를 실행한다
 (.github/workflows/daily-price-fetch.yml).
@@ -96,6 +96,7 @@ def main():
         names = {r["stock_code"]: r["stock_name"] for r in watchlist}
         print(f"   시세 못 받은 종목({len(missing)}개): {[names[c] for c in missing]}")
 
+    # @뇌 시세_레코드
     records = [
         {"stock_code": code, "trade_date": today, "close_price": q["price"],
          "change_pct": q["change_pct"], "volume": q.get("volume")}
@@ -117,10 +118,11 @@ def main():
         else:
             raise
 
+    # @뇌 외인수급_단계
     # 아래 두 단계(4~7)는 2026-08-24 신규 추가라, DB 마이그레이션이 아직 안 됐거나
     # 스크레이핑이 실패해도 위의 핵심 시세 적재(1~3)는 절대 안 깨지게 통째로 감싼다.
     try:
-        print(f"4) 종목별 외국인/기관 수급 조회 ({len(codes)}종목, 종목당 최근 20영업일)...")
+        print(f"4) 종목별 외국인/기관 수급 조회 ({len(codes)}종목, 종목당 최근 5영업일 — 모바일 API 한계)...")
         flow_records = []
         flow_failed = []
         for i, code in enumerate(codes):
@@ -134,7 +136,7 @@ def main():
                         "institution_net": r["기관순매수"], "foreign_net": r["외국인순매수"],
                         "foreign_pct": r["외국인보유율"],
                     })
-            time.sleep(0.3)  # 153번 연속 요청이라 너무 몰아치지 않게 짧은 지연
+            time.sleep(0.3)  # 종목 수만큼 연속 요청이라 너무 몰아치지 않게 짧은 지연
             if (i + 1) % 30 == 0:
                 print(f"   {i + 1}/{len(codes)}...")
         print(f"   조회 완료: {len(flow_records)}행, 실패 {len(flow_failed)}종목")

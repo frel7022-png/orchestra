@@ -4,6 +4,8 @@
     python brain_log.py storage              # 셀마다의 `저장고:` 줄(원본)을 모아 셀관리.md 저장고 표를 다시 만든다
     python brain_log.py heads                # 셀 머리(제목 ~ "## 꼬리표" 전) 줄 수 — 15 넘으면 표시
     python brain_log.py links                # 셀 사이 길(다음 셀 신호) 표 → 셀관리.md + 뇌_초안 안 끊긴 경로 검사(2026-10-20 셀회의)
+                                             #   + 셀→코드 문 검사(심볼·@뇌 이름표·줄 번호 금지, 2026-10-21)
+    python brain_log.py where 이름|파일.py    # 이름표·심볼의 지금 줄 / 그 파일을 가리키는 셀 문 목록(구조 바꾸기 전)
 """
 import datetime
 import re
@@ -118,6 +120,117 @@ def links() -> tuple[dict, dict, list]:
     return out, inc, broken
 
 
+# ---- 셀 → 코드 문 (2026-10-21 위크·새러데이 합의, 대표 "코드를 고치거나 쪼개면 문이 깨지냐") ----
+# 셀은 코드를 줄 번호로 가리키지 않는다(줄이 밀리면 조용히 엉뚱한 줄을 가리킨다). 두 꼴만 쓴다:
+#   심볼 문  `모듈.이름` — 함수·클래스·최상위 대입(중첩 함수는 `모듈.바깥.안`, 모듈 설명은 `모듈.__doc__`)
+#   이름표 문 `@뇌 이름` — 함수 안 특정 갈래만. 코드 쪽엔 그 자리 위에 `# @뇌 이름` 한 줄(셀 경로는 안 씀).
+# 검사는 import 없이 AST·텍스트만 읽는다(실데이터 무접촉). 기록 칸(HISTORY·ARCHIVE·기록관)은 그날의 사실이라 뺀다.
+CODE_SKIP = ("HISTORY", "ARCHIVE", "기록관")
+LINE_REF = re.compile(r"(?<![\w/.])([A-Za-z_]\w*\.py):\d+")
+TAG_REF = re.compile(r"@뇌 ([^\s`*/<][^\s`*/]*)")   # `@뇌 <이름>`은 자리표시(규칙 문서의 예)
+SYM_REF = re.compile(r"`([A-Za-z_]\w*)\.([^\W\d][\w.]*)")
+
+
+def code_cells() -> list[Path]:
+    return sorted(p for p in BRAIN.rglob("*.md") if p.relative_to(BRAIN).parts[0] not in CODE_SKIP)
+
+
+def _py_files() -> list[Path]:
+    return sorted(HERE.glob("*.py"))
+
+
+def code_tags() -> dict[str, list[tuple[str, int]]]:
+    """코드의 `@뇌 이름` → [(파일, 줄)]. 주석(#)이나 CSS 주석(/* */) 어디든 텍스트로 찾는다."""
+    tags = {}
+    for p in _py_files():
+        if p.name == "brain_log.py":
+            continue
+        for i, ln in enumerate(p.read_text(encoding="utf-8").split("\n"), 1):
+            for m in TAG_REF.finditer(ln):
+                tags.setdefault(m.group(1), []).append((p.name, i))
+    return tags
+
+
+def _symbols(path: Path) -> dict[str, int]:
+    """모듈의 이름 → 줄. 최상위 def/class/대입 + 중첩 def/class(점으로 이음) + __doc__."""
+    import ast
+    t = ast.parse(path.read_text(encoding="utf-8"))
+    out = {}
+    if ast.get_docstring(t) is not None:
+        out["__doc__"] = 1
+
+    def walk(nodes, prefix):
+        for n in nodes:
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                out[prefix + n.name] = n.lineno
+                walk(n.body, prefix + n.name + ".")
+            elif not prefix and isinstance(n, (ast.Assign, ast.AnnAssign)):
+                for tg in (n.targets if isinstance(n, ast.Assign) else [n.target]):
+                    for x in ([tg] if isinstance(tg, ast.Name) else getattr(tg, "elts", [])):
+                        if isinstance(x, ast.Name):
+                            out[x.id] = n.lineno
+    walk(t.body, "")
+    return out
+
+
+def code_link_problems() -> list[str]:
+    """셀 → 코드 문 검사. 빈 리스트면 통과.
+    - 줄 번호 문(`파일.py:줄`)이 남아 있으면 실패
+    - `@뇌 이름`이 코드에 정확히 하나 없으면 실패, 코드의 이름표를 아무 셀도 안 가리키면(고아) 실패
+    - `모듈.이름`에서 모듈이 이 레포 .py인데 그 이름이 없으면 실패(모듈이 아닌 것 — `core.`·`st.` 등 — 은 안 본다)"""
+    mods = {p.stem: p for p in _py_files()}
+    syms, probs, used = {}, [], set()
+    tags = code_tags()
+    for p in code_cells():
+        rel = p.relative_to(BRAIN)
+        for i, ln in enumerate(p.read_text(encoding="utf-8").split("\n"), 1):
+            for m in LINE_REF.finditer(ln):
+                if (HERE / m.group(1)).exists() and "Thursday" not in ln[max(0, m.start() - 40):m.start()]:
+                    probs.append(f"줄 번호 문: {rel}:{i}  {m.group(0)}")
+            for m in TAG_REF.finditer(ln):
+                name = m.group(1)
+                used.add(name)
+                n = len(tags.get(name, []))
+                if n != 1:
+                    probs.append(f"이름표 {'없음' if n == 0 else f'{n}곳 중복'}: {rel}:{i}  @뇌 {name}")
+            for m in SYM_REF.finditer(ln):
+                mod, name = m.group(1), m.group(2).rstrip(".")
+                if (mod not in mods or name.split(".")[0] in ("py", "csv", "md", "json", "html", "txt", "xlsx")
+                        or "Thursday" in ln[max(0, m.start() - 40):m.start()]):
+                    continue
+                if mod not in syms:
+                    syms[mod] = _symbols(mods[mod])
+                if name not in syms[mod]:
+                    probs.append(f"심볼 없음: {rel}:{i}  {mod}.{name}")
+    for name, where in tags.items():
+        if name not in used:
+            probs.append(f"고아 이름표(가리키는 셀 없음): {where[0][0]}:{where[0][1]}  @뇌 {name}")
+    return probs
+
+
+def where(name: str) -> list[str]:
+    """이름표·심볼의 지금 자리. `where 파일.py`면 그 파일을 가리키는 셀 문 목록(구조 바꾸기 전 점검)."""
+    out = []
+    if name.endswith(".py"):
+        stem = name[:-3]
+        tag_names = {t for t, w in code_tags().items() if any(f == name for f, _ in w)}
+        for p in code_cells():
+            for i, ln in enumerate(p.read_text(encoding="utf-8").split("\n"), 1):
+                if f"`{stem}." in ln or any(f"@뇌 {t}" in ln for t in tag_names):
+                    out.append(f"{p.relative_to(BRAIN)}:{i}")
+        return out
+    name = name.removeprefix("@뇌 ")
+    for f, i in code_tags().get(name, []):
+        out.append(f"@뇌 {name} → {f}:{i}")
+    if "." in name:
+        mod, sym = name.split(".", 1)
+        if (HERE / f"{mod}.py").exists():
+            ln = _symbols(HERE / f"{mod}.py").get(sym)
+            if ln:
+                out.append(f"{name} → {mod}.py:{ln}")
+    return out
+
+
 def links_table(out: dict, inc: dict) -> str:
     rows = ["| 셀 | 나감(신호 칸) | 들어옴(신호 칸) |", "|---|---|---|"]
     for k in sorted(out):
@@ -185,7 +298,14 @@ def main() -> int:
         for f, i, ref in broken:
             print(f"끊긴 경로: {f}:{i}  {ref}")
         print(f"끊긴 경로 {len(broken)}개")
-        return 1 if broken else 0
+        code = code_link_problems()
+        for x in code:
+            print(x)
+        print(f"코드 문 문제 {len(code)}개 (이름표 {len(code_tags())}개)")
+        return 1 if broken or code else 0
+    elif a and a[0] == "where" and len(a) > 1:
+        for ln in where(" ".join(a[1:])) or ["없음"]:
+            print(ln)
     elif a and a[0] == "heads":
         bad = 0
         for p in cell_files():

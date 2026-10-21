@@ -1,6 +1,6 @@
 """Claude's Read (§6-22) — 그날 일일 평가를 세션이 쓰기 위한 수치 덤프.
 
-매매일지 반영 + sync_both_accounts.py 뒤에 실행:
+대표가 "써줘"라고 할 때만 실행(2026-09-21부터 자동 루틴 폐지). 매매일지 반영 + sync_both_accounts.py 뒤에:
     python daily_stats.py [YYYY-MM-DD]
 그러면 세션이 이 출력만 보고 claude_daily_notes.csv에 (날짜, 별점, 코멘트) 한 줄을 append,
 git commit/push. (LLM 호출은 앱이 아니라 세션이 함 — 하루 1회.)
@@ -52,9 +52,11 @@ def main() -> None:
     print(f"[내 주식 어제대비]  {_pct(lat.get('주식', (None, None))[1])}")
     print(f"[내 계좌 어제대비]  {_pct(lat.get('계좌', (None, None))[1])}")
     print(f"[코스피 당일]  {_pct(lat.get('코스피', (None, None))[1])}   [코스닥 당일]  {_pct(lat.get('코스닥', (None, None))[1])}")
+    # @뇌 일일통계_혼합지수
     print(f"[혼합지수 당일]  {_pct(lat.get('벤치', (None, None))[1])}")
     if s:
         print(f"[W/O SH 혼합지수 당일]  {_pct((s.get('latest', {}).get('벤치') or (None, None))[1])}")
+    # @뇌 일일통계_캡처
     b, v = _cap_today(m)
     print(f"[DC/UC 오늘 · 기본]  바구니 {b or '—'}  값 {('%.2f' % v) if v is not None else '—'}")
     if s:

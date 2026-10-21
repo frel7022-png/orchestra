@@ -49,6 +49,7 @@ def main():
     tx = core.load_transactions()
     tx2, n_new, n_replaced = core.import_daily_trades(parsed, tx, trade_date)
 
+    # @뇌 매매0건_종료
     if n_new == 0:
         print(f"[알림] {trade_date}: 이 파일에는 매수/매도 내역이 없습니다 (전량 0). 반영할 거래가 없어요.")
         sys.exit(0)
@@ -63,6 +64,7 @@ def main():
     core.save_holdings(holdings2)
     core.save_state(state2)
 
+    # @뇌 확정종가_스냅샷
     # 확정 종가 기준(compute_metrics_at_close) — 반영 시점이 장중이어도 asset_history
     # 스냅샷이 항상 그 날짜의 실제 마감 기준이 되게 한다(2026-09-14, 9/11 낮 12:36 스냅
     # 오염으로 DC 캡처가 -1 근처까지 왜곡된 것을 계기로 도입). portfolio_data.csv의 표시용
@@ -108,12 +110,14 @@ def main():
     except Exception as e:
         print(f"[경고] bigcap_history 갱신 실패(무시): {e}")
 
+    # @뇌 펀드기준가_수동
     # 펀드 기준가(§6-21)는 자동 조회 경로가 없어서 세션이 채팅으로 값을 받아
     # fund_nav_history.csv에 직접 append한다(ingest에서 안 다룸).
 
+    # @뇌 신규종목_코드보충
     # 신규 종목은 아직 종목코드가 비어있을 수 있는데(코드 캐시에 없던 이름), 그러면 바로 아래
     # watchlist 자동 편입이 걸러버린다. 백필 전에 코드 없는 종목만 네이버로 가볍게 조회해 채운다
-    # (시세는 안 받음 — 시세/등락률 보충은 §6-2대로 세션이 refresh_all_prices로 따로 함).
+    # (시세는 여기서 안 받음 — 시세/등락률은 아래 refresh_all_prices가 매 반영마다 무조건 받는다, 2026-09-17).
     missing_code = holdings2[holdings2["종목코드"].astype(str).str.len() < 6]
     if not missing_code.empty:
         code_cache = core.load_code_cache()
@@ -128,6 +132,7 @@ def main():
             core.save_holdings(holdings2)
             print("[코드보충] " + ", ".join(f"{n}={c}" for n, c in resolved.items()))
 
+    # @뇌 시세_무조건_갱신
     # ---- 라이브 시세 새로고침, 매일 무조건 (2026-09-17 추가) ----
     # 예전엔 "코드 미확인 종목이 있을 때만" 세션이 수동으로 refresh_all_prices를 돌렸는데,
     # 코드가 이미 다 있는 평범한 날엔 이 스텝이 통째로 스킵돼서 portfolio_data.csv에 커밋되는
@@ -170,6 +175,7 @@ def main():
 
     print(f"[완료] {trade_date} 매매일지 반영: 신규 거래 {n_new}건"
           + (f" (기존 {n_replaced}건 교체)" if n_replaced else ""))
+    # @뇌 메리츠_화면대조
     print("---- 반영 후 상태 (실제 메리츠 앱 화면과 대조하세요) ----")
     print(f"보유종목 수: {len(holdings2)}개")
     print(f"예수금(현금): {state2['cash']:,.0f}원")

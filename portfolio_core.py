@@ -485,8 +485,8 @@ def load_claude_notes() -> pd.DataFrame:
 
 def snapshot_fund_nav_history(nav: float, on_date: str | None = None) -> None:
     """펀드 기준가 스냅샷(같은 날짜 덮어씀). 네이버가 펀드 시세 API를 접었고 KOFIA/funetf는
-    SPA라, 기준가는 사용자가 메리츠증권 앱에서 읽어 `ingest_daily.py`에 `todaytrans/fund_nav.txt`로
-    넣어주는 수동 경로(§6-21). resolve_trading_date를 안 쓰는 이유: 사용자가 이미 '그 거래일'
+    SPA라, 기준가는 대표가 메리츠증권 앱에서 읽어 알려주면 세션이 이 함수로 직접 넣는 수동
+    경로(§6-21 — ingest_daily.py는 기준가를 안 다룬다). resolve_trading_date를 안 쓰는 이유: 사용자가 이미 '그 거래일'
     값을 정확히 골라 넣으므로 on_date를 그대로 신뢰한다."""
     if not nav or float(nav) <= 0:
         return
@@ -1515,7 +1515,8 @@ def study_foreign_buy_forward_returns(flow_hist: pd.DataFrame, price_hist: pd.Da
                                        index_hist: pd.DataFrame, market_map: dict,
                                        basis: str = "평균", threshold_pp: float = 0.30,
                                        horizons=(1, 2, 3, 5), min_history: int = 5) -> dict:
-    """외국인보유율이 basis 기준으로 +threshold_pp(퍼센트포인트) 이상 뛴 (종목, 날짜)를
+    """(2026-09-11 포프 패널 은퇴 — 지금은 tests에서만 부른다. 계산은 나중 재사용용으로 남김.)
+    외국인보유율이 basis 기준으로 +threshold_pp(퍼센트포인트) 이상 뛴 (종목, 날짜)를
     '이벤트'로 잡고, 이후 T+h 거래일 종가수익률을 집계한다.
       basis="전일": 직전 거래일 보유율 대비 상승폭.
       basis="평균": 그 시점까지(자신 포함) 보유율 확장평균 대비 — compute_foreign_flags의
@@ -2963,6 +2964,7 @@ def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float
         prior = [vd for vd in virtual_cum if vd <= d]
         return float(virtual_cum[max(prior)]) if prior else 0.0
 
+    # @뇌 지수리필_날짜별
     out = []
     for d in sorted(rows):
         cash, cost, cr = rows[d]
@@ -3061,6 +3063,7 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         return empty
 
     snap = asset_hist.copy().sort_values("날짜").reset_index(drop=True)
+    # @뇌 anchor_계산
     anchor = max(str(snap["날짜"].min()), str(index_hist["날짜"].min()))
     snap = snap[snap["날짜"] >= anchor].reset_index(drop=True)
     if snap.empty:
@@ -3077,6 +3080,7 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         fh["날짜"] = fh["날짜"].astype(str)
         fh = fh[fh["날짜"] >= anchor].sort_values("날짜").reset_index(drop=True)
         fnav = pd.to_numeric(fh["기준가"], errors="coerce")
+        # @뇌 vip_펀드선
         if len(fh) and fnav.iloc[0] > 0:
             base_f = float(fnav.iloc[0])
             fdates, fvals = list(fh["날짜"]), list(fnav / base_f - 1.0)
@@ -3150,6 +3154,7 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         prior = [v for bd, v in zip(bdates, bvals) if bd <= d]
         return float(prior[-1]) if prior else None
 
+    # @뇌 당일은_누적diff
     me["주식당일"] = me["주식수익"].diff()
     me["계좌당일"] = me["계좌수익"].diff()
     me["벤치누적"] = [_bench_on(d) for d in me["날짜"]]
@@ -3174,6 +3179,7 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         latest["계좌"] = (_last(me["계좌수익"]), _last(me["계좌당일"]))
         latest["벤치"] = (_last(me["벤치누적"]), _last(me["벤치당일"]))  # 주식·계좌 색칠 기준
 
+    # @뇌 캡처_dc_uc_even
     # ---- 하락 / 상승 / even 캡처 (2026-09-07 설계 — CR·엔진·합친지수 전부 폐기) ----
     # 스냅샷 구간마다 벤치당일 부호로 3분류:
     #   하락일 (벤치당일 < -0.1%): 캡처 c = 내당일 / 벤치당일   (낮을수록 방어 잘함, 음수 = 하락일에 오름)
@@ -3267,6 +3273,7 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
             "cap": {"acct": a_sum, "stock": s_sum},
             "n": {"down": _bk.count("하락"), "up": _bk.count("상승"), "even": _bk.count("even")},
             "even_anomalies": even_anom,
+            # @뇌 민감도_기준
             "sensitivity_basis": "혼합" if wk is not None else "코스피"}
 
 
@@ -3585,7 +3592,7 @@ def rebuild_portfolio_from_transactions(tx: pd.DataFrame, initial_capital: float
     holdings/state/실현손익을 다시 계산 — "정답"을 계산하는 기준(ground truth) 함수.
     holdings는 이 함수(및 apply_transaction)를 통해서만 파생되는 결과물로 취급하고,
     절대 손으로 고치지 않는다 — 다음 재계산 때 덮어써지기 때문.
-    fee_rate는 거래대금 대비 수수료+세금 추정 비율 — 매 거래마다 적용되며,
+    fee_rate는 매도금액에만 붙는 세금 비율(0.002, 2026-09-08부터 — 매수엔 0, apply_transaction 참고),
     state["fee_rate"]에 담겨 반환되어 이후에도 계속 같은 비율로 재사용된다.
 
     실제 반영에는 매번 처음부터 전체를 재생하지 않는 rebuild_portfolio_incremental()을 쓴다
@@ -3665,6 +3672,7 @@ def rebuild_portfolio_incremental(tx: pd.DataFrame, initial_capital: float, fee_
     if tx.empty:
         return holdings, state, tx
 
+    # @뇌 safety_days_컷오프
     today = today or today_kst_str()
     cutoff = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=safety_days)).strftime("%Y-%m-%d")
 
@@ -3675,11 +3683,13 @@ def rebuild_portfolio_incremental(tx: pd.DataFrame, initial_capital: float, fee_
     ckpt_holdings, ckpt_state, ckpt_date = load_checkpoint()
     if ckpt_state is None:
         ckpt_state = {"cash": initial_capital, "initial": initial_capital, "fee_rate": fee_rate}
+    # @뇌 체크포인트_자본덮어씀
     # 체크포인트가 저장된 시점 이후로 initial_capital/fee_rate 자체가 바뀌었을 가능성에
     # 대비해, 이번 호출의 값으로 덮어써서 항상 최신 기준을 따르게 함.
     ckpt_state["initial"] = initial_capital
     ckpt_state["fee_rate"] = fee_rate
 
+    # @뇌 체크포인트_없을때
     if ckpt_date is None:
         fold_mask = tx_sorted["날짜"] <= cutoff
     else:
@@ -3694,6 +3704,7 @@ def rebuild_portfolio_incremental(tx: pd.DataFrame, initial_capital: float, fee_
         cur_holdings, cur_state, fold_realized = _replay_transactions(
             cur_holdings, cur_state, to_fold, code_cache, sector_cache, fee_rate)
         realized_map.update(fold_realized)
+        # @뇌 체크포인트_저장
         save_checkpoint(cur_holdings, cur_state, cutoff)
 
     final_holdings, final_state, tail_realized = _replay_transactions(

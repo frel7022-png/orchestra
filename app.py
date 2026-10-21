@@ -104,7 +104,8 @@ st.markdown(f"""
 
 
     .stock-card {{ background:{T['card']}; border:1px solid {T['border']}; border-radius:12px; padding:10px 16px; margin-bottom:7px; }}
-    /* 물타기(현재 사이클 매수 2회 이상) 했는데 반등해서 현재가가 최초진입가 이상으로 온 종목 */
+    /* @뇌 물타기_카드색 */
+    /* 물타기(현재 사이클 매수 2회 이상) 종목 — watered-ok 녹색 = 평단 −0.5% ≤ 현재가 < 최초진입가, watered-first 파랑 = 현재가 ≥ 최초진입가 (portfolio_core.watering_card_state, 2026-10-20) */
     .stock-card.watered-ok {{ background:rgba(34,197,94,0.11) !important; border-color:rgba(34,197,94,0.38) !important; }}
     .stock-card.watered-first {{ background:rgba(59,130,246,0.11) !important; border-color:rgba(59,130,246,0.38) !important; }}
     .stock-card.cfg-tag {{ background:rgba(239,68,68,0.09) !important; border-color:rgba(239,68,68,0.38) !important; }}
@@ -455,6 +456,7 @@ if refresh_clicked_top or auto_refresh_triggered or settings_clicked:
         refresh_market_cache(holdings)  # 종목명→KOSPI/KOSDAQ, 캐시 미스만 (§6-17 지수 대비 계좌)
         st.session_state["index_quotes"] = fetch_index_quotes()
         df_top, stock_val_top, total_assets_top, unreal_top = compute_metrics(holdings, state["cash"])
+        # @뇌 휴장일_스냅샷_건너뜀
         # 오늘 장이 안 열렸으면(주말·공휴일·개장 전) 히스토리 스냅샷을 아예 안 찍는다(2026-10-15 대표 승인).
         # resolve_trading_date()는 공휴일을 못 걸러서, 평일 공휴일에 새로고침하면 그 휴일 날짜로 행이 생겨
         # Account:Index·DC/UC가 그날을 "시장 0% even일"로 셌다. 판정 실패(None)면 예전처럼 찍는다.
@@ -468,6 +470,7 @@ if refresh_clicked_top or auto_refresh_triggered or settings_clicked:
             # §6-17: even일(시장이 ±0.1% 안에서만 움직인 날) → report/capture_anomalies.csv에 누적 기록
             # (분기 단위 수동 검토용). 새로고침 때만, 매 렌더링 아님. 코스피 단독 기준으로 충분(무변동 판정).
             try:
+                # @뇌 even로그_코스피단독
                 _iva_a = compute_index_vs_account(tx, load_history(), load_index_history(), state["initial"],
                                                   state.get("fee_rate", 0.0))
                 append_capture_anomalies(_iva_a.get("even_anomalies", []))
