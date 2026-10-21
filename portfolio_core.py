@@ -3646,7 +3646,8 @@ def save_checkpoint(holdings: pd.DataFrame, state: dict, ckpt_date: str) -> None
 
 def rebuild_portfolio_incremental(tx: pd.DataFrame, initial_capital: float, fee_rate: float = 0.0,
                                    prior_holdings: pd.DataFrame | None = None,
-                                   safety_days: int = 3, today: str | None = None):
+                                   safety_days: int = 3, today: str | None = None,
+                                   replaced_date: str | None = None):
     """rebuild_portfolio_from_transactions과 최종 결과가 항상 같아야 하지만(불변식 —
     tests/test_portfolio_core.py에서 둘을 직접 비교해서 검증함), 매번 transactions.csv
     전체를 처음부터 재생하지 않는다. 대신 "체크포인트"(오늘로부터 safety_days일보다 오래돼서
@@ -3681,6 +3682,13 @@ def rebuild_portfolio_incremental(tx: pd.DataFrame, initial_capital: float, fee_
     tx_sorted = _sort_tx_for_replay(tx)
 
     ckpt_holdings, ckpt_state, ckpt_date = load_checkpoint()
+    # @뇌 체크포인트_막이
+    # 체크포인트 날짜 이하의 매매일지를 다시 넣으면(replaced_date ≤ 체크포인트 날짜) 굳은 체크포인트에
+    # 옛 거래가 남아 새 거래가 조용히 무시된다(2026-10-20 10-20 재반영 논의에서 확인). 그때는 체크포인트를
+    # 버리고 처음부터 전체 재생한 뒤 새 체크포인트를 저장한다(대표 2026-10-21 "오케이", 위크 전달).
+    if ckpt_date is not None and replaced_date is not None and replaced_date <= ckpt_date:
+        print(f"[체크포인트] {replaced_date} ≤ 체크포인트 {ckpt_date} — 체크포인트를 버리고 전체 재생")
+        ckpt_holdings, ckpt_state, ckpt_date = pd.DataFrame(columns=HOLD_COLUMNS), None, None
     if ckpt_state is None:
         ckpt_state = {"cash": initial_capital, "initial": initial_capital, "fee_rate": fee_rate}
     # @뇌 체크포인트_자본덮어씀

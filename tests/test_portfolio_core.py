@@ -684,6 +684,30 @@ def test_incremental_advances_and_reuses_checkpoint(monkeypatch, tmp_path):
     assert ckpt_date_2 > ckpt_date_1
 
 
+def test_incremental_replaced_date_at_or_before_checkpoint_replays_from_scratch(monkeypatch, tmp_path):
+    """체크포인트 날짜 이하 날짜를 다시 넣으면 체크포인트를 버리고 전체 재생 — 조용히 옛 값이 남지 않는다
+    (2026-10-21 대표 결정 1: 체크포인트 막이)."""
+    _isolate_checkpoint_files(monkeypatch, tmp_path)
+    tx1 = _mixed_history_tx()
+    core.rebuild_portfolio_incremental(tx1, initial_capital=1_000_000, safety_days=3, today="2026-02-01")
+    assert core.load_checkpoint()[2] == "2026-01-29"
+    # 01-20 매매일지를 다시 넣었더니 A 매수가 5주가 아니라 7주였다(같은 날 교체)
+    tx2 = tx1.copy()
+    tx2.loc[tx2["id"] == "4", "수량"] = 7
+    exp_holdings, exp_state, _ = core.rebuild_portfolio_from_transactions(tx2, initial_capital=1_000_000)
+    # 막이 없이(replaced_date 안 줌)는 굳은 체크포인트 때문에 옛 5주가 남는다 — 막는 이유
+    stale, _, _ = core.rebuild_portfolio_incremental(tx2, initial_capital=1_000_000, safety_days=3, today="2026-02-01")
+    assert stale[stale["종목명"] == "A"].iloc[0]["수량"] != exp_holdings[exp_holdings["종목명"] == "A"].iloc[0]["수량"]
+    got_holdings, got_state, _ = core.rebuild_portfolio_incremental(
+        tx2, initial_capital=1_000_000, safety_days=3, today="2026-02-01", replaced_date="2026-01-20")
+    assert got_state["cash"] == pytest.approx(exp_state["cash"])
+    a_exp = exp_holdings[exp_holdings["종목명"] == "A"].iloc[0]
+    a_got = got_holdings[got_holdings["종목명"] == "A"].iloc[0]
+    assert a_got["수량"] == pytest.approx(a_exp["수량"])
+    assert a_got["평단가"] == pytest.approx(a_exp["평단가"])
+    assert core.load_checkpoint()[2] == "2026-01-29"   # 새 체크포인트를 다시 저장
+
+
 def test_incremental_realized_pnl_stamped_same_as_full_replay(monkeypatch, tmp_path):
     """체크포인트 경로도 매도 거래의 실현손익을 전체재생과 동일하게 tx에 채워야 한다."""
     _isolate_checkpoint_files(monkeypatch, tmp_path)

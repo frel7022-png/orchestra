@@ -58,7 +58,7 @@ def main():
     prior_holdings = core.load_holdings()
     holdings2, state2, tx2 = core.rebuild_portfolio_incremental(
         tx2, state.get("initial", 10_000_000.0), state.get("fee_rate", 0.0),
-        prior_holdings=prior_holdings)
+        prior_holdings=prior_holdings, replaced_date=trade_date)
 
     core.save_transactions(tx2)
     core.save_holdings(holdings2)
