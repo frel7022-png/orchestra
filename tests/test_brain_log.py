@@ -36,7 +36,7 @@ def test_code_link_checker_flags_line_refs_and_missing_tags(tmp_path, monkeypatc
     (brain / "일과").mkdir(parents=True)
     (brain / "HISTORY").mkdir()
     (tmp_path / "mod.py").write_text('"""doc"""\ndef f():\n    # @뇌 갈래\n    return 1\nX = 2\n', encoding="utf-8")
-    (brain / "일과" / "a.md").write_text("`mod.f` `mod.X` `mod.__doc__` `@뇌 갈래` `mod.py:3` `mod.없음` `@뇌 없는표`\n",
+    (brain / "일과" / "a.md").write_text("`mod.f` `mod.X` `mod.__doc__` `@뇌 갈래` `mod.py:3` `new1/mod.py:2` `../mod.py:4` `mod.없음` `@뇌 없는표`\n",
                                        encoding="utf-8")
     (brain / "HISTORY" / "h.md").write_text("`mod.py:9`\n", encoding="utf-8")   # 기록 칸은 검사 밖
     monkeypatch.setattr(bl, "HERE", tmp_path)
@@ -45,6 +45,7 @@ def test_code_link_checker_flags_line_refs_and_missing_tags(tmp_path, monkeypatc
     assert any("줄 번호 문" in p and "mod.py:3" in p for p in probs)
     assert any("심볼 없음" in p and "mod.없음" in p for p in probs)
     assert any("이름표 없음" in p and "없는표" in p for p in probs)
-    assert len(probs) == 3
+    assert any("new1/mod.py:2" in p for p in probs)   # new1/ 접두도 같은 레포, ../는 레포 밖
+    assert len(probs) == 4
     (brain / "일과" / "a.md").write_text("`mod.f`\n", encoding="utf-8")
     assert any("고아 이름표" in p for p in bl.code_link_problems())

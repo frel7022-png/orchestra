@@ -126,7 +126,7 @@ def links() -> tuple[dict, dict, list]:
 #   이름표 문 `@뇌 이름` — 함수 안 특정 갈래만. 코드 쪽엔 그 자리 위에 `# @뇌 이름` 한 줄(셀 경로는 안 씀).
 # 검사는 import 없이 AST·텍스트만 읽는다(실데이터 무접촉). 기록 칸(HISTORY·ARCHIVE·기록관)은 그날의 사실이라 뺀다.
 CODE_SKIP = ("HISTORY", "ARCHIVE", "기록관")
-LINE_REF = re.compile(r"(?<![\w/.])([A-Za-z_]\w*\.py):\d+")
+LINE_REF = re.compile(r"(?<![\w/.])(?:new1/|\./)?([A-Za-z_]\w*\.py):\d+")   # `new1/`·`./` 접두도 이 레포(위크 10-21)
 TAG_REF = re.compile(r"@뇌 ([^\s`*/<][^\s`*/]*)")   # `@뇌 <이름>`은 자리표시(규칙 문서의 예)
 SYM_REF = re.compile(r"`([A-Za-z_]\w*)\.([^\W\d][\w.]*)")
 

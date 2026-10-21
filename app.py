@@ -474,6 +474,7 @@ if refresh_clicked_top or auto_refresh_triggered or settings_clicked:
                 _iva_a = compute_index_vs_account(tx, load_history(), load_index_history(), state["initial"],
                                                   state.get("fee_rate", 0.0))
                 append_capture_anomalies(_iva_a.get("even_anomalies", []))
+                # @뇌 계좌스냅샷_채널
                 # §6-21 런타임 채널: 이 앱(orchestra)의 라이브 계좌 상태를 Supabase에 upsert →
                 # meritz VIP 패널이 both_accounts.csv 커밋 지연 없이 최신 Orchestra 값을 읽는다.
                 _me_a = _iva_a.get("me")
