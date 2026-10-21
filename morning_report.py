@@ -592,6 +592,14 @@ def write_basecamp(res, n_names, m_names):
     def share(v):
         return "-" if v is None or pd.isna(v) else f"{v:+.1f}%"
 
+    def fx(x):
+        """외인 보유율 원래 비중 → 끝 (변화 %p · 비중대비 %) — 대표 2026-10-21 "상대적 가치"."""
+        a, b, pp = x.get("외인시작"), x.get("외인끝"), x.get("외인pp")
+        if a is None or b is None or pp is None or pd.isna(a) or pd.isna(b):
+            return sign(pp, 2, "%p")
+        rel = f" · 비중대비 {pp / a * 100:+.1f}%" if a else ""
+        return f"{a:.2f}→{b:.2f}% ({pp:+.2f}%p{rel})"
+
     full = res["bc_full"]
     cnt = {k: sum(1 for x in full if x["상태"] == k) for k in ("돌파", "다지는 중", "이탈")}
     rows, cards = [], []
@@ -600,13 +608,13 @@ def write_basecamp(res, n_names, m_names):
                     f'<td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span>{who(x)}</td>'
                     f'<td>{x["score"]:.2f}</td><td>{x["고점일"][5:]}</td><td>{sign(x["하락률"])}</td>'
                     f'<td>{x["평지시작"][5:]} · {x["평지일수"]}일</td><td>{x["밴드"]:.1f}%</td><td>×{x["거래량배수"]:.1f}</td>'
-                    f'<td>{x["대량일수"]}/{x["거래량일수"]}일</td><td>{sign(x["외인pp"], 2, "%p")}</td>'
+                    f'<td>{x["대량일수"]}/{x["거래량일수"]}일</td><td>{fx(x)}</td>'
                     f'<td>{share(x["외인몫"])}</td><td>{share(x["기관몫"])}</td><td>{sign(x["고점대비"])}</td>'
                     f'<td class="l"><span class="bd st {st_cls[x["상태"]]}">{x["상태"]}</span></td></tr>')
         cards.append(card(f'{x["순위"]}. {esc(x["종목명"])}{who(x)}',
                           f'고점 {x["고점일"][5:]} {x["고점"]:,.0f} → 평지 {x["평지시작"][5:]}부터 {x["평지일수"]}일 '
                           f'({x["평지저"]:,.0f}~{x["평지고"]:,.0f}) · 거래량 ×{x["거래량배수"]:.1f}, '
-                          f'2배↑ {x["대량일수"]}/{x["거래량일수"]}일 · 평지 외인 {share(x["외인몫"])} · '
+                          f'2배↑ {x["대량일수"]}/{x["거래량일수"]}일 · 평지 외인 {fx(x)} · 거래량대비 {share(x["외인몫"])} · '
                           f'기관 {share(x["기관몫"])} · 지금 {x["현재가"]:,.0f} {x["상태"]}',
                           svg_line(x["pts"], refs=[("고점", x["고점"], "first"), ("평지고", x["평지고"], "avg"),
                                                    ("평지저", x["평지저"], "last")]),
@@ -622,9 +630,9 @@ def write_basecamp(res, n_names, m_names):
 <div><div class="k">이탈</div><div class="v">{cnt["이탈"]}</div></div></div>
 
 <h2>점수 상위 {BC_TOP} ({prev_txt})</h2>
-<p class="legend">점수 = 하락 깊이 × 평지 평탄도 × 거래량 배수 · 받는손: <span class="who f">외인</span> 평지 구간 외인 순매수 합&gt;0이고 보유율도 오름 / <span class="who i">기관</span> 기관 순매수 합&gt;0 · 외인몫·기관몫 = 평지 구간 순매수 합 ÷ 거래량 합 · 상태: 돌파(평지 고가 위) / 다지는 중 / 이탈(평지 저가 −3% 아래)</p>
+<p class="legend">점수 = 하락 깊이 × 평지 평탄도 × 거래량 배수 · 받는손: <span class="who f">외인</span> 평지 구간 외인 순매수 합&gt;0이고 보유율도 오름 / <span class="who i">기관</span> 기관 순매수 합&gt;0 · 평지 외인 비중 = 평지 직전 보유율→끝 (변화 %p · 원래 비중 대비 %) · 외인몫·기관몫 = 평지 구간 순매수 합 ÷ 거래량 합(비중 변화가 아니다) · 상태: 돌파(평지 고가 위) / 다지는 중 / 이탈(평지 저가 −3% 아래)</p>
 <div class="scroll"><table><thead><tr><th>#</th><th></th><th class="l">종목</th><th>점수</th><th>고점</th><th>평지까지 하락</th><th>평지</th><th>밴드</th>
-<th>거래량</th><th>2배↑</th><th>평지 외인</th><th>외인몫</th><th>기관몫</th><th>지금(고점 대비)</th><th class="l">상태</th></tr></thead>
+<th>거래량</th><th>2배↑</th><th>평지 외인 비중</th><th>외인몫(거래량)</th><th>기관몫(거래량)</th><th>지금(고점 대비)</th><th class="l">상태</th></tr></thead>
 <tbody>{"".join(rows)}</tbody></table></div>
 
 <h2>명단에서 빠진 종목</h2>

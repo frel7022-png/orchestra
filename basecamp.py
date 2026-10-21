@@ -114,11 +114,11 @@ def _absorber(flow_hist: pd.DataFrame, code: str, start: str, end: str) -> dict:
     """평지 구간에 누가 받았나 — 외인·기관 순매수 합(거래량 대비 %)과 외인 보유율 변화."""
     need = {"외국인보유율", "외국인순매수", "기관순매수", "거래량"}
     if flow_hist is None or flow_hist.empty or not need <= set(flow_hist.columns):
-        return {"받는손": "", "외인pp": None, "외인몫": None, "기관몫": None}
+        return {"받는손": "", "외인pp": None, "외인시작": None, "외인끝": None, "외인몫": None, "기관몫": None}
     f = flow_hist[flow_hist["종목코드"].astype(str) == code].sort_values("날짜")
     g = f[(f["날짜"] >= start) & (f["날짜"] <= end)]
     if g.empty:
-        return {"받는손": "", "외인pp": None, "외인몫": None, "기관몫": None}
+        return {"받는손": "", "외인pp": None, "외인시작": None, "외인끝": None, "외인몫": None, "기관몫": None}
     prev = f[f["날짜"] < start]
     f0 = float(prev["외국인보유율"].iloc[-1]) if not prev.empty else float(g["외국인보유율"].iloc[0])
     pp = float(g["외국인보유율"].iloc[-1]) - f0
@@ -126,7 +126,8 @@ def _absorber(flow_hist: pd.DataFrame, code: str, start: str, end: str) -> dict:
     fn = float(pd.to_numeric(g["외국인순매수"], errors="coerce").sum())
     inn = float(pd.to_numeric(g["기관순매수"], errors="coerce").sum())
     who = "외인" if fn > 0 and pp > 0 else ("기관" if inn > 0 else "")
-    return {"받는손": who, "외인pp": pp, "외인몫": fn / vol * 100 if vol else None,
+    # 외인시작·외인끝: 원래 비중을 같이 보여 주려고(대표 2026-10-21 "상대적 가치" — 같은 변화도 원래 비중에 따라 무게가 다르다)
+    return {"받는손": who, "외인pp": pp, "외인시작": f0, "외인끝": float(g["외국인보유율"].iloc[-1]), "외인몫": fn / vol * 100 if vol else None,
             "기관몫": inn / vol * 100 if vol else None}
 
 
