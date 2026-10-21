@@ -2443,9 +2443,42 @@ def _all_lots(tx: pd.DataFrame, fee_rate: float = 0.0) -> list[dict]:
     return out
 
 
+def compare_cfg_cycles(tx: pd.DataFrame, tags: pd.DataFrame | None = None) -> dict:
+    """CFG(외인 보고 산 매수)가 들어 있는 사이클 vs 나머지 사이클 — **사이클 단위**(첫 매수 ~ 전량 매도)로 비교한다
+    (2026-10-21 대표 위임·위크 전달: 매수 건 단위면 물타기 많은 종목이 여러 번 채점돼 부풀고, 10-20 대표 원문
+    "매수부터 … 마지막 나오는 싸이클까지 관리"가 10-06 확정보다 최근. CFG·Others 양쪽 같은 단위라야 비교가 공정하다).
+    CFG 사이클 = 그 종목 태그일이 [첫 매수일, 전량 매도일] 안에 드는 사이클(열린 사이클은 첫 매수일 ≤ 태그일).
+    수익률 = 그 사이클 실현손익(매도세 반영) ÷ 매수총액. Statistics "CFG vs Others"가 이걸 쓴다.
+    반환: {"cfg": {...}, "rest": {...}, "open_cfg": 아직 안 끝난 CFG 사이클 수}. 각 묶음은
+    n(사이클 수), 평균수익률, 중앙수익률, 승률, 평균보유일(달력일), 평균회차(사이클 안 매수 횟수), 손익합계."""
+    tags = load_cfg_tags() if tags is None else tags
+    tagged = list(zip(tags["종목명"], tags["태그일"].astype(str))) if tags is not None and not tags.empty else []
+    cycles = _all_cycles(tx)
+
+    def is_cfg(c):
+        return any(n == c["종목"] and c["first_buy_date"] <= d and (not c["closed"] or d <= c["close_date"])
+                   for n, d in tagged)
+
+    def summarize(cs):
+        if not cs:
+            return {"n": 0}
+        r = pd.Series([c["realized"] / c["buy_amt"] * 100 if c["buy_amt"] else 0.0 for c in cs])
+        days = [(pd.Timestamp(c["close_date"]) - pd.Timestamp(c["first_buy_date"])).days for c in cs]
+        return {"n": len(cs), "평균수익률": float(r.mean()), "중앙수익률": float(r.median()),
+                "승률": float((r > 0).mean() * 100), "평균보유일": float(pd.Series(days).mean()),
+                "평균회차": float(pd.Series([c["n_buy"] for c in cs]).mean()),
+                "손익합계": float(sum(c["realized"] for c in cs))}
+
+    closed = [c for c in cycles if c["closed"]]
+    return {"cfg": summarize([c for c in closed if is_cfg(c)]),
+            "rest": summarize([c for c in closed if not is_cfg(c)]),
+            "open_cfg": sum(1 for c in cycles if not c["closed"] and is_cfg(c))}
+
+
 def compare_cfg_lots(tx: pd.DataFrame, tags: pd.DataFrame | None = None,
                      fee_rate: float | None = None) -> dict:
-    """CFG를 보고 한 매수 1건(태그일 = 그 매수일)과 나머지 매수 건을 같은 자로 비교한다
+    """(대체됨 2026-10-21 → compare_cfg_cycles. 화면은 더 안 쓴다 — 매수 건 단위 참고용으로 남김.)
+    CFG를 보고 한 매수 1건(태그일 = 그 매수일)과 나머지 매수 건을 같은 자로 비교한다
     (2026-10-06 사용자 확정 — 사이클 전체로 세면 CFG 이전 물타기 판단이 CFG 성적에 섞여서,
     예컨대 와이지-원은 14번 매수 중 13번이 CFG 이전이었음). 전량매도로 끝난 사이클의 lot만 비교.
     반환: {"cfg": {...}, "rest": {...}, "open_cfg": 아직 안 끝난 CFG 매수 건수}. 각 묶음은

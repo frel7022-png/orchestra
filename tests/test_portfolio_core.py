@@ -2199,6 +2199,29 @@ def test_db_loaders_paginate_with_stable_order(monkeypatch):
     assert all("order=trade_date,stock_code" in u for u in paged)
 
 
+def test_cfg_cycle_compare_counts_whole_watering_cycle_once():
+    """CFG 판정 단위 = 사이클(2026-10-21): 물타기 여러 번 한 사이클도 1개로 센다 — 태그일이 든 사이클 통째로 CFG,
+    나머지 사이클은 Others. 열린 사이클에 태그가 있으면 open_cfg."""
+    import pandas as pd
+    import portfolio_core as core
+    row = lambda i, d, n, k, q, p, r=None: {"id": str(i), "날짜": d, "종목명": n, "구분": k, "수량": q, "단가": p,
+                                          "실현손익": r, "메모": "", "정산반영": True}
+    tx = pd.DataFrame([
+        row(1, "2026-09-01", "A", "매수", 1, 100), row(2, "2026-09-03", "A", "매수", 1, 90),
+        row(3, "2026-09-05", "A", "매수", 1, 80), row(4, "2026-09-10", "A", "매도", 3, 100, 30),   # 물타기 3번 → 1사이클
+        row(5, "2026-09-02", "B", "매수", 1, 50), row(6, "2026-09-04", "B", "매도", 1, 55, 5),
+        row(7, "2026-09-20", "C", "매수", 1, 40),
+    ])
+    tags = pd.DataFrame([{"종목명": "A", "태그일": "2026-09-03", "메모": ""},
+                         {"종목명": "C", "태그일": "2026-09-20", "메모": ""}])
+    cmp = core.compare_cfg_cycles(tx, tags)
+    assert cmp["cfg"]["n"] == 1                                   # A 매수 3번이지만 1사이클
+    assert abs(cmp["cfg"]["평균수익률"] - 30 / 270 * 100) < 1e-9
+    assert cmp["cfg"]["평균회차"] == 3 and cmp["cfg"]["평균보유일"] == 9
+    assert cmp["rest"]["n"] == 1 and abs(cmp["rest"]["평균수익률"] - 10.0) < 1e-9
+    assert cmp["open_cfg"] == 1
+
+
 def test_cfg_lot_compare_counts_only_the_tagged_buy():
     """CFG 성적은 태그일에 한 매수 1건만 — 같은 사이클의 이전 매수는 Others로 간다(2026-10-06,
     사이클 단위였던 걸 매수 건 단위로 변경). 청산가는 그 매수일 이후 매도들의 가중평균."""
