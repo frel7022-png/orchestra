@@ -14,6 +14,11 @@ import requests
 
 DAYS = int(sys.argv[1]) if len(sys.argv) > 1 else 5
 
+# 휴장일 달력 경고(2026-10-21 위크) — 달력 확인이 사람 기억에만 달리지 않게 매일 점검 첫머리에 찍는다.
+import portfolio_core as core  # noqa: E402
+for _w in core.krx_calendar_warnings():
+    print(_w)
+
 sec = tomllib.load(open(".streamlit/secrets.toml", "rb"))["supabase"]
 URL = sec["url"]
 KEY = sec.get("anon_key") or sec.get("key")

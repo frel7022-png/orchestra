@@ -100,6 +100,26 @@ def load_krx_holidays() -> set[str]:
         return set()
 
 
+def krx_calendar_warnings(today: str | None = None, stale_days: int = 35) -> list[str]:
+    """휴장일 달력이 사람 손에만 달리지 않게 — 매일 점검(check_daily_db.py)이 부르는 경고 두 줄(위크 2026-10-21).
+    (a) 달력의 마지막 확인일이 stale_days일 넘게 지났으면 "휴장일 달력 확인할 때"
+    (b) 12월 1일 이후인데 다음 해 휴장일이 0줄이면 "내년 휴장일 넣을 때". 경고가 없으면 빈 리스트."""
+    today = today or today_kst_str()
+    t = datetime.strptime(today, "%Y-%m-%d").date()
+    try:
+        df = pd.read_csv(KRX_HOLIDAYS_FILE, dtype=str)
+    except Exception:
+        return ["[휴장일 달력] krx_holidays.csv를 못 읽음 — 휴장일을 달력으로 못 거른다(정비실/휴장일)"]
+    out = []
+    checked = pd.to_datetime(df.get("확인일"), errors="coerce").dropna()
+    if checked.empty or (t - checked.max().date()).days > stale_days:
+        last = checked.max().date().isoformat() if not checked.empty else "없음"
+        out.append(f"[휴장일 달력] 마지막 확인 {last} — {stale_days}일 넘게 지남, 휴장일 달력 확인할 때(정비실/휴장일 절차 1)")
+    if t.month == 12 and not df["날짜"].astype(str).str.startswith(str(t.year + 1)).any():
+        out.append(f"[휴장일 달력] {t.year + 1}년 휴장일이 0줄 — 내년 휴장일 넣을 때(KRX 공지)")
+    return out
+
+
 def is_krx_closed(day: str) -> bool:
     """day(YYYY-MM-DD)가 주말이거나 휴장일 달력에 있으면 True."""
     d = datetime.strptime(day, "%Y-%m-%d").date()

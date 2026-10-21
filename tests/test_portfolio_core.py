@@ -479,6 +479,18 @@ def test_krx_calendar_closes_holiday_and_weekend_without_network(monkeypatch, tm
     assert core.resolve_trading_date() == "2026-09-23"   # 일·토·추석 이틀 건너뜀
 
 
+def test_krx_calendar_warnings_stale_check_and_missing_next_year(monkeypatch, tmp_path):
+    """달력 경고 두 줄 — 확인일이 35일 넘게 지남 / 12월인데 내년 휴장일 0줄(위크 2026-10-21)."""
+    cal = tmp_path / "krx_holidays.csv"
+    cal.write_text("날짜,이름,확인,확인일\n2026-12-25,성탄절,예정,2026-10-21\n", encoding="utf-8")
+    monkeypatch.setattr(core, "KRX_HOLIDAYS_FILE", cal)
+    assert core.krx_calendar_warnings("2026-11-10") == []
+    w = core.krx_calendar_warnings("2026-12-02")
+    assert len(w) == 2 and "확인할 때" in w[0] and "2027년" in w[1]
+    cal.write_text("날짜,이름,확인,확인일\n2027-01-01,신정,예정,2026-12-02\n", encoding="utf-8")
+    assert core.krx_calendar_warnings("2026-12-03") == []
+
+
 def test_market_traded_on_holiday_returns_false(monkeypatch):
     """2026-10-05(휴장)에 cron이 돌면 마지막 체결은 10/2에 머물러 있다 → 적재하면 안 됨."""
     monkeypatch.setattr(core.requests, "get", _quote_with_traded_at("2026-10-02T19:59:58.1+09:00"))
