@@ -338,7 +338,8 @@ def build(data, link_res):
     res["alarm"] = core.compute_todays_alarm(tx, hl, fp, fh, ph)
 
     # @뇌 meritz_진입후보
-    # F. meritz 진입 후보 — new1 보유 중 평단 대비 많이 빠졌는데 meritz엔 없는 종목
+    # F. meritz 진입 후보 — new1 보유 중 **new1 최초진입가** 대비 많이 빠졌는데 meritz엔 없는 종목(pct_first 정렬,
+    #    −5%는 그래프 점선). 기준은 평단이 아니라 최초진입가 — new1이 물을 타 평단이 내려가도 그대로(대표 2026-10-21).
     mz = []
     for _, r in hl.iterrows():
         if r["종목명"] in m_names:
