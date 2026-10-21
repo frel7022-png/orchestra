@@ -757,7 +757,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         <div class="summary-box sc-bot">
         <div class="capital-line" style="line-height:1.75">
             <div style="font-size:13px;color:{T['text']};font-weight:600;margin-bottom:2px">Today's Take</div>
-            <div>내 주식 어제 대비&nbsp;
+            <div>어제 대비&nbsp;
                 <b style="color:{day_color}">{day_sign}{day_change:,.0f}원</b>
                 <span style="color:{_stk_c}">&nbsp;{_tt_arrow} {_tt_p(_stk_day)}</span></div>
             <div style="color:{T['muted']}">혼합지수&nbsp;<b style="color:{T['text']}">{_tt_p(_bench_m)}</b>
