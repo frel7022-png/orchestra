@@ -462,6 +462,23 @@ def _quote_with_traded_at(ts):
     return lambda *a, **k: _FakeResp(json_data={"datas": [{"localTradedAt": ts}]})
 
 
+def test_krx_calendar_closes_holiday_and_weekend_without_network(monkeypatch, tmp_path):
+    """휴장일 달력(대표 결정 6, 2026-10-21): 달력에 있는 평일·주말은 네트워크 없이 False, resolve_trading_date도 건너뛴다."""
+    cal = tmp_path / "krx_holidays.csv"
+    cal.write_text("날짜,이름,확인,확인일\n2026-09-24,추석 연휴,실측,2026-10-21\n2026-09-25,추석,실측,2026-10-21\n",
+                   encoding="utf-8")
+    monkeypatch.setattr(core, "KRX_HOLIDAYS_FILE", cal)
+
+    def _no_net(*a, **k):
+        raise AssertionError("달력으로 판정되는 날엔 네트워크를 타면 안 된다")
+    monkeypatch.setattr(core.requests, "get", _no_net)
+    assert core.is_krx_closed("2026-09-24") and core.is_krx_closed("2026-09-26")   # 휴장일·토요일
+    assert not core.is_krx_closed("2026-09-23")
+    assert core.market_traded_on("2026-09-25") is False
+    monkeypatch.setattr(core, "now_kst", lambda: datetime(2026, 9, 27, 16, 0, tzinfo=core.KST))   # 일요일
+    assert core.resolve_trading_date() == "2026-09-23"   # 일·토·추석 이틀 건너뜀
+
+
 def test_market_traded_on_holiday_returns_false(monkeypatch):
     """2026-10-05(휴장)에 cron이 돌면 마지막 체결은 10/2에 머물러 있다 → 적재하면 안 됨."""
     monkeypatch.setattr(core.requests, "get", _quote_with_traded_at("2026-10-02T19:59:58.1+09:00"))

@@ -72,6 +72,12 @@ def upsert(table: str, records: list[dict], on_conflict: str, chunk_size: int | 
 
 
 def main():
+    # 휴장일 달력(2026-10-21): 오늘이 휴장일(주말 포함)이고 장 시간대에 돈 거면 적재 없이 종료.
+    # resolve_trading_date가 이제 휴장일을 건너뛰어 직전 거래일을 주므로, 이 막이가 없으면 휴장일 cron이
+    # 직전 거래일 값을 같은 날짜로 한 번 더 덮어쓴다(무해하지만 쓸데없음). 자정 넘어 지연된 실행(9시 전)은 막지 않는다.
+    if core.is_krx_closed(core.today_kst_str()) and core.now_kst().hour >= 9:
+        print(f"{core.today_kst_str()}은 휴장일(krx_holidays.csv·주말)이라 적재하지 않고 종료합니다.")
+        return
     today = core.resolve_trading_date()
     traded = core.market_traded_on(today)
     if traded is False:

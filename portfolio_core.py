@@ -86,6 +86,26 @@ def now_kst_str() -> str:
     return now_kst().strftime("%m/%d %H:%M")
 
 
+KRX_HOLIDAYS_FILE = HERE / "krx_holidays.csv"
+
+
+def load_krx_holidays() -> set[str]:
+    """한국 증시 휴장일 달력(주말 제외 — 주말은 요일로 거른다). 대표 2026-10-21: "한 달에 한 번 달력을
+    보고 휴장일을 인식하기, 주말 토일은 휴식으로". 갱신은 세션이 월 1회(KRX·네이버 공지 + 코스피 일별시세에
+    없는 평일). 파일이 없거나 깨져도 빈 집합 — 그러면 market_traded_on의 실시간 그물만 남는다."""
+    try:
+        df = pd.read_csv(KRX_HOLIDAYS_FILE, dtype=str)
+        return set(df["날짜"].dropna().str.strip())
+    except Exception:
+        return set()
+
+
+def is_krx_closed(day: str) -> bool:
+    """day(YYYY-MM-DD)가 주말이거나 휴장일 달력에 있으면 True."""
+    d = datetime.strptime(day, "%Y-%m-%d").date()
+    return d.weekday() >= 5 or day in load_krx_holidays()
+
+
 def resolve_trading_date() -> str:
     """"오늘 날짜"가 아니라 "이 시점이 대표하는 거래일"을 반환한다. daily-price-fetch.yml
     cron이 GitHub 스케줄 지연으로 자정을 넘겨서 돌면(예: 16:13 KST 목표가 다음날 00:05
@@ -99,7 +119,8 @@ def resolve_trading_date() -> str:
     d = now_kst().date()
     if now_kst().hour < 9:
         d -= timedelta(days=1)
-    while d.weekday() >= 5:  # 토(5)/일(6)이면 가장 최근 평일로 보정
+    # 토·일, 그리고 휴장일 달력에 있는 날이면 가장 최근 거래일로 보정(달력은 2026-10-21부터)
+    while is_krx_closed(d.strftime("%Y-%m-%d")):
         d -= timedelta(days=1)
     return d.strftime("%Y-%m-%d")
 
@@ -113,7 +134,11 @@ def market_traded_on(trade_date: str, probe_code: str = "005930") -> bool | None
     "<"로 비교하는 이유: 지연 실행이 다음날 아침 NXT 프리마켓(08:00~) 체결 뒤에 돌면 체결
     날짜가 trade_date보다 커질 수 있는데, 그건 장이 열렸던 날이라 True여야 한다.
     조회 실패는 None — 호출부는 None이면 적재를 막지 않는다(가짜 행은 지우면 되지만,
-    investor_flow는 5영업일 지나면 못 메우므로 실제 거래일을 놓치는 쪽이 더 나쁨)."""
+    investor_flow는 5영업일 지나면 못 메우므로 실제 거래일을 놓치는 쪽이 더 나쁨).
+    2026-10-21부터 휴장일 달력(krx_holidays.csv)을 먼저 본다 — 주말·달력 휴장일이면 네트워크 없이 False.
+    실시간 체결 시각 판정은 "달력에 없는데 안 열린 날"을 잡는 보조 그물로 남긴다(대표 결정 6)."""
+    if is_krx_closed(trade_date):
+        return False
     try:
         r = requests.get(f"https://polling.finance.naver.com/api/realtime/domestic/stock/{probe_code}",
                          headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"},
