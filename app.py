@@ -436,6 +436,7 @@ if "index_quotes" not in st.session_state:
 # 시작 시 1회 자동 실행하는 것 — 버튼을 없애는 게 아니라 그 이후엔 그대로 수동으로도
 # 쓸 수 있음.
 auto_refresh_triggered = False
+# @뇌 시세_자동_새로고침
 if "auto_refreshed" not in st.session_state:
     st.session_state["auto_refreshed"] = True
     auto_refresh_triggered = True
