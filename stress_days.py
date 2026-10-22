@@ -31,11 +31,16 @@ CUT, EDGE = -1.8, -2.2
 FWD = (1, 3, 5)
 
 
-def bench_daily(closes: dict, wk: float) -> pd.Series:
-    """{날짜: 혼합지수(ex) 당일 %}"""
-    ds = sorted(closes)
-    return pd.Series({d1: (wk * (closes[d1][0] / closes[d0][0] - 1) + (1 - wk) * (closes[d1][1] / closes[d0][1] - 1)) * 100
-                      for d0, d1 in zip(ds, ds[1:])})
+def bench_daily(closes: dict, wk: float, bench_hist: pd.DataFrame | None = None) -> pd.Series:
+    """{날짜: 혼합지수(ex) 당일 %} — live_check·앱 '당일'과 같은 날짜 고정 정의(`core.bench_day_on`: ingest로 남긴 날은
+    저장값(그날 wk), seed 구간은 seed wk 하루 공식, 파일에 없는 날만 wk). 대체됨(10-22 밤): 지금 wk 하나로 모든 날."""
+    lv = pd.DataFrame([{"날짜": d, "KOSPI": k, "KOSDAQ": q} for d, (k, q) in sorted(closes.items())])
+    out = {}
+    for d in sorted(closes)[1:]:
+        v = core.bench_day_on(lv, "ex", d, wk, bench_hist)
+        if v is not None:
+            out[d] = v * 100
+    return pd.Series(out, dtype=float)
 
 
 def build(data: dict | None = None):
@@ -53,9 +58,11 @@ def build(data: dict | None = None):
     fl = fh.set_index(["날짜", "종목코드"])
     ds = sorted(closes)
 
+    _bret = picks.bench_ret_fn(closes, now, wk)   # picks 채점과 같은 날짜 고정 구간 함수(10-22 밤)
+
     def bret(d0, d1):
         b0, b1 = closes[d0], (now if d1 == "지금" else closes[d1])
-        return (wk * (b1[0] / b0[0] - 1) + (1 - wk) * (b1[1] / b0[1] - 1)) * 100
+        return _bret(b0, b1, d0, None if d1 == "지금" else d1)
 
     rows = []
     for d, b in days.items():

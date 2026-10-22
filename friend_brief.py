@@ -127,8 +127,13 @@ def period(n=5):
         return float(df[col].iloc[-1]) / float(df[col].iloc[-1 - n]) - 1
 
     k, q = chg(idx, "KOSPI"), chg(idx, "KOSDAQ")
-    blend = wk * k + (1 - wk) * q
-    blend_ex = wk * chg(ex, "KOSPI") + (1 - wk) * q
+
+    def span(levels, kind):
+        # 혼합지수는 live_check와 같은 날짜 고정 누적(bench_cum_map)의 d0 → 끝 비율(10-22 밤 — 지금 wk 선형이던 것)
+        m = core.bench_cum_map(levels, kind, wk, str(idx["날짜"].iloc[0]))
+        return (1 + m[max(m)]) / (1 + m[d0]) - 1
+
+    blend, blend_ex = span(idx, "main"), span(ex, "ex")
     me = s["me"]
     acct = stock = None
     if me is not None and not me.empty:

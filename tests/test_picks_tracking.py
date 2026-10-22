@@ -160,3 +160,26 @@ def test_side_by_side_view_adds_columns_without_changing_recorded_scores(monkeyp
     assert row["장기"].startswith(picks.NOT_YET) and "(9일)" in row["장기"]
     assert list(view.columns)[-1] == "지금(체크포인트 아님)"
     assert not any("판정" in c or "이긴" in c for c in view.columns)
+
+
+def test_stress_bench_daily_uses_stored_ingest_day_not_today_wk():
+    # 폭락일 당일 = live_check·앱과 같은 날짜 고정(ingest로 남긴 날은 저장값) — 10-22 밤
+    import stress_days as sd
+    closes = {"2026-10-23": (100.0, 100.0), "2026-10-24": (98.0, 90.0), "2026-10-27": (99.0, 99.0)}
+    bh = pd.DataFrame({"날짜": ["2026-10-24"], "wk": [0.9], "벤치_당일": [-0.028], "벤치ex_당일": [-0.028],
+                       "코스피ex_당일": [-0.02], "SH_당일": [0.0], "출처": ["ingest"], "기록시각": [""]})
+    bd = sd.bench_daily(closes, 0.5, bench_hist=bh)
+    assert bd["2026-10-24"] == pytest.approx(-2.8)                         # 저장값(그날 wk 0.9), 지금 wk 0.5 선형(−6%) 아님
+    assert bd["2026-10-27"] == pytest.approx((0.5 * (99 / 98 - 1) + 0.5 * (99 / 90 - 1)) * 100)   # 파일에 없는 날만 지금 wk
+
+
+def test_bench_ret_fn_chains_stored_days_after_seed():
+    # tracking·stress_days·picks가 같이 쓰는 구간 함수 — seed 뒤는 bench_history 하루 등락 복리
+    import picks
+    closes = {"2026-10-22": (100.0, 100.0), "2026-10-23": (101.0, 103.0), "2026-10-24": (102.0, 103.0)}
+    bh = pd.DataFrame({"날짜": ["2026-10-22", "2026-10-23", "2026-10-24"], "wk": [0.7, 0.6, 0.8],
+                       "벤치_당일": [0.0, 0.0, 0.0], "벤치ex_당일": [0.0, 0.015, 0.01],
+                       "코스피ex_당일": [0.0, 0.0, 0.0], "SH_당일": [0.0, 0.0, 0.0],
+                       "출처": ["seed", "ingest", "ingest"], "기록시각": ["", "", ""]})
+    bret = picks.bench_ret_fn(closes, None, 0.5, bench_hist=bh, today="2026-10-27")
+    assert bret(closes["2026-10-22"], closes["2026-10-24"], "2026-10-22", "2026-10-24") == pytest.approx((1.015 * 1.01 - 1) * 100)

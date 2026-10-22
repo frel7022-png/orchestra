@@ -110,8 +110,8 @@ def update(data: dict | None = None) -> pd.DataFrame:
     closed = set(pd.read_csv(CLOSED)["종목명"]) if CLOSED.exists() else set()
     DIR.mkdir(exist_ok=True)
 
-    def bret(b0, b1):
-        return (wk * (b1[0] / b0[0] - 1) + (1 - wk) * (b1[1] / b0[1] - 1)) * 100
+    # 혼합지수(ex) 구간 = picks 채점과 같은 날짜 고정 함수(10-22 밤 — 지금 wk 선형이던 것)
+    bret = picks.bench_ret_fn(closes, now, wk, today=today)
 
     rows = []
     for cd in _cards(log):
@@ -126,7 +126,7 @@ def update(data: dict | None = None) -> pd.DataFrame:
         lines = []
         for d in sorted(path):
             b1 = now if (d == today and now) else closes.get(d)
-            ex = (path[d] / p0 - 1) * 100 - bret(b0, b1) if (b0 and b1) else float("nan")
+            ex = (path[d] / p0 - 1) * 100 - bret(b0, b1, d0, None if (d == today and now) else d) if (b0 and b1) else float("nan")
             lines.append({"날짜": d, "가격": path[d], "수익%": (path[d] / p0 - 1) * 100, "초과%p": ex, "외인보유율": fmap.get(d)})
         pl = pd.DataFrame(lines)
         pl.to_csv(DIR / f"{cd['종목명'].replace('/', '_')}_{c}.csv", index=False, encoding="utf-8-sig")
