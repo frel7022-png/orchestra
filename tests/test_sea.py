@@ -40,6 +40,21 @@ def test_relative_foreign_subtracts_universe_median_and_falls_back_to_first_row(
     assert not bool(by.loc["가", "버팀"])
 
 
+def test_index_moves_blend_uses_date_fixed_bench_history_not_linear_today_wk():
+    # 혼합지수는 live_check·앱과 같은 날짜 고정 정의(bench_cum_map) — 지난 날은 bench_history 저장값, 오늘만 지금 wk(10-22 밤)
+    idx = pd.DataFrame({"날짜": ["2026-10-01", "2026-10-02", "2026-10-05"],
+                        "KOSPI": [100.0, 110.0, 110.0], "KOSDAQ": [100.0, 90.0, 99.0]})
+    big = pd.DataFrame(columns=["날짜", "삼성전자", "삼성전자우", "SK하이닉스"])
+    bh = pd.DataFrame({"날짜": ["2026-10-02"], "벤치_당일": [0.02], "벤치ex_당일": [0.02]})   # 그날 wk로 저장된 하루 +2%
+    m = sea.index_moves(idx, big, 0.5, "2026-10-01", bench_hist=bh)
+    # 10-02 = 저장값 +2% · 10-05 = 지금 wk 0.5로 코스피 0%·코스닥 +10% → +5% → (1.02 × 1.05 − 1)
+    assert m["혼합(일반)"] == pytest.approx((1.02 * 1.05 - 1) * 100)
+    assert m["혼합(일반)"] != pytest.approx(0.5 * 10 + 0.5 * -1)          # 옛 선형(지금 wk로 구간 전체)과 다르다
+    assert m["코스피"] == pytest.approx(10.0) and m["코스닥"] == pytest.approx(-1.0)
+    # 시작일 뒤 구간만: 10-02 기준이면 10-05 하루(+5%)
+    assert sea.index_moves(idx, big, 0.5, "2026-10-02", bench_hist=bh)["혼합(일반)"] == pytest.approx(5.0)
+
+
 def test_tide_labels():
     assert sea.tide({"방향": -1}, {"KOSPI": -10.0}).startswith("역풍")
     assert sea.tide({"방향": 1}, {"KOSPI": 10.0}).startswith("순풍")

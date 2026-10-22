@@ -159,9 +159,13 @@ def tide(leg: dict, mkt: dict) -> str:
 
 
 # ---------- 주가 전체(지수) · 배(내 계좌) ----------
-def index_moves(idx: pd.DataFrame, bigdf: pd.DataFrame, wk: float, start: str) -> dict:
+def index_moves(idx: pd.DataFrame, bigdf: pd.DataFrame, wk: float, start: str,
+                bench_hist: pd.DataFrame | None = None) -> dict:
     """start 종가(그날 이하 가장 최근) → 마지막 행(오늘은 실시간) 변화 %. 코스피·코스닥·혼합(일반)·혼합(ex).
-    idx·bigdf는 live_check.live_snapshot이 만든 것 그대로(확정 종가 + 오늘 실시간) — 계산을 따로 만들지 않는다."""
+    idx·bigdf는 live_check.live_snapshot이 만든 것 그대로(확정 종가 + 오늘 실시간) — 계산을 따로 만들지 않는다.
+    혼합 둘은 live_check·앱과 같은 날짜 고정 정의다(`core.bench_cum_map` — bench_history의 그날 하루 등락을 복리로,
+    오늘만 지금 wk로; 2026-10-22 대표 「과거 혼합지수는 픽스」). 대체됨(10-22 밤): 지금 wk 하나로 구간 전체를
+    선형으로 섞고 ex는 지금 계수로 전 기간 다시 계산 — live_check와 최대 11bp 갈렸다(new1-35 검산)."""
     ex = core.synthetic_kospi_ex_bigcap(idx, bigdf)
 
     def chg(df, col):
@@ -169,8 +173,17 @@ def index_moves(idx: pd.DataFrame, bigdf: pd.DataFrame, wk: float, start: str) -
         a0 = float((b if len(b) else df).iloc[-1 if len(b) else 0][col])
         return (float(df[col].iloc[-1]) / a0 - 1) * 100
 
-    kp, kq, kx = chg(idx, "KOSPI"), chg(idx, "KOSDAQ"), chg(ex, "KOSPI")
-    return {"코스피": kp, "코스닥": kq, "혼합(일반)": wk * kp + (1 - wk) * kq, "혼합(ex)": wk * kx + (1 - wk) * kq}
+    anchor = str(idx["날짜"].astype(str).min())
+
+    def blend(levels, kind):
+        m = core.bench_cum_map(levels, kind, wk, anchor, bench_hist)
+        ds = sorted(m)
+        b = [d for d in ds if d <= start]
+        base = m[b[-1]] if b else m[ds[0]]
+        return ((1 + m[ds[-1]]) / (1 + base) - 1) * 100
+
+    kp, kq = chg(idx, "KOSPI"), chg(idx, "KOSDAQ")
+    return {"코스피": kp, "코스닥": kq, "혼합(일반)": blend(idx, "main"), "혼합(ex)": blend(ex, "ex")}
 
 
 def ship(snap: dict, start: str) -> dict:
