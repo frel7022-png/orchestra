@@ -43,7 +43,9 @@ HERE = Path(__file__).parent
 LOG = HERE / "picks_log.csv"
 SCORE = HERE / "picks_score.csv"
 COLS = ["회차", "날짜", "시각", "순위", "종목명", "종목코드", "추천가", "구분", "근거", "벤치K", "벤치Q", "메모",
-        "단기일", "중기일", "장기일", "기간근거"]
+        "단기일", "중기일", "장기일", "기간근거", "Bench"]
+PICK_DEFAULT_N = 5   # 추천 기본 개수(대표 확정 2026-10-22, 데이터센터/세팅) — 대표가 수를 말하면 그 수.
+                     # 문턱에 걸린 게 없으면 문턱에 가장 가까운 것으로 채운다.
 TERMS = ("단기", "중기", "장기")
 WAVE_K = 3.0                       # 방향 전환 문턱 = 그 종목 일간 로그수익률 표준편차 × 이 값
 WAVE_MULT = (1, 2, 6)              # 단기 = 반 파도, 중기 = 한 파도, 장기 = 세 파도
@@ -173,6 +175,12 @@ def record(round_id: str, label: str, rows: list[tuple], memo: str = "") -> pd.D
         "벤치K": now[0] if now else None, "벤치Q": now[1] if now else None, "메모": f"{label} {memo}".strip(),
     } for i, ((n, kind, why), c) in enumerate(zip([r for r in rows], codes))])
     new = _attach_horizons(new, t.strftime("%Y-%m-%d"))
+    # Bench = 관심종목 중 한 번도 산 적 없는 종목(181 전부 추천 원천으로 보되 Bench면 표시 — 대표 2026-10-22).
+    # 기록 순간 고정: 나중에 사도 이 줄의 표시는 안 바뀐다.
+    bench = set(core.never_bought_names(core.load_transactions()))
+    new["Bench"] = ["Bench" if n in bench else "" for n in new["종목명"]]
+    if len(new) != PICK_DEFAULT_N:
+        print(f"[추천] 이번 회차 {len(new)}개 — 기본은 {PICK_DEFAULT_N}개(대표가 수를 말했으면 그대로)")
     log = load_log()
     log = pd.concat([log[log["회차"] != round_id], new], ignore_index=True)
     log.to_csv(LOG, index=False, encoding="utf-8-sig")

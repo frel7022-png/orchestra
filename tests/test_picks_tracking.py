@@ -49,8 +49,11 @@ def test_record_fixes_horizons_at_record_time(tmp_path, monkeypatch):
     monkeypatch.setattr(picks.core, "fetch_quotes", lambda codes: ({"000001": {"price": 1000}}, None))
     monkeypatch.setattr(picks, "bench_levels", lambda live=True: ({}, (100.0, 100.0)))
     monkeypatch.setattr(picks, "horizons_for", lambda code, asof: ((7, 14, 42), "근거 한 줄"))
+    monkeypatch.setattr(picks.core, "load_transactions", lambda: pd.DataFrame(columns=["종목명", "구분"]))
+    monkeypatch.setattr(picks.core, "load_watchlist", lambda: pd.DataFrame({"종목명": ["가나다"], "종목코드": ["000001"]}))
     picks.record("R1", "테스트", [("가나다", "신규", "이유")])
     row = picks.load_log().iloc[0]
+    assert row["Bench"] == "Bench"   # 한 번도 안 산 관심종목 — 기록 순간 표시
     assert (int(row["단기일"]), int(row["중기일"]), int(row["장기일"])) == (7, 14, 42)
     assert row["기간근거"] == "근거 한 줄"
 

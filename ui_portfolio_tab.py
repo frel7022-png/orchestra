@@ -24,6 +24,7 @@ from portfolio_core import (
     cumulative_price_change_map,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     compute_link_candidates, load_link_watch_log, link_watch_status, fetch_quotes,
+    never_bought_names,
     load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
     load_claude_notes, seed_engine_series, compute_fa_win_rate, blended_benchmark_cum,
@@ -1155,9 +1156,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             st.caption("Fishing에서 새로고침을 먼저 눌러주세요.")
         else:
             wl_names = load_watchlist()["종목명"].tolist()
-            ever_bought = set(tx.loc[tx["구분"] == "매수", "종목명"])
             buy_counts = tx[tx["구분"] == "매수"].groupby("종목명").size().to_dict()
-            never = [n for n in wl_names if n not in ever_bought]
+            never = never_bought_names(tx)
             never_set = set(never)
 
             bench_rows = []

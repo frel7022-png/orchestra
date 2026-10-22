@@ -1930,6 +1930,15 @@ def test_foreign_pct_change_since_falls_back_to_earliest_when_since_date_precede
     assert core.foreign_pct_change_since(flow, "A", "2026-08-01") == pytest.approx(2.0)
 
 
+def test_never_bought_names_excludes_anything_ever_bought():
+    tx = pd.DataFrame([
+        _tx_row("a1", "2026-01-05", "A", "매수", 1, 100),
+        _tx_row("a2", "2026-01-06", "A", "매도", 1, 110, 실현손익=10),   # 지금 보유 0이어도 제외
+    ])
+    wl = pd.DataFrame({"종목명": ["A", "B", "C"], "종목코드": ["1", "2", "3"]})
+    assert core.never_bought_names(tx, wl) == ["B", "C"]
+
+
 def test_all_cycles_sold_cost_uses_moving_average_like_apply_transaction():
     # 10주@100 매수 → 5주 매도(원가 500) → 5주@80 물타기(평단 (500+400)/10 = 90) → 10주 매도(원가 900)
     tx = pd.DataFrame([

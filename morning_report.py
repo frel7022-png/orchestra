@@ -30,6 +30,8 @@ import portfolio_core as core
 HERE = Path(__file__).parent
 OUT = HERE / "morning_report"
 TOP = 10
+MERITZ_ENTRY_LOSS = -5.0  # meritz 진입 후보: new1 평단 대비 평가손익 ≤ −5% (대표 확정 2026-10-22, 데이터센터/세팅)
+MERITZ_NEAR_N = 5         # 걸린 게 없을 때 가까운 순으로 채우는 수(추천 기본 5개와 맞춤)
 BC_TOP = 20   # ④ Basecamp 리포트 명단 길이
 FAST_SHARE = 0.5   # 총 하락의 절반 이상이 최근 3거래일에 났으면 "급락"
 esc = html.escape
@@ -338,8 +340,10 @@ def build(data, link_res):
     res["alarm"] = core.compute_todays_alarm(tx, hl, fp, fh, ph)
 
     # @뇌 meritz_진입후보
-    # F. meritz 진입 후보 — new1 보유 중 **new1 최초진입가** 대비 많이 빠졌는데 meritz엔 없는 종목(pct_first 정렬,
-    #    −5%는 그래프 점선). 기준은 평단이 아니라 최초진입가 — new1이 물을 타 평단이 내려가도 그대로(대표 2026-10-21).
+    # F. meritz 진입 후보 — new1 보유 중 **평단 대비 평가손익 −5% 이하** + meritz 미보유를 **거른다**(필터).
+    #    걸린 게 없으면 문턱에 가장 가까운 순으로 채우고 "가까운 순"이라고 밝힌다(대표 원칙).
+    #    대표 2026-10-22 원문 "뉴원에서 가진 종목이 … 현재 -5%이상 손실을 보고잇는데 그 종목이 메리츠에 없다면 보고하면돼"
+    #    (세팅 데이터센터/세팅 "meritz 진입 후보", 0ee5412). 대체됨: 10-21 최초진입가 대비 순위 10 + −5% 점선.
     mz = []
     for _, r in hl.iterrows():
         if r["종목명"] in m_names:
@@ -356,8 +360,12 @@ def build(data, link_res):
                    "최초일": buys.iloc[0]["날짜"], "매수횟수": len(buys),
                    "buys": list(zip(buys["날짜"], buys["단가"].astype(float))),
                    "pts": series_from(ph, c, buys.iloc[0]["날짜"], px, today)})
-    mz.sort(key=lambda x: x["pct_first"])
-    res["meritz"] = mz[:TOP]
+    hit = sorted([x for x in mz if x["pct_avg"] <= MERITZ_ENTRY_LOSS], key=lambda x: x["pct_avg"])
+    if hit:
+        res["meritz"], res["meritz_near"] = hit[:TOP], False
+    else:
+        # 걸린 게 없으면 문턱(−5%)에 가장 가까운 순 — 손실이 큰 순과 같다(문턱 위에선 pct_avg가 작을수록 가까움)
+        res["meritz"], res["meritz_near"] = sorted(mz, key=lambda x: x["pct_avg"])[:MERITZ_NEAR_N], True
 
     # ③ CFG — ①의 후보 중, 그 하락 구간 동안 외인이 실제로 늘었고 외인 상태가 나쁘지 않은 종목
     stats = link_res["stats"]
@@ -373,7 +381,7 @@ def build(data, link_res):
             + [("Watering", x["코드"], x["종목명"], x["마지막일"], x["pct_last"], "마지막 매수가 대비") for x in res["watering"]]
             + [("Fishing", x["코드"], x["종목명"], x["기준일"], x["cum"], "기준일 대비") for x in res["fishing"]]
             + [("Basecamp", x["종목코드"], x["종목명"], x["평지시작"], x["고점대비"], "고점 대비(평지 구간 외인)") for x in res["basecamp"]]
-            + [("meritz 후보", x["코드"], x["종목명"], x["최초일"], x["pct_first"], "new1 최초진입가 대비") for x in res["meritz"]])
+            + [("meritz 후보", x["코드"], x["종목명"], x["최초일"], x["pct_avg"], "new1 평단 대비") for x in res["meritz"]])
     cfg = []
     for src, c, n, start, pct, basis in srcs:
         if not c or pct is None or pct > -3:
@@ -497,14 +505,15 @@ def write_action(res, ph):
     rows, cards = [], []
     for i, x in enumerate(res["meritz"], 1):
         rows.append(f'<tr><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}</td><td>{x["최초일"][5:]}</td><td>{x["매수횟수"]}회</td>'
-                    f'<td>{sign(x["pct_first"])}</td><td>{sign(x["pct_avg"])}</td></tr>')
+                    f'<td>{sign(x["pct_avg"])}</td><td>{sign(x["pct_first"])}</td></tr>')
         cards.append(card(f'{i}. {esc(x["종목명"])}',
                           f'new1 최초 {x["최초가"]:,.0f}({x["최초일"][5:]}) · 평단 {x["평단가"]:,.0f} → 지금 {x["현재가"]:,.0f}',
                           svg_line(x["pts"], refs=[("최초", x["최초가"], "first"), ("평단", x["평단가"], "avg"),
-                                                    ("−5%", x["최초가"] * 0.95, "last")],
+                                                    ("−5%", x["평단가"] * (1 + MERITZ_ENTRY_LOSS / 100), "last")],
                                    marks=[(d, p, "buy") for d, p in x["buys"]])))
+    mz_near_note = (' — 걸린 종목 없음, 문턱에 가장 가까운 순' if res.get("meritz_near") else '')
     mz_html = (f'<div class="scroll"><table><thead><tr><th>#</th><th class="l">종목</th><th>new1 최초 진입</th><th>매수</th>'
-               f'<th>최초진입가 대비</th><th>평단 대비</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+               f'<th>평단 대비</th><th>최초진입가 대비</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
                f'<div class="grid2">{"".join(cards)}</div>')
 
     body = f"""
@@ -531,8 +540,8 @@ def write_action(res, ph):
 <h2>Today's Alarm</h2>
 {al_html}
 
-<h2>meritz 진입 후보 (new1 보유 · meritz 미보유, new1 최초진입가 대비 많이 빠진 순)</h2>
-<p class="legend">점선: 회색 new1 최초진입가 · 녹색 new1 평단 · 주황 최초진입가 −5%(meritz 문턱)</p>
+<h2>meritz 진입 후보 (new1 보유 · meritz 미보유 · new1 평단 대비 {MERITZ_ENTRY_LOSS:.0f}% 이하){mz_near_note}</h2>
+<p class="legend">점선: 회색 new1 최초진입가 · 녹색 new1 평단 · 주황 평단 −5%(meritz 문턱)</p>
 {mz_html}
 
 <h2>총평</h2>

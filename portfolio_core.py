@@ -921,6 +921,14 @@ def get_watchlist_prev_day_ranks(hist_df: pd.DataFrame, basis: str, direction: s
 # 커밋 찾아서 참고할 것. 이 함수(load_watchlist_history_db)는 §6-6 "Fishing" 최초가
 # 조회(get_first_day_prices_db)가 여전히 쓰고 있어서 남겨둠.
 # ------------------------------------------------------------------ #
+def never_bought_names(tx: pd.DataFrame, watchlist: pd.DataFrame | None = None) -> list[str]:
+    """관심종목 중 한 번도 매수한 적 없는 종목명(Bench 모집단, §6-23) — 관심종목 순서 그대로.
+    "한 번이라도 샀으면" 제외(지금 보유 0이어도 제외). Bench 패널과 추천 기록의 Bench 표시가 같이 쓴다."""
+    wl = load_watchlist() if watchlist is None else watchlist
+    bought = set(tx.loc[tx["구분"] == "매수", "종목명"]) if tx is not None and not tx.empty else set()
+    return [n for n in wl["종목명"].tolist() if n not in bought]
+
+
 def load_watchlist_history_db(supabase_url: str, supabase_key: str) -> pd.DataFrame:
     """Supabase price_history + watchlist를 조인해서 하나의 DataFrame으로.
     반환 컬럼: 종목코드, 종목명, 섹터, 날짜, 종가, 등락률. 접속 실패/데이터 없음이면 빈 DataFrame."""
