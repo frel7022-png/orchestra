@@ -105,11 +105,12 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
     ks, kq = float(val[mk == "KOSPI"].sum()), float(val[mk == "KOSDAQ"].sum())
     wk = ks / (ks + kq) if ks + kq else 1.0
 
-    def blend(df):
-        a, b = df["KOSPI"].astype(float), df["KOSDAQ"].astype(float)
-        cum = wk * (a.iloc[-1] / a.iloc[0] - 1) + (1 - wk) * (b.iloc[-1] / b.iloc[0] - 1)
-        day = wk * (a.iloc[-1] / a.iloc[-2] - 1) + (1 - wk) * (b.iloc[-1] / b.iloc[-2] - 1)
-        return cum, day
+    def blend(df, kind):
+        # 날짜 고정(2026-10-22 대표): 지난날 = bench_history의 그날 하루 등락을 복리로, 오늘만 지금 wk로.
+        m = core.bench_cum_map(df, kind, wk, anchor)
+        ds = sorted(m)
+        day = core.bench_day_on(df, kind, ds[-1], wk)
+        return m[ds[-1]], (day if day is not None else 0.0)
 
     cash = st["cash"]
     tot, tot_prev = float(val.sum()) + cash, float(prev.sum()) + cash
@@ -140,7 +141,7 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
     return {
         "asof": now.strftime("%Y-%m-%d %H:%M"), "holdings_asof": str(ah["날짜"].max()), "anchor": anchor,
         "kospi": iq["KOSPI"], "kosdaq": iq["KOSDAQ"], "wk": wk,
-        "ex": blend(core.synthetic_kospi_ex_bigcap(idx, bigdf)), "main": blend(idx),
+        "ex": blend(core.synthetic_kospi_ex_bigcap(idx, bigdf), "ex"), "main": blend(idx, "main"),
         "acct": (acct_cum, day_acct), "acct_won": val_ok - prev_ok,
         "stock": (stock_cum, day_stock),
         "total": tot, "initial": st["initial"], "cash": cash, "eval_pl": float(val.sum() - cost.sum()),

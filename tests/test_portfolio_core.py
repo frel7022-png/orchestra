@@ -1409,6 +1409,7 @@ def test_check_history_alignment_flags_misaligned(monkeypatch, tmp_path):
     monkeypatch.setattr(core, "SECTOR_HISTORY_FILE", s)
     monkeypatch.setattr(core, "INDEX_HISTORY_FILE", i)
     monkeypatch.setattr(core, "BIGCAP_HISTORY_FILE", b)
+    monkeypatch.setattr(core, "BENCH_HISTORY_FILE", tmp_path / "bench_history.csv")   # 없음 → 넷만 본다
 
     r = core.check_history_alignment("2026-09-10")
     assert r["aligned"] is False
@@ -2384,3 +2385,85 @@ def test_load_watchlist_hides_ended_by_default(tmp_path, monkeypatch):
     assert core.ended_watch_codes() == {"000002"} and core.ended_watch_names() == {"B"}
     df = pd.DataFrame({"종목코드": ["000001", "000002"], "x": [1, 2]})
     assert core.drop_ended(df)["종목코드"].tolist() == ["000001"]
+
+
+# ------------------------------------------------------------------ #
+# 혼합지수 날짜 고정 — bench_history (2026-10-22 대표 "지금까지 쌓인 건 픽스, 이 이후부터 복리")
+# ------------------------------------------------------------------ #
+def _lv(rows):
+    return pd.DataFrame(rows, columns=["날짜", "KOSPI", "KOSDAQ"])
+
+
+_IDX = _lv([("2026-10-01", 100.0, 50.0), ("2026-10-02", 102.0, 49.0),
+            ("2026-10-05", 99.0, 51.0), ("2026-10-06", 101.0, 52.0)])
+_BIG = pd.DataFrame(columns=["날짜", "삼성전자", "삼성전자우", "SK하이닉스"])   # 비면 ex = 원본 그대로
+
+
+def test_bench_seed_chain_reproduces_current_linear_exactly(tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "BENCH_HISTORY_FILE", tmp_path / "bench_history.csv")
+    core.save_bench_history(core.seed_bench_history(_IDX, _BIG, 0.7, "2026-10-06"))
+    lin = core._linear_blend_cum(_IDX, 0.7, "2026-10-01")
+    for wk_live in (0.7, 0.2, 1.0):   # 시드 뒤엔 지금 wk가 달라져도 지난 값은 그대로
+        ch = core.bench_cum_map(_IDX, "main", wk_live)
+        assert all(abs(ch[d] - lin[d]) < 1e-12 for d in lin)
+
+
+def test_bench_new_day_uses_its_own_wk_and_past_stays(tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "BENCH_HISTORY_FILE", tmp_path / "bench_history.csv")
+    core.save_bench_history(core.seed_bench_history(_IDX, _BIG, 0.7, "2026-10-05"))
+    before = core.bench_cum_map(_IDX[_IDX["날짜"] <= "2026-10-05"], "main", 0.7)
+    assert core.snapshot_bench_history("2026-10-06", 0.3, _IDX, _BIG) == "write"
+    after = core.bench_cum_map(_IDX, "main", 0.9)          # 지금 wk가 바뀌어도
+    assert all(abs(after[d] - before[d]) < 1e-12 for d in before)
+    day = 0.3 * (101 / 99 - 1) + 0.7 * (52 / 51 - 1)       # 10-06은 그날 wk 0.3으로
+    assert abs((1 + after["2026-10-06"]) / (1 + after["2026-10-05"]) - 1 - day) < 1e-12
+
+
+def test_bench_snapshot_locks_seed_and_past_but_overwrites_same_last_day(tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "BENCH_HISTORY_FILE", tmp_path / "bench_history.csv")
+    core.save_bench_history(core.seed_bench_history(_IDX, _BIG, 0.7, "2026-10-05"))
+    assert core.snapshot_bench_history("2026-10-05", 0.1, _IDX, _BIG) == "locked"      # seed는 안 덮음
+    assert core.snapshot_bench_history("2026-10-06", 0.3, _IDX, _BIG) == "write"
+    assert core.snapshot_bench_history("2026-10-06", 0.4, _IDX, _BIG) == "overwrite"   # 같은 날 재반영
+    bh = core.load_bench_history()
+    assert len(bh) == 4 and float(bh.iloc[-1]["wk"]) == 0.4
+    assert core.snapshot_bench_history("2026-10-02", 0.5, _IDX, _BIG) == "locked"      # 지난 날짜
+
+
+def test_compute_index_vs_account_bench_kind_reads_fixed_history(tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "BENCH_HISTORY_FILE", tmp_path / "bench_history.csv")
+    core.save_bench_history(core.seed_bench_history(_IDX, _BIG, 0.7, "2026-10-06"))
+    ah = pd.DataFrame({"날짜": list(_IDX["날짜"]), "총자산": [100.0, 101.0, 100.5, 102.0], "조정자산": [0.0] * 4})
+    tx = pd.DataFrame(columns=["날짜", "종목명", "구분", "수량", "단가", "실현손익"])
+    fixed = core.compute_index_vs_account(tx, ah, _IDX, 100.0, kospi_weight=0.2, bench_kind="main")
+    lin = core._linear_blend_cum(_IDX, 0.7, "2026-10-01")
+    assert all(abs(b - lin[d]) < 1e-12 for d, b in zip(fixed["me"]["날짜"], fixed["me"]["벤치누적"]))
+    old = core.compute_index_vs_account(tx, ah, _IDX, 100.0, kospi_weight=0.2)   # bench_kind 없으면 옛 동작
+    assert abs(float(old["me"]["벤치누적"].iloc[-1]) - core._linear_blend_cum(_IDX, 0.2, "2026-10-01")["2026-10-06"]) < 1e-12
+
+
+def test_bench_day_on_seed_keeps_old_day_formula_and_ingest_uses_stored(tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "BENCH_HISTORY_FILE", tmp_path / "bench_history.csv")
+    core.save_bench_history(core.seed_bench_history(_IDX, _BIG, 0.7, "2026-10-05"))
+    old = 0.7 * (99 / 102 - 1) + 0.3 * (51 / 49 - 1)
+    assert abs(core.bench_day_on(_IDX, "main", "2026-10-05", 0.1) - old) < 1e-12   # seed 날 = 옛 당일 그대로
+    core.snapshot_bench_history("2026-10-06", 0.3, _IDX, _BIG)
+    assert abs(core.bench_day_on(_IDX, "main", "2026-10-06", 0.9) - (0.3 * (101 / 99 - 1) + 0.7 * (52 / 51 - 1))) < 1e-12
+
+
+def test_real_bench_history_matches_frozen_values_through_1022():
+    """대조 테스트(대표 10-22 "1bp라도 바뀌면 안 된다"): 레포의 bench_history로 이은 누적이 10-22까지
+    seed wk로 잰 옛 선형 누적과 같다(main·ex)."""
+    bh = core.load_bench_history()
+    if bh.empty:
+        pytest.skip("bench_history.csv 없음")
+    seed = bh[bh["출처"] == "seed"]
+    wk0, upto = float(seed["wk"].iloc[0]), str(seed["날짜"].max())
+    idx = core.load_index_history()
+    idx = idx[idx["날짜"].astype(str) <= upto]
+    big = core.load_bigcap_history()
+    for kind, lv in (("main", idx), ("ex", core.synthetic_kospi_ex_bigcap(idx, big))):
+        ch = core.bench_cum_map(lv, kind, 0.5)          # 지금 wk가 무엇이든
+        lin = core._linear_blend_cum(lv, wk0, str(lv["날짜"].astype(str).min()))
+        worst = max(abs(ch[d] - lin[d]) for d in lin)
+        assert worst < 1e-6, f"{kind} {worst * 1e4:.4f}bp"   # 1e-6 = 0.01bp

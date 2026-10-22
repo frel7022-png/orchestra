@@ -110,6 +110,16 @@ def main():
     except Exception as e:
         print(f"[경고] bigcap_history 갱신 실패(무시): {e}")
 
+    # 혼합지수 날짜 고정(2026-10-22 대표 "그날은 그날로 끝난다"): 그날 확정 종가 기준 wk와 그날 계수로
+    # 하루 등락을 bench_history에 한 줄. 지난 날짜·seed는 안 덮고, 같은 날 재반영만 덮는다.
+    try:
+        _wk_close = core.wk_from_holdings(df)
+        _st = core.snapshot_bench_history(trade_date, _wk_close)
+        print(f"[혼합지수] {trade_date} wk {_wk_close:.3f} bench_history {_st}" if _wk_close is not None
+              else f"[혼합지수] {trade_date} wk 못 잼 — bench_history 건너뜀")
+    except Exception as e:
+        print(f"[경고] bench_history 갱신 실패(무시 — 그날 벤치는 다음 화면에서 지금 wk로 재짐): {e}")
+
     # @뇌 펀드기준가_수동
     # 펀드 기준가(§6-21)는 자동 조회 경로가 없어서 세션이 채팅으로 값을 받아
     # fund_nav_history.csv에 직접 append한다(ingest에서 안 다룸).

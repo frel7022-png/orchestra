@@ -383,6 +383,8 @@ def check_history_alignment(trade_date: str | None = None) -> dict:
            behind:[뒤처진 파일명], target_ok(모든 파일에 trade_date 존재; trade_date 없으면 None)}."""
     loaders = {"asset_history": load_history, "sector_history": load_sector_history,
                "index_history": load_index_history, "bigcap_history": load_bigcap_history}
+    if BENCH_HISTORY_FILE.exists():   # 혼합지수 날짜 고정(2026-10-22) — 파일이 생긴 뒤부터 lock-step에 넣는다
+        loaders["bench_history"] = load_bench_history
     maxes, has_target = {}, {}
     for name, fn in loaders.items():
         try:
@@ -2991,6 +2993,167 @@ def _cash_on(cash_map: dict, date: str, initial_capital: float) -> float:
     return cash_map[max(prior)] if prior else float(initial_capital)
 
 
+# ------------------------------------------------------------------ #
+# 혼합지수 날짜 고정 — bench_history.csv (대표 2026-10-22 "과거 혼합지수는 픽스야 … 그날은 그날로 끝나는 거야")
+# ------------------------------------------------------------------ #
+BENCH_HISTORY_FILE = HERE / "bench_history.csv"
+BENCH_COLS = ["날짜", "wk", "벤치_당일", "벤치ex_당일", "출처", "기록시각"]
+BENCH_DAY_COL = {"main": "벤치_당일", "ex": "벤치ex_당일"}
+
+
+def load_bench_history() -> pd.DataFrame:
+    """날짜별 **그날** 혼합지수 하루 등락(기록 순간 고정). main = wk·코스피 + (1−wk)·코스닥,
+    ex = 코스피 다리를 삼성·삼성우·하이닉스 제외 합성으로. 누적은 저장하지 않고 체인으로 잇는다."""
+    if not BENCH_HISTORY_FILE.exists():
+        return pd.DataFrame(columns=BENCH_COLS)
+    df = pd.read_csv(BENCH_HISTORY_FILE, dtype={"날짜": str, "출처": str, "기록시각": str})
+    for c in ("wk", "벤치_당일", "벤치ex_당일"):
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df.sort_values("날짜").reset_index(drop=True)
+
+
+def save_bench_history(df: pd.DataFrame) -> None:
+    df[BENCH_COLS].sort_values("날짜").to_csv(BENCH_HISTORY_FILE, index=False)
+
+
+def _linear_blend_cum(levels: pd.DataFrame, wk: float | None, anchor: str) -> dict:
+    """옛 정의(선형 섞기) 누적 — 날짜→wk·(K/K_a−1) + (1−wk)·(Q/Q_a−1). seed와 파일이 없을 때 폴백."""
+    lv = levels[levels["날짜"].astype(str) >= anchor].sort_values("날짜")
+    if lv.empty:
+        return {}
+    k = pd.to_numeric(lv["KOSPI"], errors="coerce").to_numpy()
+    q = pd.to_numeric(lv["KOSDAQ"], errors="coerce").to_numpy()
+    kc, qc = k / k[0] - 1.0, q / q[0] - 1.0
+    w = None if wk is None else min(max(float(wk), 0.0), 1.0)
+    b = kc if w is None else w * kc + (1.0 - w) * qc
+    return dict(zip(lv["날짜"].astype(str), map(float, b)))
+
+
+def bench_cum_map(levels: pd.DataFrame, kind: str, wk_live: float | None, anchor: str | None = None,
+                  bench_hist: pd.DataFrame | None = None) -> dict:
+    """혼합지수 누적(날짜→소수). levels = 지수 레벨(날짜·KOSPI·KOSDAQ — ex면 synthetic_kospi_ex_bigcap 결과).
+    bench_history에 있는 날짜는 **저장된 그날 하루 등락**을, 없는 날짜(오늘 등)는 wk_live로 잰 하루 등락을
+    복리로 잇고, anchor일 = 0으로 맞춘다. bench_history가 비면 옛 선형 정의 그대로(폴백·하위호환)."""
+    lv = levels.copy()
+    lv["날짜"] = lv["날짜"].astype(str)
+    lv = lv.sort_values("날짜").reset_index(drop=True)
+    if lv.empty:
+        return {}
+    anchor = anchor or str(lv["날짜"].iloc[0])
+    bh = load_bench_history() if bench_hist is None else bench_hist
+    if bh is None or bh.empty:
+        return _linear_blend_cum(lv, wk_live, anchor)
+    stored = dict(zip(bh["날짜"].astype(str), bh[BENCH_DAY_COL[kind]]))
+    w = None if wk_live is None else min(max(float(wk_live), 0.0), 1.0)
+    k = pd.to_numeric(lv["KOSPI"], errors="coerce").to_numpy()
+    q = pd.to_numeric(lv["KOSDAQ"], errors="coerce").to_numpy()
+    out, cum = {}, 0.0
+    for i, d in enumerate(lv["날짜"]):
+        if i == 0:
+            day = 0.0
+        elif d in stored and pd.notna(stored[d]):
+            day = float(stored[d])
+        else:
+            rk, rq = k[i] / k[i - 1] - 1.0, q[i] / q[i - 1] - 1.0
+            day = rk if w is None else w * rk + (1.0 - w) * rq
+        cum = (1.0 + cum) * (1.0 + day) - 1.0
+        out[d] = cum
+    if anchor in out and out[anchor] != 0.0:   # anchor가 첫날보다 늦으면 anchor = 0으로 다시 맞춤
+        base = out[anchor]
+        out = {d: (1.0 + v) / (1.0 + base) - 1.0 for d, v in out.items()}
+    return {d: v for d, v in out.items() if d >= anchor}
+
+
+def bench_day_on(levels: pd.DataFrame, kind: str, d: str, wk_live: float | None,
+                 bench_hist: pd.DataFrame | None = None) -> float | None:
+    """그날(d) 혼합지수 '당일' — ingest로 남긴 날은 저장값(그날 wk·그날 계수), seed 구간(10-22까지)은 옛 하루 공식
+    (그 seed wk로 wk·코스피 당일 + (1−wk)·코스닥 당일 — 지금까지 화면에 나오던 당일 그대로), 파일에 없는 날(오늘)은
+    wk_live로. 누적(bench_cum_map)과 따로 둔 이유: seed는 **누적**을 1bp도 안 바꾸려고 누적 비율로 쪼갰기 때문에,
+    그 비율을 '당일'로 다시 읽으면 옛 당일과 몇 bp 다르다."""
+    lv = levels.copy()
+    lv["날짜"] = lv["날짜"].astype(str)
+    lv = lv[lv["날짜"] <= d].sort_values("날짜")
+    if len(lv) < 2 or str(lv["날짜"].iloc[-1]) != d:
+        return None
+    bh = load_bench_history() if bench_hist is None else bench_hist
+    row = bh[bh["날짜"].astype(str) == d] if bh is not None and not bh.empty else pd.DataFrame()
+    if not row.empty and row.iloc[0]["출처"] == "ingest":
+        return float(row.iloc[0][BENCH_DAY_COL[kind]])
+    w = float(row.iloc[0]["wk"]) if not row.empty else wk_live
+    k, q = pd.to_numeric(lv["KOSPI"]).to_numpy(), pd.to_numeric(lv["KOSDAQ"]).to_numpy()
+    rk, rq = k[-1] / k[-2] - 1.0, q[-1] / q[-2] - 1.0
+    return rk if w is None else w * rk + (1.0 - w) * rq
+
+
+def seed_bench_history(index_hist: pd.DataFrame, bigcap_hist: pd.DataFrame, wk0: float, upto: str) -> pd.DataFrame:
+    """upto(포함)까지를 **지금 값 그대로** 고정한다 — 지금 누적(선형, wk0)을 하루 비율로 쪼개 저장해
+    체인으로 이으면 날짜마다 지금 누적과 같다(대표 "지금까지 쌓인 건 픽스, 이 이후부터 복리")."""
+    idx = index_hist[index_hist["날짜"].astype(str) <= upto].copy()
+    ex = synthetic_kospi_ex_bigcap(idx, bigcap_hist)
+    anchor = str(idx["날짜"].astype(str).min())
+    cm, ce = _linear_blend_cum(idx, wk0, anchor), _linear_blend_cum(ex, wk0, anchor)
+    dates = sorted(cm)
+    now = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
+    rows = []
+    for i, d in enumerate(dates):
+        if i == 0:
+            dm = de = 0.0
+        else:
+            p = dates[i - 1]
+            dm = (1.0 + cm[d]) / (1.0 + cm[p]) - 1.0
+            de = (1.0 + ce[d]) / (1.0 + ce[p]) - 1.0
+        rows.append({"날짜": d, "wk": float(wk0), "벤치_당일": dm, "벤치ex_당일": de, "출처": "seed", "기록시각": now})
+    return pd.DataFrame(rows, columns=BENCH_COLS)
+
+
+def wk_from_holdings(df: pd.DataFrame, price_col: str = "현재가") -> float | None:
+    """보유 코스피 평가금액 비중(수량 × price_col, 시장 캐시로 코스피/코스닥 가름)."""
+    if df is None or df.empty:
+        return None
+    v = pd.to_numeric(df["수량"], errors="coerce").fillna(0) * pd.to_numeric(df[price_col], errors="coerce").fillna(0)
+    mk = df["종목명"].map(load_market_cache())
+    ks, kq = float(v[mk == "KOSPI"].sum()), float(v[mk == "KOSDAQ"].sum())
+    return ks / (ks + kq) if ks + kq else None
+
+
+def snapshot_bench_history(trade_date: str, wk: float | None, index_hist: pd.DataFrame | None = None,
+                           bigcap_hist: pd.DataFrame | None = None) -> str:
+    """그날(trade_date) 혼합지수 하루 등락을 **그날 wk·그날 계수**로 한 줄 남긴다(ingest가 부름).
+    - 이미 그 날짜가 있고 출처가 seed거나, 그 뒤 날짜가 있으면 **안 덮는다**(기록 순간 고정).
+    - 마지막 줄과 같은 날짜(ingest)면 덮는다(장중본 → 마감본 재반영).
+    반환: "write" | "overwrite" | "locked" | "skip"."""
+    if wk is None:
+        return "skip"
+    idx = load_index_history() if index_hist is None else index_hist
+    big = load_bigcap_history() if bigcap_hist is None else bigcap_hist
+    idx = idx.copy()
+    idx["날짜"] = idx["날짜"].astype(str)
+    idx = idx[idx["날짜"] <= trade_date].sort_values("날짜")
+    if len(idx) < 2 or str(idx["날짜"].iloc[-1]) != trade_date:
+        return "skip"
+    bh = load_bench_history()
+    if not bh.empty:
+        if trade_date in set(bh["날짜"]):
+            row = bh[bh["날짜"] == trade_date].iloc[0]
+            if row["출처"] == "seed" or trade_date != str(bh["날짜"].max()):
+                return "locked"
+        elif trade_date < str(bh["날짜"].max()):
+            return "locked"
+    ex = synthetic_kospi_ex_bigcap(idx, big)
+    w = min(max(float(wk), 0.0), 1.0)
+
+    def _day(lv):
+        k, q = pd.to_numeric(lv["KOSPI"]).to_numpy(), pd.to_numeric(lv["KOSDAQ"]).to_numpy()
+        return w * (k[-1] / k[-2] - 1.0) + (1.0 - w) * (q[-1] / q[-2] - 1.0)
+
+    status = "overwrite" if (not bh.empty and trade_date in set(bh["날짜"])) else "write"
+    new = pd.DataFrame([{"날짜": trade_date, "wk": w, "벤치_당일": _day(idx), "벤치ex_당일": _day(ex.sort_values("날짜")),
+                         "출처": "ingest", "기록시각": datetime.now(KST).strftime("%Y-%m-%d %H:%M")}], columns=BENCH_COLS)
+    bh = pd.concat([bh[bh["날짜"] != trade_date], new], ignore_index=True) if not bh.empty else new
+    save_bench_history(bh)
+    return status
+
+
 def blended_benchmark_cum(index_cum: pd.DataFrame, kospi_weight: float | None) -> dict:
     """compute_index_vs_account가 반환하는 'index'(날짜/코스피/코스닥 누적수익률, 소수)를
     kospi_weight로 가중합쳐 날짜→혼합 누적수익률 dict로 만든다 — compute_index_vs_account
@@ -3182,7 +3345,8 @@ def _index_day_moves(index_hist: pd.DataFrame) -> pd.DataFrame:
 def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_hist: pd.DataFrame,
                               initial_capital: float, fee_rate: float = 0.0,
                               kospi_weight: float | None = None,
-                              fund_nav_hist: pd.DataFrame | None = None) -> dict:
+                              fund_nav_hist: pd.DataFrame | None = None,
+                              bench_kind: str | None = None) -> dict:
     """'지수 대비 계좌' 그래프 데이터(§6-17). 값은 전부 소수(0.0145 = +1.45%).
 
     - 계좌수익(t)  = 총자산(t)/최초자본 - 1 을 **anchor일 = 0 으로 리베이스**한 값
@@ -3315,6 +3479,13 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
     bench = idx_cum.copy()
     bench["_b"] = bench["코스피"] if wk is None else wk * bench["코스피"] + (1.0 - wk) * bench["코스닥"]
     bdates, bvals = list(bench["날짜"]), list(bench["_b"])
+    # 날짜 고정(bench_kind = "main" | "ex", 2026-10-22 대표): 지난날은 bench_history에 저장된 그날 하루 등락을
+    # 복리로 잇고, 파일에 없는 날(오늘)만 지금 wk로. 10-22까지는 seed라 옛 값과 같다.
+    if bench_kind and wk is not None:
+        _bm = bench_cum_map(index_hist, bench_kind, wk, anchor)
+        if _bm:
+            bdates = sorted(_bm)
+            bvals = [_bm[d] for d in bdates]
 
     def _bench_on(d):
         prior = [v for bd, v in zip(bdates, bvals) if bd <= d]
@@ -3435,7 +3606,7 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
                   "초과_주식": (round(float(s_exc[i]), 6) if s_exc[i] is not None else None)}
                  for i in range(len(me)) if _bk[i] == "even"]
 
-    return {"me": me, "index": idx_cum, "latest": latest,
+    return {"me": me, "index": idx_cum, "latest": latest, "bench_line": dict(zip(bdates, bvals)),
             "cap": {"acct": a_sum, "stock": s_sum},
             "n": {"down": _bk.count("하락"), "up": _bk.count("상승"), "even": _bk.count("even")},
             "even_anomalies": even_anom,

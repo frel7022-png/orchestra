@@ -37,10 +37,10 @@ def main() -> None:
     idx = core.load_index_history()
     ah = core.load_history()
     fr = st.get("fee_rate", 0.0)
-    m = core.compute_index_vs_account(tx, ah, idx, st["initial"], fr, kospi_weight=wk)
+    m = core.compute_index_vs_account(tx, ah, idx, st["initial"], fr, kospi_weight=wk, bench_kind="main")
     bg = core.load_bigcap_history()
     s = (core.compute_index_vs_account(tx, ah, core.synthetic_kospi_ex_bigcap(idx, bg),
-                                       st["initial"], fr, kospi_weight=wk)
+                                       st["initial"], fr, kospi_weight=wk, bench_kind="ex")
          if not bg.empty else None)
 
     def _cap_today(iva):

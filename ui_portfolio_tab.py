@@ -558,11 +558,11 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     _kqv = float(_hv.loc[_hv["_m"] == "KOSDAQ", "_v"].sum())
     _wk = _ksv / (_ksv + _kqv) if (_ksv + _kqv) > 0 else None
     _fr = state.get("fee_rate", 0.0)
-    _iva_m = compute_index_vs_account(tx, _asset_h, _idx_h, state["initial"], _fr, kospi_weight=_wk)
+    _iva_m = compute_index_vs_account(tx, _asset_h, _idx_h, state["initial"], _fr, kospi_weight=_wk, bench_kind="main")
     _bg_h = load_bigcap_history()
     _idx_ex_h = synthetic_kospi_ex_bigcap(_idx_h, _bg_h) if not _bg_h.empty else None
     _iva_s = (compute_index_vs_account(tx, _asset_h, _idx_ex_h,
-                                       state["initial"], _fr, kospi_weight=_wk)
+                                       state["initial"], _fr, kospi_weight=_wk, bench_kind="ex")
               if _idx_ex_h is not None else None)
 
     # @뇌 orchestra_지수
@@ -689,7 +689,8 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         with st.container(key="seed_engine_wrap"):
             with st.expander("⛽ Pit Stop", expanded=False):
                 # @뇌 핏스탑_벤치
-                _bench_cum = blended_benchmark_cum(_iva_s["index"], _wk) if _iva_s else None
+                _bench_cum = ((_iva_s.get("bench_line") or blended_benchmark_cum(_iva_s["index"], _wk))   # 날짜 고정 벤치(10-22)
+                              if _iva_s else None)
                 _se = seed_engine_series(tx, state["initial"], state.get("fee_rate", 0.0),
                                           load_history(), bench_cum=_bench_cum)
                 if len(_se) < 2:

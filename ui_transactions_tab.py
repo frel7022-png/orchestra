@@ -420,13 +420,22 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         # 혼합지수 = wk·코스피 + (1−wk)·코스닥 (보유비중 가중). wk 없으면 코스피 단독.
         _bw = wk if wk is not None else 1.0
         # @뇌 혼합지수_선
-        _blend_cum = [_bw * k + (1 - _bw) * q for k, q in zip(idxc["코스피"], idxc["코스닥"])]
+        _bl = iva.get("bench_line") or {}
+        if _bl:   # 날짜 고정 벤치(bench_history 체인, 2026-10-22) — 표·캡처와 같은 값
+            _blend_cum = [_bl.get(str(d)) for d in idxc["날짜"]]
+            _bl_dates = sorted(_bl)
+            _bl_day = {d: (1 + _bl[d]) / (1 + _bl[p]) - 1 for p, d in zip(_bl_dates, _bl_dates[1:])}
 
-        def _blend_day(d):
-            k, q = kd_map.get(d), qd_map.get(d)
-            if k is None or q is None or pd.isna(k) or pd.isna(q):
-                return None
-            return _bw * k + (1 - _bw) * q
+            def _blend_day(d):
+                return _bl_day.get(str(d))
+        else:
+            _blend_cum = [_bw * k + (1 - _bw) * q for k, q in zip(idxc["코스피"], idxc["코스닥"])]
+
+            def _blend_day(d):
+                k, q = kd_map.get(d), qd_map.get(d)
+                if k is None or q is None or pd.isna(k) or pd.isna(q):
+                    return None
+                return _bw * k + (1 - _bw) * q
 
         fig2.add_trace(go.Scatter(
             x=idxc["날짜"], y=_blend_cum, name="혼합지수", mode="lines",
@@ -590,7 +599,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     #      접힘(SamHynix extracted 위, 같은 포맷). iva는 밑 VIP 패널도 쓰므로 expander 밖에서 계산. ----
     iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
                                     state.get("fee_rate", 0.0), kospi_weight=wk,
-                                    fund_nav_hist=load_fund_nav_history())
+                                    fund_nav_hist=load_fund_nav_history(), bench_kind="main")
     with st.expander("Account : Index", expanded=False):
         if _wtag:
             st.markdown(f"<div style='margin:-4px 0 2px'>{_wtag.strip()}</div>",
@@ -611,7 +620,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         else:
             _syn = synthetic_kospi_ex_bigcap(idx_hist, _bg)
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
-                                                state.get("fee_rate", 0.0), kospi_weight=wk)
+                                                state.get("fee_rate", 0.0), kospi_weight=wk, bench_kind="ex")
             _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
 
     # ---- Sour Grapes (§6-26): SamHynix extracted의 정반대 — 코스피 다리를 '삼성전자·
