@@ -19,6 +19,21 @@ import portfolio_core as core
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
+
+QUOTE_FAIL_STOP = 0.10  # 보유 평가금액의 이 비율 이상이 시세를 못 받으면 한 번 다시 받고, 그래도면 답을 멈춘다
+                        # (대표 확정 2026-10-22 "오케이", 데이터센터/세팅 선반 1). 그 아래면 표시만 하고 계속.
+
+
+def quote_fail_share(h: pd.DataFrame, quotes: dict) -> tuple[list[str], float]:
+    """시세(change_pct)를 못 받은 종목명과, 그 종목들이 보유 평가금액(마지막 저장 현재가 기준)에서 차지하는 비율."""
+    codes = h["종목코드"].astype(str)
+    got = codes.map(lambda c: (quotes.get(c) or {}).get("change_pct") is not None)
+    val = pd.to_numeric(h["수량"], errors="coerce").fillna(0) * pd.to_numeric(h["현재가"], errors="coerce").fillna(0)
+    total = float(val.sum())
+    share = float(val[~got.values].sum()) / total if total else 0.0
+    return h.loc[~got.values, "종목명"].astype(str).tolist(), share
+
+
 def confirmed_series(code: str, start: str, today: str) -> dict:
     """{날짜: 확정 종가} — today 행은 장중이면 아직 미확정이라 호출부가 실시간으로 덮어쓴다."""
     return {r["날짜"]: float(r["종가"]) for r in core.fetch_daily_price_history(code, start, today)}
@@ -69,6 +84,13 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
     codes = h["종목코드"].astype(str)
     if quotes is None:
         quotes, _ = core.fetch_quotes(codes.tolist())
+    # 문턱 이상 실패면 못 받은 종목만 한 번 다시 받는다(QUOTE_FAIL_STOP). 그래도면 quote_stop = True.
+    _, share = quote_fail_share(h, quotes)
+    if share >= QUOTE_FAIL_STOP:
+        miss = [c for c in codes if (quotes.get(c) or {}).get("change_pct") is None]
+        again, _ = core.fetch_quotes(miss)
+        quotes = {**quotes, **{k: v for k, v in (again or {}).items() if v}}
+        _, share = quote_fail_share(h, quotes)
     # 시세를 못 받은 종목은 표시가 = portfolio_data 현재가, 등락 = 0으로 채우되(합계가 안 깨지게)
     # **조용히 0으로 섞지 않고** 목록으로 돌려준다 — 예전엔 실패 종목이 '보합'으로 세어졌다(Q-28, 대표 10-22 9-0 ③ ⓐ).
     got = codes.map(lambda c: (quotes.get(c) or {}).get("change_pct") is not None)
@@ -124,6 +146,7 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
         "total": tot, "initial": st["initial"], "cash": cash, "eval_pl": float(val.sum() - cost.sum()),
         "n": len(h), "n_up": int((ok_chg > 0).sum()), "n_down": int((ok_chg < 0).sum()),
         "n_flat": int((ok_chg == 0).sum()), "quote_failed": failed,
+        "quote_fail_share": share, "quote_stop": share >= QUOTE_FAIL_STOP,
         "idx": idx, "bigdf": bigdf, "me": me, "today": today, "cal_today": cal_today, "closed": closed,
         "basis": basis_label(now, cal_today, today, closed), "holdings": h, "px": px, "chg": chg,
         "worst": [(r.종목명, r.등락) for r in t.head(6).itertuples()],
@@ -134,8 +157,13 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
 def main():
     s = live_snapshot()
     pct = lambda v: "-" if v is None else f"{v * 100:+.2f}%"
+    if s["quote_stop"]:
+        print(f"[멈춤] 시세 실패 {len(s['quote_failed'])}종목 = 보유 평가금액의 {s['quote_fail_share']:.0%} "
+              f"(문턱 {QUOTE_FAIL_STOP:.0%}) — 한 번 다시 받아도 그대로라 숫자를 말하지 않음. 잠시 뒤 다시: "
+              + ", ".join(s["quote_failed"]))
+        return
     if s["quote_failed"]:
-        print(f"[⚠ 시세 실패 {len(s['quote_failed'])}종목 — 당일 %·원과 상승/하락/보합 수에서 뺌(총자산·누적엔 마지막 저장가로 들어감)] "
+        print(f"[⚠ 시세 실패 {len(s['quote_failed'])}종목 — 당일 %·원과 상승/하락/보합 수에서 뺌(총자산·누적엔 마지막 저장가로 들어감) · 평가금액의 {s['quote_fail_share']:.0%}] "
               + ", ".join(s["quote_failed"]))
     print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 보유 = 매매일지 {s['holdings_asof']} 반영분")
     print(f"코스피 {s['kospi']['change_pct']:+.2f}% ({s['kospi']['price']:,.2f}) · "
