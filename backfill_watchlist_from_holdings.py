@@ -81,10 +81,10 @@ def main():
 
     missing = holdings[(~holdings["종목코드"].isin(watchlist["종목코드"])) & (holdings["종목코드"] != "")]
     if missing.empty:
-        print("[알림] 153개 관심종목 밖의 보유종목이 없습니다. 할 일 없음.")
+        print(f"[알림] 관심종목({len(watchlist)}개) 밖의 보유종목이 없습니다. 할 일 없음.")
         return
 
-    print(f"관심종목(153) 밖 보유종목 {len(missing)}개 발견 — 백필 시작")
+    print(f"관심종목({len(watchlist)}개) 밖 보유종목 {len(missing)}개 발견 — 백필 시작")
     today = core.today_kst_str()
     new_watchlist_rows = []
     price_records = []

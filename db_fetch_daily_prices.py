@@ -5,9 +5,9 @@ unique라 upsert로 덮어씀). GitHub Actions cron이 매일 이 스크립트�
 (.github/workflows/daily-price-fetch.yml).
 
 2026-08-24에 거래량/수급(외국인·기관 순매수, 코스피·코스닥 시장 전체 베이스라인) 적재를
-추가함 — 153개 전체 watchlist 종목 대상(51개 보유종목만이 아니라, 신규 편입 후보 판단
+추가함 — 당시 153개 전체 watchlist 종목 대상(51개 보유종목만이 아니라, 신규 편입 후보 판단
 근거로도 쓰려는 목적). fetch_investor_flow는 종목 하나당 페이지 하나씩 긁는 비공식
-스크레이핑이라 153번 순차 요청함 — 너무 몰아치지 않게 요청 사이 짧은 지연을 둠.
+스크레이핑이라 종목 수만큼 순차 요청함 — 너무 몰아치지 않게 요청 사이 짧은 지연을 둠.
 
 접속 정보는 로컬에서는 .streamlit/secrets.toml, GitHub Actions에서는 환경변수
 (SUPABASE_URL, SUPABASE_ANON_KEY, 레포 secrets에 등록됨)에서 읽는다.

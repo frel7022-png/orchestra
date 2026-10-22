@@ -578,7 +578,8 @@ def append_capture_anomalies(anomalies: list[dict]) -> None:
 BIGCAP_HISTORY_FILE = HERE / "bigcap_history.csv"  # 날짜, 삼성전자, 삼성전자우, SK하이닉스 (종가)
 BIGCAP_CODES = {"삼성전자": "005930", "삼성전자우": "005935", "SK하이닉스": "000660"}
 # 비중 wᵢ(t) = sharesᵢ · closeᵢ(t) / TOTAL(t),  TOTAL(t) = TOTAL0 · KOSPI(t)/KOSPI0.
-# 상장주식수는 증자/자사주 소각으로 변하니 분기에 한 번 갱신 권장. TOTAL0은 ETF/ETN 제외
+# 상장주식수는 증자/자사주 소각으로 변하니 분기에 한 번 갱신 권장 — 갱신해도 지난 날은 bench_history에 고정되고
+# 앞날만 바뀐다(fixed_index_levels, 2026-10-22 f1e80d7). TOTAL0은 ETF/ETN 제외
 # 추정(전종목 합산 ~5,870조 − ETF·ETN ~470조). 스냅샷: 2026-09-04.
 _BIGCAP_SHARES = {"삼성전자": 5_846_279_000, "삼성전자우": 802_000_000, "SK하이닉스": 730_300_000}
 _KOSPI_MKTCAP_ANCHOR = (6645.0, 5.40e15)  # (KOSPI 지수레벨, 지수 시가총액 원)
