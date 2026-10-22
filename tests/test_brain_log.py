@@ -100,3 +100,16 @@ def test_line_addr_warnings_flags_named_line_numbers_only(tmp_path):
     f.write_text("외인_판단 37~39행을 본다\n`daily_stats.py` 47행\nprice_history 180행 삭제\n", encoding="utf-8")
     w = bl.line_addr_warnings([f])
     assert len(w) == 2 and "37~39행" in w[0] and "47행" in w[1]
+
+
+def test_line_addr_warnings_flags_unnamed_range(tmp_path):
+    """이름 없이 범위 꼴만 있어도 경고 — `"헷갈리는 이웃" 칸(37~39행)`·`12–14행`. 데이터 행 수는 그대로 안 잡는다(2026-10-22 밤)."""
+    f = tmp_path / "x.md"
+    f.write_text('외인_판단 "헷갈리는 이웃" 칸(37~39행)에 있다\n표 12–14행 참고\nmarket_flow 0 행 · 가짜 180행 삭제\n외인_판단 37~39행\n',
+                 encoding="utf-8")
+    w = bl.line_addr_warnings([f])
+    assert len(w) == 3   # 1·2·4번 줄, 4번 줄은 이름 있는 꼴과 범위 꼴이 겹쳐도 한 번만
+    assert ":1" in w[0] and "(37~39행)" in w[0]
+    assert any(":2" in x and "12–14행" in x for x in w) and any(":4" in x for x in w)
+    assert not any(":3" in x for x in w)
+

@@ -128,11 +128,15 @@ def links() -> tuple[dict, dict, list]:
 
 
 LINE_ADDR = re.compile(r"([A-Za-z0-9_가-힣]+)(?:\.md|\.py)?`?\s*(?:[\"“][^\"”]{0,20}[\"”]\s*)?\(?(\d+(?:[~–·-]\d+)*)행")
+# 앞 낱말이 파일 이름이 아니어도 범위 꼴(37~39행·37–39행)은 줄 번호 주소다 — "칸(37~39행)"이 da237c0 뒤에도 남았던 구멍(2026-10-22 밤 위크).
+# 데이터 행 수("180행")는 범위가 아니라 안 잡힌다.
+RANGE_ADDR = re.compile(r"\(?\d+\s*[~–]\s*\d+행\)?")
 
 
 def line_addr_warnings(files: list[Path] | None = None) -> list[str]:
     """도시 파일·코드 파일을 줄 번호로 가리키는 주소(예: `외인_판단` 37~39행, `daily_stats.py` 47행) — 경고만(2026-10-22 빈 세션 시험 14:
-    사무실이 한 줄만 늘어도 밀린다). 칸 이름·함수 이름으로 바꾼다. 데이터 행 수("180행")는 이름이 붙지 않아 안 잡힌다.
+    사무실이 한 줄만 늘어도 밀린다). 칸 이름·함수 이름으로 바꾼다. 이름 없이도 범위 꼴(`칸(37~39행)`)은 잡는다(RANGE_ADDR).
+    데이터 행 수("180행")는 이름도 범위도 아니라 안 잡힌다.
     HISTORY·ARCHIVE·기록관·설계도실(그때 서사·복사본)은 안 본다."""
     names = {q.stem for q in BRAIN.rglob("*.md")} | {q.stem for q in _py_files()}
     out = []
@@ -140,9 +144,15 @@ def line_addr_warnings(files: list[Path] | None = None) -> list[str]:
         if {"HISTORY", "ARCHIVE", "기록관", "설계도실"} & set(p.parts):
             continue
         for i, ln in enumerate(p.read_text(encoding="utf-8").split("\n"), 1):
+            where = f"{p.relative_to(BRAIN) if p.is_relative_to(BRAIN) else p.name}:{i}"
+            hit = []
             for m in LINE_ADDR.finditer(ln):
                 if m.group(1) in names:
-                    out.append(f"줄 번호 주소: {p.relative_to(BRAIN) if p.is_relative_to(BRAIN) else p.name}:{i}  {m.group(0)}")
+                    out.append(f"줄 번호 주소: {where}  {m.group(0)}")
+                    hit.append(m.span())
+            for m in RANGE_ADDR.finditer(ln):
+                if not any(s0 <= m.start() < e0 or m.start() <= s0 < m.end() for s0, e0 in hit):
+                    out.append(f"줄 번호 주소: {where}  {m.group(0)}")
     return out
 
 
