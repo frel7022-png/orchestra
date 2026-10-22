@@ -252,8 +252,39 @@ def score(round_id: str | None = None, data: dict | None = None) -> pd.DataFrame
         start = log.loc[log["종목코드"] == c, "날짜"].min()
         hist[c] = {r["날짜"]: float(r["종가"]) for r in core.fetch_daily_price_history(c, start, core.today_kst_str())}
 
-    def bret(b0, b1):
-        return (wk * (b1[0] / b0[0] - 1) + (1 - wk) * (b1[1] / b0[1] - 1)) * 100
+    # 혼합지수 날짜 고정(2026-10-22 대표 "지금까지 쌓인 건 픽스, 이 이후부터 복리"):
+    # - seed 끝(10-22)까지 = 옛 식 그대로(구간 선형 섞기) · wk는 seed wk로 고정 → 지난 채점은 안 바뀐다
+    # - 그 뒤 = bench_history의 그날 하루 등락(그날 wk)을 복리로 잇는다. 오늘(파일에 없는 날)만 지금 wk.
+    bh = core.load_bench_history()
+    seed = bh[bh["출처"] == "seed"] if not bh.empty else bh
+    seed_end = str(seed["날짜"].max()) if not seed.empty else None
+    wk_seed = float(seed["wk"].iloc[0]) if not seed.empty else wk
+    lv = pd.DataFrame([{"날짜": d, "KOSPI": k, "KOSDAQ": qq} for d, (k, qq) in sorted(closes.items())])
+    _today = core.today_kst_str()
+    if now:
+        lv = pd.concat([lv[lv["날짜"] < _today], pd.DataFrame([{"날짜": _today, "KOSPI": now[0], "KOSDAQ": now[1]}])],
+                       ignore_index=True)
+    cum = core.bench_cum_map(lv, "ex", wk) if (not bh.empty and len(lv)) else {}
+
+    def _lin(b0, b1, w):
+        return w * (b1[0] / b0[0] - 1) + (1 - w) * (b1[1] / b0[1] - 1)
+
+    def bret(b0, b1, d0=None, d1=None):
+        """b0(기록 순간 또는 추천일 종가) → b1(d1 종가, d1=None이면 지금) 벤치 수익률 %."""
+        if not cum or seed_end is None or d0 is None:
+            return _lin(b0, b1, wk) * 100
+        d1 = d1 or _today
+        if d1 <= seed_end:                                  # 전부 seed 구간 — 옛 식, seed wk
+            return _lin(b0, b1, wk_seed) * 100
+        if d0 <= seed_end:                                  # seed 끝까지 옛 식 + 그 뒤 체인
+            head = _lin(b0, closes[seed_end], wk_seed)
+            tail = (1 + cum[d1]) / (1 + cum[seed_end]) - 1
+        else:                                               # 기록 순간 → 그날 종가는 그날 wk, 그 뒤 체인
+            row = bh[bh["날짜"] == d0]
+            w0 = float(row["wk"].iloc[0]) if not row.empty else wk
+            head = _lin(b0, closes[d0], w0) if d0 in closes else 0.0
+            tail = (1 + cum[d1]) / (1 + cum[d0]) - 1 if d0 in cum else 0.0
+        return ((1 + head) * (1 + tail) - 1) * 100
 
     out = []
     for _, r in log.iterrows():
@@ -266,7 +297,7 @@ def score(round_id: str | None = None, data: dict | None = None) -> pd.DataFrame
             row["지금%"] = (px_now / p0 - 1) * 100
             # 소급 기록이 추천 당일이면 벤치 시작(추천일 종가)이 아직 없다 — 초과는 장 마감 뒤부터
             if b0 and now:
-                row["지금초과%p"] = row["지금%"] - bret(b0, now)
+                row["지금초과%p"] = row["지금%"] - bret(b0, now, d0, None)
             u = _universe_ret(uc, d0, None, ulive)
             if u is not None:
                 row["지금초과관심%p"] = row["지금%"] - u
@@ -278,7 +309,7 @@ def score(round_id: str | None = None, data: dict | None = None) -> pd.DataFrame
                 px = hist.get(c, {}).get(d)
                 if px:
                     row[f"+{n}일%"] = (px / p0 - 1) * 100
-                    row[f"+{n}일초과%p"] = row[f"+{n}일%"] - bret(b0, closes[d])
+                    row[f"+{n}일초과%p"] = row[f"+{n}일%"] - bret(b0, closes[d], d0, d)
                     u = _universe_ret(uc, d0, d, ulive)
                     if u is not None:
                         row[f"+{n}일초과관심%p"] = row[f"+{n}일%"] - u
@@ -289,7 +320,7 @@ def score(round_id: str | None = None, data: dict | None = None) -> pd.DataFrame
                 px = hist.get(c, {}).get(d)
                 if px:
                     row[f"{t}%"] = (px / p0 - 1) * 100
-                    row[f"{t}초과%p"] = row[f"{t}%"] - bret(b0, closes[d])
+                    row[f"{t}초과%p"] = row[f"{t}%"] - bret(b0, closes[d], d0, d)
                     u = _universe_ret(uc, d0, d, ulive)
                     if u is not None:
                         row[f"{t}초과관심%p"] = row[f"{t}%"] - u
