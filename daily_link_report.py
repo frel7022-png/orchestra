@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pandas as pd
 
+import foreign_trend as ft
 import portfolio_core as core
 
 HERE = Path(__file__).parent
@@ -104,8 +105,10 @@ def _peak_label_pos(x, y, left, right, top):
     return x + dx, max(y - 6, top + 8)
 
 
-def svg_chart(ps: pd.DataFrame, fs: pd.DataFrame, live_price: float | None, today: str) -> str:
-    """주가(기준일 대비 %, 왼쪽 축)와 외인 보유율(%, 오른쪽 축) 두 축 선 그래프. 외인 고점에 점."""
+def svg_chart(ps: pd.DataFrame, fs: pd.DataFrame, live_price: float | None, today: str,
+              marks: list[str] | None = None) -> str:
+    """주가(기준일 대비 %, 왼쪽 축)와 외인 보유율(%, 오른쪽 축) 두 축 선 그래프. 외인 고점에 점.
+    marks = 세로선을 그을 날짜(외인 추이 창 구획 — 60·20·5거래일 시작일, 2026-10-22)."""
     if ps.empty or fs.empty:
         return '<div class="nochart">데이터 부족</div>'
     ps = ps.copy()
@@ -152,8 +155,11 @@ def svg_chart(ps: pd.DataFrame, fs: pd.DataFrame, live_price: float | None, toda
         lab(W - R + 4, T + ih, f"{flo:.1f}", "start", "ax f"),
         lab(L, H - 6, dates[0][5:]),
         lab(W - R, H - 6, dates[-1][5:], "end"),
-        "</svg>",
     ]
+    for m in marks or []:
+        if m in xi:
+            parts.append(f'<line class="mk" x1="{sx(m):.1f}" x2="{sx(m):.1f}" y1="{T}" y2="{T + ih}"/>')
+    parts.append("</svg>")
     return "".join(parts)
 
 
@@ -315,15 +321,128 @@ def main(data: dict | None = None) -> dict:
                      key=lambda v: -v["dF"])  # 따로 관리 중인 종목은 위 칸에만
     write_html(today, today_df, stats, ph, fh, live, prev_rank, added, swapped, dropped,
                track, holds_n, holds_m, len(prev_dates) == 0, illusion, turning, pinned, reacc, hn, hm,
-               core.reversal_signs(cand, ph, fh))
+               core.reversal_signs(cand, ph, fh), foreign_trend_section(today, ph, fh, live, holds_n, holds_m))
     print(f"[완료] {today} 명단 {len(today_df)}개 · 신규 {len(added)} · 탈락 {len(dropped)}")
     for _, r in today_df.iterrows():
         print(f"  {r['순위']:>2}. {r['종목명']} [{r['단계']}] P {r['P']:+.1f}% dF {r['dF']:+.2f}%p 반납 {r['반납률']:.0%}")
     return {"stats": stats, "members": members, "roster": today_df}
 
 
+def tracking_watch() -> list[dict]:
+    """picks_log 구분 "감시"로 올린 종목과 그 tracking 카드 상태 — 극단 이탈 칸의 "트래킹 중"."""
+    pl, sm = HERE / "picks_log.csv", HERE / "tracking" / "summary.csv"
+    if not pl.exists():
+        return []
+    log = pd.read_csv(pl, dtype={"종목코드": str})
+    names = list(dict.fromkeys(log.loc[log["구분"] == "감시", "종목명"]))
+    summ = pd.read_csv(sm, dtype={"종목코드": str}).drop_duplicates("종목명", keep="last").set_index("종목명") \
+        if sm.exists() else pd.DataFrame()
+    out = []
+    for n in names:
+        r = summ.loc[n] if n in summ.index else None
+        after = None if r is None or pd.isna(r.get("외인픽후%p")) else float(r["외인픽후%p"])
+        out.append({"종목명": n, "상태": "" if r is None else str(r.get("상태", "")),
+                    "외인상태": "" if r is None else str(r.get("외인상태", "")), "외인픽후": after})
+    return out
+
+
+def foreign_trend_section(today, ph, fh, live, holds_n, holds_m) -> str:
+    """외인 추이 칸 HTML(대표 확정 2026-10-22 — 계산은 foreign_trend.py).
+    창 넷(5·20·60거래일·누적) · 기준선 = 대상 종목 전체 평균 · 기본층(원천 변화)·심화층(영향력 %p) · 극단 이탈 감시."""
+    esc = html.escape
+
+    def sign(v, d=1, unit="%"):
+        if v is None or pd.isna(v):
+            return '<span class="mut">—</span>'
+        cls = "up" if v > 0 else ("dn" if v < 0 else "")
+        return f'<span class="{cls}">{v:+.{d}f}{unit}</span>'
+
+    def own(n):
+        return " ".join(t for t, ok in (("N", n in holds_n), ("M", n in holds_m)) if ok)
+
+    def table(head_html, rows, ncol):
+        body = rows or f'<tr><td class="nm mut" colspan="{ncol}">없음</td></tr>'
+        return f'<div class="scroll"><table><thead>{head_html}</thead><tbody>{body}</tbody></table></div>'
+
+    def basic_row(r):
+        return (f'<tr><td class="nm">{esc(r.종목명)}<span class="own">{own(r.종목명)}</span></td>'
+                f'<td>{r.시작:.2f} → {r.끝:.2f}</td><td>{sign(r.rel)}</td><td>{sign(r.dev_rel, 1, "%p")}</td></tr>')
+
+    def deep_row(r):
+        near = ' <span class="mut">(가까운 순)</span>' if r.가까운순 else ""
+        z = "—" if pd.isna(r.z) else f"{r.z:+.1f}" + (" ★" if r.평소와다름 else "")
+        return (f'<tr><td class="nm">{esc(r.종목명)}<span class="own">{own(r.종목명)}</span>{near}</td>'
+                f'<td>{r.시작:.2f} → {r.끝:.2f}</td><td>{sign(r.pp, 2, "%p")}</td><td>{r.영향력:+.1f}x</td>'
+                f'<td>{sign(r.rel)}</td><td>{z}</td></tr>')
+
+    basic_th = '<tr><th class="nm">종목</th><th>외인 비중</th><th>원천 변화</th><th>평균 대비</th></tr>'
+    deep_th = '<tr><th class="nm">종목</th><th>외인 비중</th><th>%p</th><th>영향력</th><th>원천 변화</th><th>σ배</th></tr>'
+    marks = ft.window_starts(fh)
+    origin = ph.groupby("종목코드")["날짜"].min().to_dict() if not ph.empty else {}
+    ps_avg, fs_avg = ft.market_series(fh, ph)
+    overall = (svg_chart(ps_avg, fs_avg, None, today, marks) if not ps_avg.empty and not fs_avg.empty
+               else '<div class="nochart">데이터 부족</div>')
+    blocks = []
+    for w in ft.WINDOWS:
+        df, head = ft.window_changes(fh, ph, w)
+        if df.empty:
+            n_days = fh["날짜"].nunique() if not fh.empty else 0
+            blocks.append(f'<p class="note"><b>{ft.window_label(w)}</b> — 아직 못 잼(외인 자료 {n_days}거래일, '
+                          f'{w + 1 if w else 2}거래일부터 잴 수 있음)</p>')
+            continue
+        b_up, b_dn = ft.basic_layer(df)
+        d_up, d_dn = ft.deep_layer(df, head["중앙절대pp"])
+        cards = ""
+        if w == ft.WINDOWS[0]:  # 가장 짧은 창만 종목 그래프(심화 위·아래 다섯씩) — 세로선 = 창 구획
+            pick = pd.concat([d_up.head(5), d_dn.head(5)])
+            cards = '<div class="grid2">' + "".join(
+                f'<div class="card"><div class="ch">{esc(r.종목명)}<span class="meta">{head["창"]} 외인 {r.시작:.2f}% → {r.끝:.2f}% '
+                f'({r.pp:+.2f}%p · 원천 {r.rel:+.1f}%)</span></div>'
+                f'{svg_chart(price_series(ph, r.종목코드, origin.get(r.종목코드, "")), foreign_series(fh, r.종목코드, origin.get(r.종목코드, "")), live.get(r.종목코드), today, marks)}</div>'
+                for r in pick.itertuples()) + "</div>"
+        blocks.append(
+            f'<details{" open" if w == ft.WINDOWS[0] else ""}><summary><b>{head["창"]}</b> · {head["시작"][5:]} → {head["끝"][5:]} · '
+            f'{head["종목수"]}종목 · 평균 원천 변화 {sign(head["평균rel"], 2)} (중앙값 {sign(head["중앙rel"], 2)}) · '
+            f'평균 {sign(head["평균pp"], 3, "%p")} (중앙값 {sign(head["중앙pp"], 3, "%p")}) · '
+            f'오름 {head["오름"]} / 내림 {head["내림"]} / 그대로 {head["그대로"]}</summary>'
+            f'<h3 class="h3">기본 — 원천 변화, 평균 대비 위 {ft.TOP_N}</h3>{table(basic_th, "".join(basic_row(r) for r in b_up.itertuples()), 4)}'
+            f'<h3 class="h3">기본 — 아래 {ft.TOP_N}</h3>{table(basic_th, "".join(basic_row(r) for r in b_dn.itertuples()), 4)}'
+            f'<h3 class="h3">심화 — 영향력 %p, 평균 대비 위 {ft.TOP_N}</h3>{table(deep_th, "".join(deep_row(r) for r in d_up.itertuples()), 6)}'
+            f'<h3 class="h3">심화 — 아래 {ft.TOP_N}</h3>{table(deep_th, "".join(deep_row(r) for r in d_dn.itertuples()), 6)}'
+            f'{cards}</details>')
+    ex = ft.extreme_exits(fh)
+    ex_rows = "".join(
+        f'<tr><td class="nm">{esc(r.종목명)}<span class="own">{own(r.종목명)}</span></td><td>{r.종류}</td>'
+        f'<td>{r.시작일[5:]}</td><td>{r.시작:.2f} → {r.끝:.2f}</td><td>{sign(r.rel)}</td><td>{sign(r.pp, 2, "%p")}</td></tr>'
+        for r in ex.itertuples())
+    ex_th = '<tr><th class="nm">종목</th><th>구간</th><th>시작일</th><th>외인 비중</th><th>원천 변화</th><th>%p</th></tr>'
+    tw_items = []
+    for v in tracking_watch():
+        bits = [esc(v["상태"]) or "카드 없음"]
+        if v["외인상태"]:
+            bits.append(f'외인 {esc(v["외인상태"])}')
+        if v["외인픽후"] is not None:
+            bits.append(f'감시 뒤 외인 {v["외인픽후"]:+.2f}%p')
+        tw_items.append(f'<li><b>{esc(v["종목명"])}</b> — {" · ".join(bits)}</li>')
+    tw_html = "".join(tw_items) or '<li class="mut">없음</li>'
+    return f"""
+<h2>외인 추이 — 관심종목 전체 평균 대비</h2>
+<p class="note">창 넷(5·20·60거래일·누적) · 기준선 = 대상 종목 전체의 평균 외인 변화(창마다 따로). 기본 = 원천 변화(시작 대비 %, 비중 크기로 가중 안 함) ·
+심화 = 영향력 %p(|%p| ≥ 전체 |%p| 중앙값 × {ft.IMPACT_FLOOR:g}만, 영향력 = %p ÷ 그 중앙값). σ배 ★ = 평소와 다름(|σ| ≥ {ft.SIGMA_FLAG:g}, 거르지 않음). 외인은 DB 최신일(T−1).</p>
+<div class="legend"><i style="background:var(--dn)"></i>평균 주가(%, 왼쪽) <i style="background:var(--fl)"></i>평균 외인 변화(누적 시작 대비 %, 오른쪽) · 세로선 = 60·20·5거래일 시작</div>
+<div class="card">{overall}</div>
+{''.join(blocks)}
+
+<h2>극단 이탈 — 트래킹</h2>
+<p class="note">외인 비중이 자기 비중 대비 {ft.WATCH_DROP:g}% 이하로 하루에 또는 {ft.WATCH_DAYS}거래일 동안 빠진 종목. 트래킹 등록(picks_log 구분 "감시")은 세션 장부 걸음으로 — 이 리포트는 장부를 쓰지 않는다.</p>
+{table(ex_th, ex_rows, 6)}
+<h3 class="h3">트래킹 중 (picks_log "감시")</h3>
+<ul>{tw_html}</ul>
+"""
+
+
 def write_html(today, df, stats, ph, fh, live, prev_rank, added, swapped, dropped, track,
-               holds_n, holds_m, first_run, illusion, turning, pinned, reacc, hn, hm, rev=None):
+               holds_n, holds_m, first_run, illusion, turning, pinned, reacc, hn, hm, rev=None, ftr_html=""):
     esc = html.escape
     def sign(v, d=1, unit="%"):
         cls = "up" if v > 0 else ("dn" if v < 0 else "")
@@ -460,6 +579,7 @@ svg{{width:100%;height:auto;display:block}} .pl{{fill:none;stroke:var(--dn);stro
 ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint)}}
 .cm{{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:6px 16px;font-size:14px}} .cm h3{{font-size:13px;color:var(--soft);margin:12px 0 2px}} .cm p{{margin:6px 0}}
 .nochart{{font-size:12px;color:var(--faint);padding:20px 0}}
+.mk{{stroke:var(--faint);stroke-width:1;stroke-dasharray:2 2}} details{{margin:10px 0}} summary{{font-size:13px;cursor:pointer}} .h3{{font-size:12.5px;color:var(--soft);margin:12px 0 2px}}
 </style>
 <div class="wrap">
 <h1>Overture · Link</h1>
@@ -485,6 +605,7 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 <p class="note">누적으로 주가·외인이 같이 빠지던(이탈) 종목 중, 최근 {core.REV_DAYS}거래일 외인이 {core.REV_UP_DAYS}일 이상 오르고 그 합이 자기 평소 외인 변동폭을 넘으며, 주가 하루 평균이 누적보다 덜 가파르고 자기 변동폭 안에서 움직인 종목. ★ = 위 재매집에도 있음. 순서는 외인 증가일 → 최근 외인 %p.</p>
 {rev_html}
 
+{ftr_html}
 <h2>따로 관리 중</h2>
 <p class="note">추세를 보려고 따로 지정한 종목. 그만하자고 할 때까지 매일 표시.</p>
 <div class="grid2">{pin_html}</div>
