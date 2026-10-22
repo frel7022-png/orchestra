@@ -14,3 +14,4 @@ logs/
 
 # 세션별 로컬 설정(위크가 대표 지시로 모델 지정, 2026-10-20) — 커밋하지 않는다
 .claude/settings.local.json
+뇌_초안/뇌관리/oldcheck_state.json

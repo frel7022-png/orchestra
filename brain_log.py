@@ -5,6 +5,8 @@
     python brain_log.py heads                # 셀 머리(제목 ~ "## 꼬리표" 전) 줄 수 — 15 넘으면 표시
     python brain_log.py links                # 셀 사이 길(다음 셀 신호) 표 → 셀관리.md + 뇌_초안 안 끊긴 경로 검사(2026-10-20 셀회의)
                                              #   + 셀→코드 문 검사(심볼·@뇌 이름표·줄 번호 금지, 2026-10-21)
+    python brain_log.py oldcheck mark        # 옛 뇌 지문 찍기(출근 점검 첫머리) — 옛 claude.md·ARCHIVE.md·메모리 줄별 해시를 상태 파일에
+    python brain_log.py oldcheck [--md]      # 지문 뒤로 바뀐 옛 뇌 줄 중 새 뇌 주소가 없는 줄 · 열린 〔새뇌 대기〕 · 세팅↔코드 값 다름(하루 끝)
     python brain_log.py where 이름|파일.py    # 이름표·심볼의 지금 줄 / 그 파일을 가리키는 셀 문 목록(구조 바꾸기 전)
 """
 import datetime
@@ -270,6 +272,117 @@ def history_skeleton(day: str) -> str:
     return "\n".join(out)
 
 
+# ---- 옛 뇌 점검 oldcheck (2026-10-22 밤 위크 회의 결론, origin 대표 「주기적으로 체크」) ----
+# 앞(출근 점검)은 `oldcheck mark`로 지문만, 뒤(기록_올리기 마지막)는 `oldcheck`로 그 뒤 바뀐 줄만 본다 — 몇 초 안에.
+# 도구는 출력만 한다. 표 줄이 필요하면 --md, 붙이기는 세션이 `뇌관리/_새뇌대기.md`에.
+OLD_STATE = BRAIN / "뇌관리" / "oldcheck_state.json"
+MEMORY_DIR = Path.home() / ".claude" / "projects" / "C--Users-frel-Desktop-new1" / "memory"
+MARK = re.compile(r"〔새뇌 (?:대기|반영)[^〕]*〕")
+WAIT = re.compile(r"〔새뇌 대기 \d[^〕]*〕")   # 날짜가 붙은 표시만(규칙 설명 속 `〔새뇌 대기 YYYY-…〕` 꼴은 아님)
+SET_REF = re.compile(r"`([A-Za-z_]\w*)\.([A-Z][A-Z0-9_]+)`")
+
+
+def old_sources(memory_dir: Path | None = None) -> list[Path]:
+    """옛 뇌 MD — claude.md · ARCHIVE.md · 메모리(MEMORY.md 색인 포함)."""
+    mem = memory_dir if memory_dir is not None else MEMORY_DIR
+    files = [HERE / "claude.md", HERE / "ARCHIVE.md"] + (sorted(mem.glob("*.md")) if mem.is_dir() else [])
+    return [f for f in files if f.exists()]
+
+
+def _line_key(ln: str) -> str:
+    import hashlib
+    return hashlib.sha1(MARK.sub("", ln).strip().encode("utf-8")).hexdigest()[:16]   # 표시만 바뀐 줄은 같은 줄
+
+
+def old_mark(files: list[Path], state: Path = OLD_STATE) -> dict:
+    import json
+    snap = {"at": datetime.datetime.now().isoformat(timespec="seconds"),
+            "lines": {f.name: sorted({_line_key(l) for l in f.read_text(encoding="utf-8").splitlines() if l.strip()}) for f in files}}
+    state.write_text(json.dumps(snap, ensure_ascii=False), encoding="utf-8")
+    return snap
+
+
+def _city_text() -> str:
+    return "\n".join(p.read_text(encoding="utf-8") for p in BRAIN.rglob("*.md") if "HISTORY" not in p.parts)
+
+
+def _addr_keys(ln: str) -> set[str]:
+    """줄의 특징 낱말 — 백틱 이름·굵은 말·영문 식별자. 하나라도 새 뇌에 있으면 '주소 있음'으로 본다(거친 거름 — 세션이 다시 본다)."""
+    k = set(re.findall(r"`([^`]{3,60})`", ln)) | set(re.findall(r"\*\*([^*]{4,40})\*\*", ln))
+    k |= set(re.findall(r"[A-Za-z_][A-Za-z0-9_]{5,}", ln))
+    return {x.strip() for x in k if len(x.strip()) >= 4}
+
+
+def old_changed(files: list[Path], state: Path = OLD_STATE, city: str | None = None) -> list[tuple[str, int, str, bool]]:
+    """지문 뒤로 새로 생기거나 바뀐 줄 → [(파일, 줄, 글, 새 뇌 주소 있나)]. 지문이 없으면 빈 목록."""
+    import json
+    if not state.exists():
+        return []
+    seen = json.loads(state.read_text(encoding="utf-8"))["lines"]
+    city = _city_text() if city is None else city
+    out = []
+    for f in files:
+        old = set(seen.get(f.name, []))
+        for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if ln.strip() and _line_key(ln) not in old:
+                ks = _addr_keys(ln)
+                out.append((f.name, i, ln.strip(), bool(ks) and any(k in city for k in ks)))
+    return out
+
+
+def old_open_waits(files: list[Path], board: Path | None = None) -> list[tuple[str, int, str]]:
+    """아직 열린 〔새뇌 대기〕 — 옛 MD 줄 + 새뇌대기.md 표에서 상태가 '새뇌 반영'이 아닌 줄."""
+    out = [(f.name, i, ln.strip()) for f in files for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1) if WAIT.search(ln)]
+    board = BRAIN / "뇌관리" / "_새뇌대기.md" if board is None else board
+    if board.exists():
+        for i, ln in enumerate(board.read_text(encoding="utf-8").splitlines(), 1):
+            cells = [c.strip() for c in ln.split("|")[1:-1]]
+            if len(cells) >= 3 and not set(cells[0]) <= set("-: ") and cells[0] not in ("날짜", "커밋") and "새뇌 반영" not in cells[-1]:
+                out.append((board.name, i, ln.strip()))
+    return out
+
+
+def _code_const(mod: str, name: str):
+    import ast
+    f = HERE / f"{mod}.py"
+    if not f.exists():
+        return None
+    for node in ast.parse(f.read_text(encoding="utf-8")).body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            tgts = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(x, ast.Name) and x.id == name for x in tgts):
+                try:
+                    v = ast.literal_eval(node.value)
+                except Exception:
+                    return None
+                return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    return None
+
+
+def _nums(text: str) -> set[float]:
+    return {float(x.replace(",", "")) for x in re.findall(r"\d[\d,]*(?:\.\d+)?", text)}
+
+
+def old_setting_mismatch(setting: Path | None = None, olds: list[Path] | None = None) -> list[str]:
+    """세팅 줄이 가리키는 코드 상수(`모듈.상수`, 숫자 하나)의 값이 그 세팅 줄에 안 보이거나, 옛 MD에서 그 상수를 다른 숫자로 말하는 줄."""
+    setting = BRAIN / "데이터센터" / "세팅.md" if setting is None else setting
+    out = []
+    for i, ln in enumerate(setting.read_text(encoding="utf-8").splitlines(), 1):
+        for mod, name in SET_REF.findall(ln):
+            v = _code_const(mod, name)
+            if v is None:
+                continue
+            want = {abs(v), abs(v) * 100}
+            if not any(abs(n - w) < 1e-9 for n in _nums(ln) for w in want):
+                out.append(f"세팅 {i}행 `{mod}.{name}` = {v} — 세팅 줄에 이 값이 안 보임")
+            for f in olds or []:
+                for j, ol in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+                    m = re.search(re.escape(name) + r"[`\s]*(?:=|는|은|:)\s*(-?\d[\d,]*(?:\.\d+)?)", ol)   # "이름 = 숫자" 꼴만
+                    if m and not any(abs(abs(float(m.group(1).replace(",", ""))) - w) < 1e-9 for w in want):
+                        out.append(f"{f.name}:{j} `{name}`(코드 {v})를 다른 숫자로 — {ol.strip()[:80]}")
+    return out
+
+
 def main() -> int:
     for st in (sys.stdout, sys.stderr):
         try:
@@ -303,6 +416,27 @@ def main() -> int:
             print(x)
         print(f"코드 문 문제 {len(code)}개 (이름표 {len(code_tags())}개)")
         return 1 if broken or code else 0
+    elif a and a[0] == "oldcheck":
+        files = old_sources()
+        if a[1:2] == ["mark"]:
+            snap = old_mark(files)
+            print(f"옛 뇌 지문 {snap['at']} — 파일 {len(files)}개, 줄 {sum(len(v) for v in snap['lines'].values())}개 → {OLD_STATE.name}")
+            return 0
+        md = "--md" in a
+        ch = old_changed(files)
+        miss = [c for c in ch if not c[3]]
+        waits = old_open_waits(files)
+        mism = old_setting_mismatch(olds=files)
+        print(f"(a) 지문 뒤 바뀐 옛 뇌 줄 {len(ch)} · 새 뇌 주소 없음 {len(miss)}" + ("" if OLD_STATE.exists() else " — 지문 없음, 먼저 `oldcheck mark`"))
+        for f, i, ln, _ in miss:
+            print(f"| {datetime.date.today()} | {ln[:80]} | {f}:{i} | (주소 찾기) | 새뇌 대기 |" if md else f"  {f}:{i}  {ln[:100]}")
+        print(f"(b) 열린 〔새뇌 대기〕 {len(waits)}")
+        for f, i, ln in waits:
+            print(f"  {f}:{i}  {ln[:100]}")
+        print(f"(c) 세팅↔코드·옛 MD 숫자 다름 {len(mism)}")
+        for x in mism:
+            print("  " + x)
+        return 1 if miss or mism else 0
     elif a and a[0] == "where" and len(a) > 1:
         for ln in where(" ".join(a[1:])) or ["없음"]:
             print(ln)
