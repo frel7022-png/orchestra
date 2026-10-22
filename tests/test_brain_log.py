@@ -92,3 +92,11 @@ def test_bare_ref_broken_catches_missing_folder(tmp_path):
     assert bl.bare_ref_broken("추천.md", here, homes) is False
     assert bl.bare_ref_broken("claude.md", here, homes) is False
     assert bl.bare_ref_broken("_게시판.md", here, homes) is False
+
+
+def test_line_addr_warnings_flags_named_line_numbers_only(tmp_path):
+    """줄 번호 주소 경고 — 도시·코드 이름 + NN행만, 데이터 행 수("180행")는 안 잡는다(2026-10-22)."""
+    f = tmp_path / "x.md"
+    f.write_text("외인_판단 37~39행을 본다\n`daily_stats.py` 47행\nprice_history 180행 삭제\n", encoding="utf-8")
+    w = bl.line_addr_warnings([f])
+    assert len(w) == 2 and "37~39행" in w[0] and "47행" in w[1]

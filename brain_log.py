@@ -127,6 +127,25 @@ def links() -> tuple[dict, dict, list]:
     return out, inc, broken
 
 
+LINE_ADDR = re.compile(r"([A-Za-z0-9_가-힣]+)(?:\.md|\.py)?`?\s*(?:[\"“][^\"”]{0,20}[\"”]\s*)?\(?(\d+(?:[~–·-]\d+)*)행")
+
+
+def line_addr_warnings(files: list[Path] | None = None) -> list[str]:
+    """도시 파일·코드 파일을 줄 번호로 가리키는 주소(예: `외인_판단` 37~39행, `daily_stats.py` 47행) — 경고만(2026-10-22 빈 세션 시험 14:
+    사무실이 한 줄만 늘어도 밀린다). 칸 이름·함수 이름으로 바꾼다. 데이터 행 수("180행")는 이름이 붙지 않아 안 잡힌다.
+    HISTORY·ARCHIVE·기록관·설계도실(그때 서사·복사본)은 안 본다."""
+    names = {q.stem for q in BRAIN.rglob("*.md")} | {q.stem for q in _py_files()}
+    out = []
+    for p in files if files is not None else sorted(BRAIN.rglob("*.md")):
+        if {"HISTORY", "ARCHIVE", "기록관", "설계도실"} & set(p.parts):
+            continue
+        for i, ln in enumerate(p.read_text(encoding="utf-8").split("\n"), 1):
+            for m in LINE_ADDR.finditer(ln):
+                if m.group(1) in names:
+                    out.append(f"줄 번호 주소: {p.relative_to(BRAIN) if p.is_relative_to(BRAIN) else p.name}:{i}  {m.group(0)}")
+    return out
+
+
 def _bare_homes() -> dict[str, list[str]]:
     """파일 이름 → 도시 안 그 이름 파일이 있는 폴더들(게시판·ARCHIVE·HISTORY 같은 흔한 이름도 다 담는다)."""
     homes: dict[str, list[str]] = {}
@@ -437,6 +456,10 @@ def main() -> int:
         for x in code:
             print(x)
         print(f"코드 문 문제 {len(code)}개 (이름표 {len(code_tags())}개)")
+        warn = line_addr_warnings()
+        for x in warn:
+            print(x)
+        print(f"줄 번호 주소 경고 {len(warn)}개 (실패 아님 — 칸·함수 이름으로 바꿀 것)")
         return 1 if broken or code else 0
     elif a and a[0] == "oldcheck":
         files = old_sources()
