@@ -2383,6 +2383,21 @@ def test_merge_watchlist_new_ended_reopened_and_held_warning():
     assert s["다시_기간"]["C"] == "2026-10-01"
 
 
+def test_merge_watchlist_keeps_current_name_when_matching_failed():
+    # 파일엔 있었지만 자동완성 매칭에 실패한 이름 → 지금 목록과 같은 이름이면 관심 끝을 안 붙인다(10-22 밤 ⓐ)
+    cur = pd.DataFrame([{"종목명": "A", "종목코드": "1", "관심끝": ""}, {"종목명": "B", "종목코드": "2", "관심끝": ""}])
+    rows, s = core.merge_watchlist(cur, [{"종목명": "A", "종목코드": "1"}], set(), "2026-10-22", failed_names={"B"})
+    assert {r["종목명"]: r["관심끝"] for r in rows} == {"A": "", "B": ""}
+    assert s["끝"] == [] and s["실패유지"] == ["B"]
+
+
+def test_watch_end_needs_confirm_by_count_or_ratio():
+    # 새 관심 끝 3개 이상 또는 관심 중의 10% 이상이면 멈춤(10-22 밤 ⓑ)
+    assert core.watch_end_needs_confirm(3, 181) and core.watch_end_needs_confirm(180, 181)
+    assert not core.watch_end_needs_confirm(2, 181) and not core.watch_end_needs_confirm(0, 181)
+    assert core.watch_end_needs_confirm(1, 5)          # 작은 목록은 비율로
+
+
 def test_load_watchlist_hides_ended_by_default(tmp_path, monkeypatch):
     monkeypatch.setattr(core, "WATCHLIST_FILE", tmp_path / "watchlist.csv")
     monkeypatch.setattr(core, "load_sector_cache", lambda: {})

@@ -843,14 +843,28 @@ def save_watchlist(names_codes: list[dict]) -> None:
     df[["종목명", "종목코드", "관심끝"]].drop_duplicates("종목명").to_csv(WATCHLIST_FILE, index=False)
 
 
-def merge_watchlist(current: pd.DataFrame, matched: list[dict], held_names: set[str], today: str) -> tuple[list[dict], dict]:
+# 관심 끝이 한 번에 이만큼(개수 또는 관심 중 대비 비율) 새로 생기면 import는 쓰지 않고 멈춘다 — `--yes`로만 쓴다
+# (2026-10-22 밤 위크 판단 origin 대표 ⓑ: 이름 하나만 든 파일·매칭 실패로 멀쩡한 종목이 조용히 관심 끝이 되던 버그).
+WATCH_END_STOP_N, WATCH_END_STOP_RATIO = 3, 0.10
+
+
+def watch_end_needs_confirm(n_new_end: int, n_live: int) -> bool:
+    """새로 생길 관심 끝이 WATCH_END_STOP_N개 이상이거나 지금 관심 중의 WATCH_END_STOP_RATIO 이상이면 True."""
+    return n_new_end >= WATCH_END_STOP_N or (n_live > 0 and n_new_end / n_live >= WATCH_END_STOP_RATIO)
+
+
+def merge_watchlist(current: pd.DataFrame, matched: list[dict], held_names: set[str], today: str,
+                    failed_names: set[str] | None = None) -> tuple[list[dict], dict]:
     """새 관심종목 목록(matched)을 지금 목록(current, include_ended=True)에 합친다 — 통째로 교체하지 않는다.
     - 새 목록에 있고 지금 없음 → 새로 들어옴
     - 지금 관심 중인데 새 목록에 없음 → 관심 끝(관심끝 = today), 줄은 남김. 단 **보유 중**이면 안 붙이고 경고
     - 관심 끝인데 새 목록에 다시 있음 → 다시 들어옴(관심끝 비움)
-    반환: (저장할 행들, 요약 dict{새로, 끝, 다시, 보유경고, 다시_기간})."""
+    - 파일엔 있었는데 이름 매칭에 실패한 것(failed_names)이 지금 목록 이름과 정확히 같으면 → 그 줄 유지(관심 끝 안 붙임,
+      2026-10-22 밤 ⓐ — 자동완성 10개 한계로 정확한 이름도 실패할 수 있다)
+    반환: (저장할 행들, 요약 dict{새로, 끝, 다시, 보유경고, 실패유지, 다시_기간})."""
     new_by_code = {str(m["종목코드"]): m for m in matched}
-    rows, summary = [], {"새로": [], "끝": [], "다시": [], "보유경고": [], "다시_기간": {}}
+    failed = {str(n).strip() for n in (failed_names or set())}
+    rows, summary = [], {"새로": [], "끝": [], "다시": [], "보유경고": [], "실패유지": [], "다시_기간": {}}
     seen = set()
     for _, r in current.iterrows():
         code, name = str(r["종목코드"]), str(r["종목명"])
@@ -864,6 +878,9 @@ def merge_watchlist(current: pd.DataFrame, matched: list[dict], held_names: set[
             rows.append({"종목명": m["종목명"], "종목코드": code, "관심끝": ""})
         elif not ended and name in held_names:
             summary["보유경고"].append(name)
+            rows.append({"종목명": name, "종목코드": code, "관심끝": ""})
+        elif not ended and name in failed:
+            summary["실패유지"].append(name)
             rows.append({"종목명": name, "종목코드": code, "관심끝": ""})
         elif not ended:
             summary["끝"].append(name)

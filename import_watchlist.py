@@ -12,7 +12,9 @@ CSV는 종목명이 담긴 열 하나(헤더 이름 무관, 첫 번째 열을 �
        match_stock_name 참고) — "오또기"→"오뚜기", "동진세미컴"→"동진쎄미켐" 같은 경우 처리.
     2. 지금 목록에 **합친다**(통째로 교체하지 않음 — 2026-10-22 대표 승인, 스펙_관심끝_표시):
        새로 들어옴 / 빠진 종목은 줄을 남기고 `관심끝 = 오늘` / 끝났던 종목이 다시 오면 관심끝 비움 /
-       보유 중인 종목은 빠져도 관심 끝을 안 붙이고 경고. 같은 내용을 **Supabase watchlist에도**(ended_on)
+       보유 중인 종목은 빠져도 관심 끝을 안 붙이고 경고. 매칭에 실패했지만 지금 목록과 이름이 같은 종목은 유지.
+       관심 끝이 새로 3개 이상(또는 관심 중의 10% 이상) 생기면 아무것도 안 쓰고 목록만 찍고 멈춘다 — `--yes`로만 쓴다
+       (2026-10-22 밤, 위크 판단 origin 대표). 같은 내용을 **Supabase watchlist에도**(ended_on)
        — Supabase 쓰기가 실패하면 csv도 안 쓰고 멈춘다(두 벌이 갈리지 않게).
     3. 매칭 결과 요약을 출력한다 — 이름이 바뀐 경우와, 확신이 안 서서 실패한 경우를 각각
        보여주니 실패 목록은 사람이 직접 확인해서 watchlist.csv를 손으로 보정할 것.
@@ -31,11 +33,13 @@ import portfolio_core as core
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("사용법: python import_watchlist.py <파일경로>")
+    args = [a for a in sys.argv[1:] if a != "--yes"]
+    confirmed = "--yes" in sys.argv[1:]
+    if len(args) != 1:
+        print("사용법: python import_watchlist.py <파일경로> [--yes]")
         sys.exit(1)
 
-    file_path = sys.argv[1]
+    file_path = args[0]
 
     df = None
     for enc in ("utf-8-sig", "cp949", "utf-8"):
@@ -65,7 +69,16 @@ def main():
 
     current = core.load_watchlist(include_ended=True)
     held = set(core.load_holdings()["종목명"].astype(str))
-    rows, s = core.merge_watchlist(current, matched, held, core.today_kst_str())
+    rows, s = core.merge_watchlist(current, matched, held, core.today_kst_str(), failed_names=set(failed))
+    n_live_now = int((current["관심끝"].astype(str).str.strip() == "").sum()) if "관심끝" in current.columns else len(current)
+    if core.watch_end_needs_confirm(len(s["끝"]), n_live_now) and not confirmed:
+        print(f"[멈춤] 관심 끝이 새로 {len(s['끝'])}개 생긴다(관심 중 {n_live_now}개) — 아무것도 안 씀. "
+              f"맞으면 `--yes`를 붙여 다시 돌린다:")
+        for n in s["끝"]:
+            print(f"  - {n}")
+        if failed:
+            print(f"  (매칭 실패 {len(failed)}건: " + ", ".join(failed) + ")")
+        sys.exit(2)
 
     import backfill_watchlist_from_holdings as bf
     try:
@@ -92,6 +105,8 @@ def main():
         print(f"  ↺ {n}  (다시 들어옴 — 관심 끝이었던 날 {s['다시_기간'][n]}부터)")
     for n in s["보유경고"]:
         print(f"  ! {n}  (새 목록에 없지만 보유 중 — 관심 끝 안 붙임)")
+    for n in s["실패유지"]:
+        print(f"  ? {n}  (이름 매칭 실패 — 지금 목록과 같은 이름이라 관심 끝 안 붙이고 유지)")
     if renamed:
         print(f"\n이름이 정정된 종목 {len(renamed)}건:")
         for orig, fixed in renamed:
