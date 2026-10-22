@@ -24,7 +24,7 @@ from portfolio_core import (
     cumulative_price_change_map,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     compute_link_candidates, load_link_watch_log, link_watch_status, fetch_quotes,
-    never_bought_names,
+    never_bought_names, drop_ended, ended_watch_names,
     load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
     load_claude_notes, seed_engine_series, compute_fa_win_rate, blended_benchmark_cum,
@@ -409,6 +409,10 @@ def refresh_updown_data(holdings, tx) -> None:
     """Up/Down "새로고침" 버튼과 완전히 같은 로직 — 모듈 최상위 함수로 빼서 app.py의
     "Setting"(전체 새로고침, §6-33)도 그대로 재사용할 수 있게 함. 로직 복제 금지 원칙."""
     closed = get_closed_out_last_sells(holdings, tx)
+    # 관심 끝 종목은 Up/Down에서 뺀다(트래킹 카드는 그대로 — 대표 2026-10-22 (나))
+    _ended = ended_watch_names()
+    if _ended and not closed.empty:
+        closed = closed[~closed["종목명"].isin(_ended)]
     results = []
     if not closed.empty:
         prices = get_current_prices_for_names(closed["종목명"].tolist())
@@ -443,7 +447,7 @@ def refresh_fishing_data() -> list:
     if watchlist.empty:
         return []
     prices_df, quote_errors = refresh_watchlist_prices(watchlist, sb_url, sb_key)
-    hist_df = load_watchlist_history_db(sb_url, sb_key)
+    hist_df = drop_ended(load_watchlist_history_db(sb_url, sb_key))   # 관심 끝은 패널에서 숨김
     st.session_state["fishing_prices"] = prices_df
     st.session_state["fishing_hist"] = hist_df
     save_ui_cache_df("fishing_prices", prices_df)
@@ -457,9 +461,10 @@ def refresh_flow_data() -> None:
     실시간가를 한 번에 갱신하고 §6-31 로컬 캐시에도 저장한다."""
     sb_secrets = st.secrets.get("supabase", {})
     sb_url, sb_key = sb_secrets.get("url", ""), sb_secrets.get("anon_key", "")
-    st.session_state["flow_hist"] = load_investor_flow_db(sb_url, sb_key)
+    # 관심 끝 종목은 Foreigner·Link·Basecamp·Quiet Hands 모집단에서 숨김(자료는 DB에 계속 쌓임, 2026-10-22 대표)
+    st.session_state["flow_hist"] = drop_ended(load_investor_flow_db(sb_url, sb_key))
     st.session_state["market_hist"] = load_market_flow_db(sb_url, sb_key)
-    _ph = load_watchlist_history_db(sb_url, sb_key)
+    _ph = drop_ended(load_watchlist_history_db(sb_url, sb_key))
     st.session_state["price_hist_flow"] = _ph
     _codes = _ph["종목코드"].unique().tolist() if not _ph.empty else []
     _quotes, _ = fetch_quotes(_codes) if _codes else ({}, [])

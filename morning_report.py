@@ -218,6 +218,9 @@ def build(data, link_res):
     # @뇌 updown_후보
     # B. Up/Down 재진입 후보 — 마지막 매도가 대비 많이 빠진 순
     closed = core.get_closed_out_last_sells(h, tx)
+    _ended = core.ended_watch_names()   # 관심 끝 종목은 Up/Down에서 뺀다(대표 2026-10-22 (나))
+    if _ended and not closed.empty:
+        closed = closed[~closed["종목명"].isin(_ended)]
     need = [name2code.get(n) for n in closed["종목명"] if name2code.get(n) and name2code.get(n) not in live]
     if need:
         q3, _ = core.fetch_quotes([c for c in need if c])

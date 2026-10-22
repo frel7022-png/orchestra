@@ -38,8 +38,15 @@ def fetch_all(table, select, **params):
         off += 1000
 
 
-watch = {w["stock_code"]: w["stock_name"] for w in fetch_all("watchlist", "stock_code,stock_name")}
-print(f"watchlist {len(watch)}종목")
+try:
+    _wl = fetch_all("watchlist", "stock_code,stock_name,ended_on")
+except requests.HTTPError:   # ended_on 칸이 아직 없으면(마이그레이션 전) 예전처럼
+    _wl = fetch_all("watchlist", "stock_code,stock_name")
+watch = {w["stock_code"]: w["stock_name"] for w in _wl}
+ended = {w["stock_code"]: w["ended_on"] for w in _wl if w.get("ended_on")}
+# 관심 끝 종목도 cron이 계속 쌓는다(대표 2026-10-22 (가) ⓐ) — 그래서 분모는 전체. 관심 끝은 꼬리표로만.
+print(f"watchlist {len(watch)}종목 (관심 중 {len(watch) - len(ended)} · 관심 끝 {len(ended)})"
+      + ("" if not ended else " — 관심 끝: " + ", ".join(f"{watch[c]}(관심 끝 {d})" for c, d in sorted(ended.items()))))
 
 from datetime import date, timedelta
 _from = (date.today() - timedelta(days=DAYS * 3 + 10)).isoformat()
@@ -58,7 +65,8 @@ for table in ("price_history", "investor_flow"):
     for code in sorted(set(watch) - have):
         last = requests.get(f"{URL}/rest/v1/{table}", params={"select": "trade_date", "stock_code": f"eq.{code}",
                             "order": "trade_date.desc", "limit": "1"}, headers=H, timeout=20).json()
-        print(f"  빠짐({latest}): {watch[code]}({code}) 마지막 적재 {last[0]['trade_date'] if last else '없음'}")
+        tag = f" (관심 끝 {ended[code]})" if code in ended else ""
+        print(f"  빠짐({latest}): {watch[code]}({code}){tag} 마지막 적재 {last[0]['trade_date'] if last else '없음'}")
 
 mf = fetch_all("market_flow", "market,trade_date,volume,foreign_net", trade_date=f"gte.{since}")
 print("\n[market_flow]")

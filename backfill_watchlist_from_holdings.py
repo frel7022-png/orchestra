@@ -66,8 +66,18 @@ def main():
     }
 
     holdings = core.load_holdings()
-    watchlist = core.load_watchlist()
+    watchlist = core.load_watchlist(include_ended=True)   # 관심 끝 줄도 지우지 않게 전부 읽는다
     tx = core.load_transactions()
+
+    # 보유 = 관심 중 — 관심 끝인데 보유 중이면 관심끝을 비운다(csv + Supabase ended_on = null). 자료는 계속 쌓여 있어 백필 불필요.
+    ended_held = watchlist[(watchlist["관심끝"].astype(str).str.strip() != "") & watchlist["종목코드"].isin(holdings["종목코드"])]
+    if not ended_held.empty:
+        sb_rows = [{"user_id": PLACEHOLDER_USER_ID, "stock_code": r["종목코드"], "stock_name": r["종목명"],
+                    "sector": r["섹터"], "ended_on": None} for _, r in ended_held.iterrows()]
+        upsert(sb_url, headers, "watchlist", sb_rows, "user_id,stock_code")
+        watchlist.loc[ended_held.index, "관심끝"] = ""
+        core.save_watchlist(watchlist[["종목명", "종목코드", "관심끝"]].to_dict("records"))
+        print(f"[관심 다시] 보유 중인 관심 끝 종목 {len(ended_held)}개 — 관심끝 비움: " + ", ".join(ended_held["종목명"]))
 
     missing = holdings[(~holdings["종목코드"].isin(watchlist["종목코드"])) & (holdings["종목코드"] != "")]
     if missing.empty:
@@ -126,8 +136,8 @@ def main():
         print(f"[완료] Supabase watchlist에 {n}건 추가")
 
         merged = pd.concat(
-            [watchlist[["종목명", "종목코드"]],
-             pd.DataFrame(new_watchlist_rows)[["종목명", "종목코드"]]],
+            [watchlist[["종목명", "종목코드", "관심끝"]],
+             pd.DataFrame(new_watchlist_rows)[["종목명", "종목코드"]].assign(관심끝="")],
             ignore_index=True)
         core.save_watchlist(merged.to_dict("records"))
         print(f"[완료] 로컬 watchlist.csv에 {len(new_watchlist_rows)}건 추가 (총 {len(merged)}개)")

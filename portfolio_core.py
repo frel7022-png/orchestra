@@ -790,22 +790,88 @@ def match_stock_name(query: str) -> dict | None:
 # ------------------------------------------------------------------ #
 # "Fishing" 관심종목 리스트 — 보유/거래와 무관, 순수 관찰용
 # ------------------------------------------------------------------ #
-def load_watchlist() -> pd.DataFrame:
+def load_watchlist(include_ended: bool = False) -> pd.DataFrame:
+    """관심종목. 기본은 **관심 중**인 것만(`관심끝` 빈칸) — 끝난 종목은 앱 패널·리포트 모집단에서 빠진다
+    (2026-10-22 대표 승인, 스펙_관심끝_표시). 이름→코드 조회처럼 끝난 것도 필요하면 include_ended=True.
+    반환 칸: 종목명·종목코드·섹터·관심끝(끝낸 날 YYYY-MM-DD, 관심 중이면 "")."""
+    cols = ["종목명", "종목코드", "섹터", "관심끝"]
     if WATCHLIST_FILE.exists():
         df = pd.read_csv(WATCHLIST_FILE, dtype=str, keep_default_na=False)
-        for col in ("종목명", "종목코드"):
+        for col in ("종목명", "종목코드", "관심끝"):
             if col not in df.columns:
                 df[col] = ""
         sector_cache = load_sector_cache()
         df["섹터"] = df["종목명"].map(sector_cache).fillna("기타2")
-        return df[["종목명", "종목코드", "섹터"]]
-    return pd.DataFrame(columns=["종목명", "종목코드", "섹터"])
+        if not include_ended:
+            df = df[df["관심끝"].astype(str).str.strip() == ""]
+        return df[cols].reset_index(drop=True)
+    return pd.DataFrame(columns=cols)
+
+
+def ended_watch_codes() -> set[str]:
+    """관심 끝 종목코드 — Supabase에서 읽은 자료(Foreigner·Link·Basecamp·QH·리포트)를 패널 모집단에서 뺄 때.
+    자료(price_history·investor_flow)는 계속 쌓는다(대표 (가) ⓐ)."""
+    df = load_watchlist(include_ended=True)
+    return set(df.loc[df["관심끝"].astype(str).str.strip() != "", "종목코드"].astype(str))
+
+
+def ended_watch_names() -> set[str]:
+    """관심 끝 종목명 — 이름으로만 다니는 목록(Up/Down 매도 종목 등)에서 뺄 때."""
+    df = load_watchlist(include_ended=True)
+    return set(df.loc[df["관심끝"].astype(str).str.strip() != "", "종목명"].astype(str))
+
+
+def drop_ended(df: pd.DataFrame, code_col: str = "종목코드") -> pd.DataFrame:
+    """패널·리포트 모집단에서 관심 끝 종목 행을 뺀다(df가 비었거나 칸이 없으면 그대로)."""
+    if df is None or df.empty or code_col not in df.columns:
+        return df
+    ended = ended_watch_codes()
+    return df[~df[code_col].astype(str).isin(ended)] if ended else df
 
 
 def save_watchlist(names_codes: list[dict]) -> None:
-    """names_codes: [{"종목명": ..., "종목코드": ...}, ...]. 섹터는 저장 안 함(캐시에서 매번 조회)."""
-    pd.DataFrame(names_codes, columns=["종목명", "종목코드"]).drop_duplicates("종목명").to_csv(
-        WATCHLIST_FILE, index=False)
+    """names_codes: [{"종목명": ..., "종목코드": ..., "관심끝": "" | "YYYY-MM-DD"}, ...].
+    섹터는 저장 안 함(캐시에서 매번 조회). 관심끝이 없으면 빈칸(관심 중)."""
+    df = pd.DataFrame(names_codes)
+    for col in ("종목명", "종목코드", "관심끝"):
+        if col not in df.columns:
+            df[col] = ""
+    df["관심끝"] = df["관심끝"].fillna("")
+    df[["종목명", "종목코드", "관심끝"]].drop_duplicates("종목명").to_csv(WATCHLIST_FILE, index=False)
+
+
+def merge_watchlist(current: pd.DataFrame, matched: list[dict], held_names: set[str], today: str) -> tuple[list[dict], dict]:
+    """새 관심종목 목록(matched)을 지금 목록(current, include_ended=True)에 합친다 — 통째로 교체하지 않는다.
+    - 새 목록에 있고 지금 없음 → 새로 들어옴
+    - 지금 관심 중인데 새 목록에 없음 → 관심 끝(관심끝 = today), 줄은 남김. 단 **보유 중**이면 안 붙이고 경고
+    - 관심 끝인데 새 목록에 다시 있음 → 다시 들어옴(관심끝 비움)
+    반환: (저장할 행들, 요약 dict{새로, 끝, 다시, 보유경고, 다시_기간})."""
+    new_by_code = {str(m["종목코드"]): m for m in matched}
+    rows, summary = [], {"새로": [], "끝": [], "다시": [], "보유경고": [], "다시_기간": {}}
+    seen = set()
+    for _, r in current.iterrows():
+        code, name = str(r["종목코드"]), str(r["종목명"])
+        ended = str(r.get("관심끝", "") or "").strip()
+        seen.add(code)
+        if code in new_by_code:
+            m = new_by_code[code]
+            if ended:
+                summary["다시"].append(m["종목명"])
+                summary["다시_기간"][m["종목명"]] = ended
+            rows.append({"종목명": m["종목명"], "종목코드": code, "관심끝": ""})
+        elif not ended and name in held_names:
+            summary["보유경고"].append(name)
+            rows.append({"종목명": name, "종목코드": code, "관심끝": ""})
+        elif not ended:
+            summary["끝"].append(name)
+            rows.append({"종목명": name, "종목코드": code, "관심끝": today})
+        else:
+            rows.append({"종목명": name, "종목코드": code, "관심끝": ended})
+    for code, m in new_by_code.items():
+        if code not in seen:
+            summary["새로"].append(m["종목명"])
+            rows.append({"종목명": m["종목명"], "종목코드": code, "관심끝": ""})
+    return rows, summary
 
 
 WATCHLIST_PRICE_COLUMNS = ["종목명", "종목코드", "최초가", "최근가", "최근조회일시", "전일대비", "기준일"]

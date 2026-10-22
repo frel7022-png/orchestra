@@ -2353,3 +2353,34 @@ def test_watering_card_state_green_band_and_blue_at_first_entry():
     assert watering_card_state(3, 1000, 994, 1200) is None
     # 최초진입가 도달 = 파랑
     assert watering_card_state(2, 1000, 1200, 1200) == "blue"
+
+
+# ------------------------------------------------------------------ #
+# 관심 끝 표시 (2026-10-22 대표 승인, 스펙_관심끝_표시)
+# ------------------------------------------------------------------ #
+def test_merge_watchlist_new_ended_reopened_and_held_warning():
+    cur = pd.DataFrame([
+        {"종목명": "A", "종목코드": "1", "관심끝": ""},          # 새 목록에 그대로
+        {"종목명": "B", "종목코드": "2", "관심끝": ""},          # 빠짐 → 관심 끝
+        {"종목명": "C", "종목코드": "3", "관심끝": "2026-10-01"},  # 끝났다가 다시 들어옴
+        {"종목명": "D", "종목코드": "4", "관심끝": ""},          # 빠졌지만 보유 중 → 경고, 끝 안 붙임
+        {"종목명": "E", "종목코드": "5", "관심끝": "2026-10-02"},  # 끝난 채 그대로
+    ])
+    matched = [{"종목명": "A", "종목코드": "1"}, {"종목명": "C", "종목코드": "3"}, {"종목명": "F", "종목코드": "6"}]
+    rows, s = core.merge_watchlist(cur, matched, {"D"}, "2026-10-22")
+    by = {r["종목명"]: r["관심끝"] for r in rows}
+    assert by == {"A": "", "B": "2026-10-22", "C": "", "D": "", "E": "2026-10-02", "F": ""}
+    assert s["새로"] == ["F"] and s["끝"] == ["B"] and s["다시"] == ["C"] and s["보유경고"] == ["D"]
+    assert s["다시_기간"]["C"] == "2026-10-01"
+
+
+def test_load_watchlist_hides_ended_by_default(tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "WATCHLIST_FILE", tmp_path / "watchlist.csv")
+    monkeypatch.setattr(core, "load_sector_cache", lambda: {})
+    core.save_watchlist([{"종목명": "A", "종목코드": "000001"}, {"종목명": "B", "종목코드": "000002", "관심끝": "2026-10-22"}])
+    assert core.load_watchlist()["종목명"].tolist() == ["A"]
+    allw = core.load_watchlist(include_ended=True)
+    assert allw["종목명"].tolist() == ["A", "B"] and allw["종목코드"].tolist() == ["000001", "000002"]
+    assert core.ended_watch_codes() == {"000002"} and core.ended_watch_names() == {"B"}
+    df = pd.DataFrame({"종목코드": ["000001", "000002"], "x": [1, 2]})
+    assert core.drop_ended(df)["종목코드"].tolist() == ["000001"]

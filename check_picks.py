@@ -37,7 +37,7 @@ def classify(s: dict) -> tuple[str, str]:
 
 
 def main(names):
-    data = link.load_data()
+    data = link.load_data(drop_ended=False)
     ph, fh, live = data["ph"], data["fh"], data["live"]
     cand = core.compute_link_candidates(ph, fh, live_quotes=live)
     stats = link.compute_stats(cand, fh)

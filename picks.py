@@ -64,7 +64,8 @@ def load_log() -> pd.DataFrame:
 
 
 def _name2code() -> dict:
-    m = dict(zip(core.load_watchlist()["종목명"], core.load_watchlist()["종목코드"].astype(str)))
+    _wl = core.load_watchlist(include_ended=True)   # 이름→코드 조회는 관심 끝 종목도
+    m = dict(zip(_wl["종목명"], _wl["종목코드"].astype(str)))
     h = core.load_holdings()
     m.update(dict(zip(h["종목명"], h["종목코드"].astype(str))))
     return m
@@ -191,7 +192,7 @@ def _universe(data: dict | None) -> tuple[dict, dict]:
     """관심종목 확정 종가 {코드: {날짜: 종가}}와 실시간가 {코드: 가격}. data = daily_link_report.load_data() 결과."""
     if data is None:
         import daily_link_report as link
-        data = link.load_data()
+        data = link.load_data(drop_ended=False)
     ph = data["ph"]
     closes = {str(c): dict(zip(g["날짜"], pd.to_numeric(g["종가"], errors="coerce")))
               for c, g in ph.groupby(ph["종목코드"].astype(str))}

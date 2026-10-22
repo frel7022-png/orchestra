@@ -10,7 +10,10 @@ CSV는 종목명이 담긴 열 하나(헤더 이름 무관, 첫 번째 열을 �
 하는 일:
     1. 각 종목명을 네이버 자동완성 검색으로 정정/코드 매칭한다(오탈자 대응, portfolio_core.
        match_stock_name 참고) — "오또기"→"오뚜기", "동진세미컴"→"동진쎄미켐" 같은 경우 처리.
-    2. 정정된 이름/코드를 watchlist.csv에 저장한다(기존 내용은 이번 파일로 통째로 교체).
+    2. 지금 목록에 **합친다**(통째로 교체하지 않음 — 2026-10-22 대표 승인, 스펙_관심끝_표시):
+       새로 들어옴 / 빠진 종목은 줄을 남기고 `관심끝 = 오늘` / 끝났던 종목이 다시 오면 관심끝 비움 /
+       보유 중인 종목은 빠져도 관심 끝을 안 붙이고 경고. 같은 내용을 **Supabase watchlist에도**(ended_on)
+       — Supabase 쓰기가 실패하면 csv도 안 쓰고 멈춘다(두 벌이 갈리지 않게).
     3. 매칭 결과 요약을 출력한다 — 이름이 바뀐 경우와, 확신이 안 서서 실패한 경우를 각각
        보여주니 실패 목록은 사람이 직접 확인해서 watchlist.csv를 손으로 보정할 것.
 
@@ -60,9 +63,35 @@ def main():
         if result["name"] != name:
             renamed.append((name, result["name"]))
 
-    core.save_watchlist(matched)
+    current = core.load_watchlist(include_ended=True)
+    held = set(core.load_holdings()["종목명"].astype(str))
+    rows, s = core.merge_watchlist(current, matched, held, core.today_kst_str())
 
-    print(f"[완료] {len(matched)}개 매칭 성공, {len(failed)}개 실패")
+    import backfill_watchlist_from_holdings as bf
+    try:
+        sb_url, sb_key = bf.load_supabase_credentials()
+        headers = {"apikey": sb_key, "Authorization": f"Bearer {sb_key}",
+                   "Content-Type": "application/json", "Prefer": "return=representation,resolution=merge-duplicates"}
+        sector = core.load_sector_cache()
+        sb_rows = [{"user_id": bf.PLACEHOLDER_USER_ID, "stock_code": r["종목코드"], "stock_name": r["종목명"],
+                    "sector": sector.get(r["종목명"], "기타2"), "ended_on": r["관심끝"] or None} for r in rows]
+        bf.upsert(sb_url, headers, "watchlist", sb_rows, "user_id,stock_code")
+    except Exception as e:
+        print(f"[멈춤] Supabase watchlist 쓰기 실패 — csv도 안 바꿈(두 벌이 갈리지 않게): {e}")
+        sys.exit(1)
+    core.save_watchlist(rows)
+
+    n_live = sum(1 for r in rows if not r["관심끝"])
+    print(f"[완료] {len(matched)}개 매칭 성공, {len(failed)}개 실패 · 관심 중 {n_live} · 관심 끝 {len(rows) - n_live}")
+    print(f"  새로 들어옴 {len(s['새로'])} · 관심 끝 {len(s['끝'])} · 다시 들어옴 {len(s['다시'])}")
+    for n in s["새로"]:
+        print(f"  + {n}")
+    for n in s["끝"]:
+        print(f"  - {n}  (관심 끝)")
+    for n in s["다시"]:
+        print(f"  ↺ {n}  (다시 들어옴 — 관심 끝이었던 날 {s['다시_기간'][n]}부터)")
+    for n in s["보유경고"]:
+        print(f"  ! {n}  (새 목록에 없지만 보유 중 — 관심 끝 안 붙임)")
     if renamed:
         print(f"\n이름이 정정된 종목 {len(renamed)}건:")
         for orig, fixed in renamed:

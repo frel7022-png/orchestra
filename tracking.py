@@ -101,7 +101,7 @@ def update(data: dict | None = None) -> pd.DataFrame:
         return log
     if data is None:
         import daily_link_report as link
-        data = link.load_data()
+        data = link.load_data(drop_ended=False)
     ph, fh, live = data["ph"], data["fh"], data["live"]
     closes, now = picks.bench_levels(live=True)
     wk = picks._wk()

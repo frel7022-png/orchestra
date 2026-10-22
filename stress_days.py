@@ -45,7 +45,7 @@ def build(data: dict | None = None):
     days = bd[bd <= CUT]
     if data is None:
         import daily_link_report as link
-        data = link.load_data()
+        data = link.load_data(drop_ended=False)
     ph, fh, live = data["ph"], data["fh"], data["live"]
     px = ph.pivot_table(index="날짜", columns="종목코드", values="종가").sort_index()
     names = ph.drop_duplicates("종목코드", keep="last").set_index("종목코드")["종목명"]

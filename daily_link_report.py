@@ -209,13 +209,18 @@ def compute_stats(cand: pd.DataFrame, fh: pd.DataFrame) -> dict:
     return stats
 
 
-def load_data() -> dict:
-    """세 아침 리포트(액션/외인 샘플/CFG)가 같은 데이터를 쓰도록 한 번만 불러온다."""
+def load_data(drop_ended: bool = True) -> dict:
+    """세 아침 리포트(액션/외인 샘플/CFG)가 같은 데이터를 쓰도록 한 번만 불러온다.
+    drop_ended=True(기본) = 관심 끝 종목을 리포트 모집단에서 뺀다(자료는 DB에 계속 쌓임, 2026-10-22 대표).
+    추천 채점(picks)·트래킹·폭락일처럼 **기록 순간 고정**·"관심종목 평균"을 쓰는 곳은 False — 끝난 종목을 빼면
+    지난 회차의 관심종목 평균이 바뀌기 때문."""
     today = datetime.now(core.KST).strftime("%Y-%m-%d")
     sec = tomllib.load(open(HERE / ".streamlit/secrets.toml", "rb"))["supabase"]
     url, key = sec["url"], sec.get("anon_key") or sec.get("key")
     ph = core.load_watchlist_history_db(url, key)
     fh = core.load_investor_flow_db(url, key)
+    if drop_ended:
+        ph, fh = core.drop_ended(ph), core.drop_ended(fh)
     quotes, _ = core.fetch_quotes(list(ph["종목코드"].unique()))
     live = {c: v["price"] for c, v in quotes.items() if v.get("price")}
     return {"today": today, "ph": ph, "fh": fh, "quotes": quotes, "live": live,
