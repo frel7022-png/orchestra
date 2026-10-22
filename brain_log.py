@@ -110,16 +110,38 @@ def links() -> tuple[dict, dict, list]:
         out[_cell_key(p)] = hits
     inc = {k: {a for a, v in out.items() if k in v} for k in keys}
     broken = []
+    homes = _bare_homes()
     for p in sorted(BRAIN.rglob("*.md")):
         for i, ln in enumerate(p.read_text(encoding="utf-8").split("\n"), 1):
             for m in REF.finditer(ln):
                 ref = m.group(1)
                 head = ref.split("/")[0]
-                if "/" not in ref or not (head in ("..", "뇌_초안") or (BRAIN / head).is_dir()):
-                    continue   # 폴더 없는 이름(`claude.md`·`_게시판.md`)이나 도시 밖 경로(`Week/…`)는 검사 대상 아님
+                if "/" not in ref:
+                    if bare_ref_broken(ref, p, homes):
+                        broken.append((str(p.relative_to(BRAIN)), i, f"{ref} (폴더 빠짐 — 있는 곳: {', '.join(homes[ref][:2])})"))
+                    continue
+                if not (head in ("..", "뇌_초안") or (BRAIN / head).is_dir()):
+                    continue   # 도시 밖 경로(`Week/…`)는 검사 대상 아님
                 if not _resolve(ref, p).exists():
                     broken.append((str(p.relative_to(BRAIN)), i, ref))
     return out, inc, broken
+
+
+def _bare_homes() -> dict[str, list[str]]:
+    """파일 이름 → 도시 안 그 이름 파일이 있는 폴더들(게시판·ARCHIVE·HISTORY 같은 흔한 이름도 다 담는다)."""
+    homes: dict[str, list[str]] = {}
+    for q in BRAIN.rglob("*.md"):
+        homes.setdefault(q.name, []).append(str(q.parent.relative_to(BRAIN)).replace("\\", "/") or ".")
+    return homes
+
+
+def bare_ref_broken(ref: str, here: Path, homes: dict[str, list[str]]) -> bool:
+    """폴더 없이 `이름.md`만 쓴 링크가 끊겼나(2026-10-22 위크 — 길이 `외인_판단.md`처럼 다른 빌딩 파일을 이름만 적어
+    같은 폴더엔 없는데 검사기가 못 잡던 빈틈). 같은 폴더에 있으면 정상, 도시 어디에도 없는 이름(`claude.md`·Week 파일)은
+    도시 밖이라 안 본다, **도시 안 다른 폴더에만 있으면** 끊긴 것(폴더를 빠뜨림). `_게시판.md`는 빌딩마다 있어 안 본다."""
+    if ref.startswith("_") or (here.parent / ref).exists() or ref not in homes:
+        return False
+    return True
 
 
 # ---- 셀 → 코드 문 (2026-10-21 위크·새러데이 합의, 대표 "코드를 고치거나 쪼개면 문이 깨지냐") ----

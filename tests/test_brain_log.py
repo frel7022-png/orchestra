@@ -80,3 +80,15 @@ def test_oldcheck_setting_vs_code_literal(tmp_path):
     out = bl.old_setting_mismatch(s, [o])
     assert any(x.startswith("세팅 2행") for x in out) and not any(x.startswith("세팅 1행") for x in out)
     assert sum("claude.md:1" in x for x in out) == 2 and not any("claude.md:2" in x for x in out)   # 세팅 줄 둘이 각각 옛 줄 1을 잡음
+
+
+def test_bare_ref_broken_catches_missing_folder(tmp_path):
+    """폴더 없이 `이름.md`만 쓴 링크 — 같은 폴더에 있으면 정상, 도시 밖 이름은 안 봄, 다른 빌딩에만 있으면 끊김(2026-10-22)."""
+    road = tmp_path / "길"; road.mkdir()
+    here = road / "종목_분석.md"; here.write_text("", encoding="utf-8")
+    (road / "추천.md").write_text("", encoding="utf-8")
+    homes = {"외인_판단.md": ["수급"], "추천.md": ["길"], "_게시판.md": ["길", "수급"]}
+    assert bl.bare_ref_broken("외인_판단.md", here, homes) is True
+    assert bl.bare_ref_broken("추천.md", here, homes) is False
+    assert bl.bare_ref_broken("claude.md", here, homes) is False
+    assert bl.bare_ref_broken("_게시판.md", here, homes) is False
