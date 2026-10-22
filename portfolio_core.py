@@ -1197,14 +1197,19 @@ def foreign_pct_change_since(flow_hist: pd.DataFrame, name: str, since_date: str
     마지막 매도일, Fishing 기준일 등)를 받는다. investor_flow(flow_hist) 커버리지가 since_date
     보다 늦게 시작하면(그 종목이 나중에 편입돼 cron이 늦게 붙은 경우 등) since_date 이후 가장
     이른 값으로 대체한다 — "그 이전엔 관측치가 없으니 있는 것 중 제일 앞선 값을 쓴다"는 Fishing
-    최초가와 같은 원칙. 데이터 자체가 없으면 None."""
+    최초가와 같은 원칙. 데이터 자체가 없으면 None.
+    since_date **이후** 관측치가 하나도 없으면(오늘 판 종목인데 investor_flow는 T−1까지뿐 등) None —
+    예전엔 그 종목의 가장 이른 값으로 미끄러져 전 기간 변화를 "그날 이후 변화"처럼 보였다
+    (Q-27, 대표 2026-10-22 9-0 ② ⓐ)."""
     if flow_hist is None or flow_hist.empty:
         return None
     g = flow_hist[flow_hist["종목명"] == name].sort_values("날짜")
     if g.empty:
         return None
     on_or_after = g[g["날짜"] >= since_date]
-    base_row = on_or_after.iloc[0] if not on_or_after.empty else g.iloc[0]
+    if on_or_after.empty:
+        return None
+    base_row = on_or_after.iloc[0]
     cur_row = g.iloc[-1]
     try:
         return float(cur_row["외국인보유율"]) - float(base_row["외국인보유율"])
@@ -2289,7 +2294,8 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
     """모든 종목의 모든 사이클(진입 ~ 전량매도, 매도 안 됐으면 open)을 리스트로.
     사이클 dict: 종목, n_buy, n_sell, n_partial, first_buy_qty, first_buy_px, first_buy_date,
     close_date(전량매도된 마지막 매도일, closed=False면 None), buy_amt(Σ매수 수량×단가),
-    sell_amt(Σ매도 수량×단가), realized(Σ실현손익), closed."""
+    sell_amt(Σ매도 수량×단가), sold_cost(Σ판 물량 × 그때 평단 — apply_transaction과 같은 이동평균,
+    매도는 평단을 안 바꿈), realized(Σ실현손익), closed."""
     if tx is None or tx.empty:
         return []
     t = tx.copy()
@@ -2304,13 +2310,14 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
     for name, g in t.groupby("종목명", sort=False):
         g = g.sort_values(["날짜", "_ord"])
         qty = 0.0
+        basis = 0.0  # 남은 물량의 원가 합(이동평균)
         cur = None
         for _, r in g.iterrows():
             if cur is None:
                 cur = {"종목": name, "n_buy": 0, "n_sell": 0, "n_partial": 0,
                        "first_buy_qty": 0.0, "first_buy_px": 0.0, "first_buy_date": None,
                        "close_date": None,
-                       "buy_amt": 0.0, "sell_amt": 0.0, "realized": 0.0, "closed": False}
+                       "buy_amt": 0.0, "sell_amt": 0.0, "sold_cost": 0.0, "realized": 0.0, "closed": False}
             if r["구분"] == "매수":
                 if cur["n_buy"] == 0:
                     cur["first_buy_qty"], cur["first_buy_px"] = float(r["수량"]), float(r["단가"])
@@ -2318,16 +2325,21 @@ def _all_cycles(tx: pd.DataFrame) -> list[dict]:
                 cur["n_buy"] += 1
                 cur["buy_amt"] += r["수량"] * r["단가"]
                 qty += r["수량"]
+                basis += r["수량"] * r["단가"]
             elif r["구분"] == "매도":
                 cur["n_sell"] += 1
                 cur["sell_amt"] += r["수량"] * r["단가"]
                 cur["realized"] += r["실현손익"]
+                avg = basis / qty if qty > 1e-9 else 0.0
+                sold = min(r["수량"], qty) if qty > 1e-9 else 0.0
+                cur["sold_cost"] += avg * sold
+                basis -= avg * sold
                 qty -= r["수량"]
                 if qty <= 1e-9:
                     cur["closed"] = True
                     cur["close_date"] = r["날짜"]
                     out.append(cur)
-                    cur, qty = None, 0.0
+                    cur, qty, basis = None, 0.0, 0.0
                 else:
                     cur["n_partial"] += 1
         if cur is not None:
@@ -2527,7 +2539,9 @@ def compute_pnl_actions(tx: pd.DataFrame, holdings: pd.DataFrame) -> dict:
     def _bk(name):
         d = [c for c in cycles if c["bucket"] == name]
         r = sum(c["realized"] for c in d)
-        amt = [(c["sell_amt"] if name == "MO" else c["buy_amt"]) for c in d]
+        # 분모: FA·MA = 매수액, MO = **판 물량의 원가 합**(Q-12, 대표 10-22 9-0 ⑤ ⓐ "원가" —
+        # 예전 매도금액 기준은 이익 매도마다 수익률이 1%p 안팎 작게 나왔다)
+        amt = [(c["sold_cost"] if name == "MO" else c["buy_amt"]) for c in d]
         pcts = [c["realized"] / a * 100.0 for c, a in zip(d, amt) if a]
         return {
             "realized": r, "pct": (r / total * 100.0) if total else 0.0,

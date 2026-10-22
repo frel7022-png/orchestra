@@ -1594,6 +1594,9 @@ def test_pnl_actions_buckets_and_watering():
     assert r["baskets"]["MO"]["realized"] == pytest.approx(120)          # C 50 + D 70
     assert r["baskets"]["MO"]["n_cycle"] == 2
     assert (r["baskets"]["MO"]["closed"], r["baskets"]["MO"]["open"]) == (1, 1)  # D 매도, C 진행
+    # Q-12: MO 분모 = 판 물량의 원가 합 — C 4주×100 = 400, D 10주×100 = 1000 (매도금액 480·1125가 아님)
+    assert r["baskets"]["MO"]["amt_total"] == pytest.approx(1400)
+    assert r["baskets"]["MO"]["avg_pct"] == pytest.approx((50 / 400 + 70 / 1000) / 2 * 100)
     st = r["status"]
     assert st["n_total"] == 5
     assert st["FA"] == (1, 5) and st["MA"] == (1, 5) and st["MO"] == (2, 5)
@@ -1925,6 +1928,28 @@ def test_foreign_pct_change_since_falls_back_to_earliest_when_since_date_precede
     ])
     # since_date(8/1)가 DB 커버리지 시작(8/25)보다 이르면 가장 이른 값(8/25)을 기준으로
     assert core.foreign_pct_change_since(flow, "A", "2026-08-01") == pytest.approx(2.0)
+
+
+def test_all_cycles_sold_cost_uses_moving_average_like_apply_transaction():
+    # 10주@100 매수 → 5주 매도(원가 500) → 5주@80 물타기(평단 (500+400)/10 = 90) → 10주 매도(원가 900)
+    tx = pd.DataFrame([
+        _tx_row("a1", "2026-01-05", "A", "매수", 10, 100),
+        _tx_row("a2", "2026-01-06", "A", "매도", 5, 120, 실현손익=100),
+        _tx_row("a3", "2026-01-07", "A", "매수", 5, 80),
+        _tx_row("a4", "2026-01-08", "A", "매도", 10, 95, 실현손익=50),
+    ])
+    (c,) = core._all_cycles(tx)
+    assert c["closed"] and c["sold_cost"] == pytest.approx(1400)
+
+
+def test_foreign_pct_change_since_returns_none_when_since_date_after_all_data():
+    # Q-27: 오늘 판 종목(since_date=9/02)인데 외인 자료는 9/01까지 — 가장 이른 값(8/25)으로
+    # 미끄러져 +2.0을 내면 안 된다. 그날 이후 자료가 없으면 None.
+    flow = pd.DataFrame([
+        {"종목명": "A", "날짜": "2026-08-25", "외국인보유율": 12.0},
+        {"종목명": "A", "날짜": "2026-09-01", "외국인보유율": 14.0},
+    ])
+    assert core.foreign_pct_change_since(flow, "A", "2026-09-02") is None
 
 
 def test_foreign_pct_change_since_returns_none_when_no_data():

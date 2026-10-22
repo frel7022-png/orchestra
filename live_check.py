@@ -69,6 +69,10 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
     codes = h["종목코드"].astype(str)
     if quotes is None:
         quotes, _ = core.fetch_quotes(codes.tolist())
+    # 시세를 못 받은 종목은 표시가 = portfolio_data 현재가, 등락 = 0으로 채우되(합계가 안 깨지게)
+    # **조용히 0으로 섞지 않고** 목록으로 돌려준다 — 예전엔 실패 종목이 '보합'으로 세어졌다(Q-28, 대표 10-22 9-0 ③ ⓐ).
+    got = codes.map(lambda c: (quotes.get(c) or {}).get("change_pct") is not None)
+    failed = h.loc[~got.values, "종목명"].astype(str).tolist()
     px = codes.map(lambda c: (quotes.get(c) or {}).get("price")).fillna(h["현재가"]).astype(float)
     chg = codes.map(lambda c: (quotes.get(c) or {}).get("change_pct")).fillna(0).astype(float)
     qty = pd.to_numeric(h["수량"])
@@ -104,7 +108,8 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
             if tot_d - cash > 0:
                 stock_cum = (1 + float(me["주식수익"].iloc[-1])) * (float(val.sum()) / (tot_d - cash)) - 1
 
-    t = h.assign(등락=chg).sort_values("등락")
+    t = h.assign(등락=chg)[got.values].sort_values("등락")
+    ok_chg = chg[got.values]
     return {
         "asof": now.strftime("%Y-%m-%d %H:%M"), "holdings_asof": str(ah["날짜"].max()), "anchor": anchor,
         "kospi": iq["KOSPI"], "kosdaq": iq["KOSDAQ"], "wk": wk,
@@ -112,7 +117,8 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
         "acct": (acct_cum, tot / tot_prev - 1), "acct_won": tot - tot_prev,
         "stock": (stock_cum, float(val.sum()) / float(prev.sum()) - 1),
         "total": tot, "initial": st["initial"], "cash": cash, "eval_pl": float(val.sum() - cost.sum()),
-        "n": len(h), "n_up": int((chg > 0).sum()), "n_down": int((chg < 0).sum()), "n_flat": int((chg == 0).sum()),
+        "n": len(h), "n_up": int((ok_chg > 0).sum()), "n_down": int((ok_chg < 0).sum()),
+        "n_flat": int((ok_chg == 0).sum()), "quote_failed": failed,
         "idx": idx, "bigdf": bigdf, "me": me, "today": today, "cal_today": cal_today, "closed": closed,
         "basis": basis_label(now, cal_today, today, closed), "holdings": h, "px": px, "chg": chg,
         "worst": [(r.종목명, r.등락) for r in t.head(6).itertuples()],
@@ -123,6 +129,9 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
 def main():
     s = live_snapshot()
     pct = lambda v: "-" if v is None else f"{v * 100:+.2f}%"
+    if s["quote_failed"]:
+        print(f"[⚠ 시세 실패 {len(s['quote_failed'])}종목 — 등락 0·표시가는 마지막 저장가로 채움, 상승/하락/보합 수에서 뺌] "
+              + ", ".join(s["quote_failed"]))
     print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 보유 = 매매일지 {s['holdings_asof']} 반영분")
     print(f"코스피 {s['kospi']['change_pct']:+.2f}% ({s['kospi']['price']:,.2f}) · "
           f"코스닥 {s['kosdaq']['change_pct']:+.2f}% ({s['kosdaq']['price']:,.2f})")
@@ -132,7 +141,8 @@ def main():
     print(f"내 계좌 당일 {pct(s['acct'][1])} ({s['acct_won']:+,.0f}원) · 누적 {pct(s['acct'][0])}")
     print(f"총자산 {s['total']:,.0f}원 · 최초자본 대비 {pct(s['total'] / s['initial'] - 1)} · "
           f"예수금 {s['cash']:,.0f}원 ({s['cash'] / s['total'] * 100:.1f}%) · 평가손익 {s['eval_pl']:+,.0f}원")
-    print(f"보유 {s['n']}종목: 상승 {s['n_up']} · 하락 {s['n_down']} · 보합 {s['n_flat']}")
+    print(f"보유 {s['n']}종목: 상승 {s['n_up']} · 하락 {s['n_down']} · 보합 {s['n_flat']}"
+          + (f" · 시세 실패 {len(s['quote_failed'])}" if s["quote_failed"] else ""))
     print("많이 빠진: " + ", ".join(f"{n} {v:+.1f}%" for n, v in s["worst"]))
     print("많이 오른: " + ", ".join(f"{n} {v:+.1f}%" for n, v in s["best"]))
 
