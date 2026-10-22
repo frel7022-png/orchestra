@@ -91,6 +91,11 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
 
     cash = st["cash"]
     tot, tot_prev = float(val.sum()) + cash, float(prev.sum()) + cash
+    # 당일(내 주식·내 계좌 %·원)은 시세를 받은 종목만으로 잰다 — 실패 종목(등락 0 채움)이 분모에 남아
+    # 당일 %를 묽게 하지 않게(Q-28, 0930 보고서 ⓐ "당일 계산에서 뺌"). 총자산·누적은 전체 그대로.
+    val_ok, prev_ok = float(val[got.values].sum()), float(prev[got.values].sum())
+    day_stock = val_ok / prev_ok - 1 if prev_ok else 0.0   # 전부 실패면 0(첫 줄 경고가 대신 말함)
+    day_acct = (val_ok + cash) / (prev_ok + cash) - 1 if prev_ok + cash else 0.0
 
     # 계좌·주식 누적: 앱과 같은 정의(compute_index_vs_account의 마지막 스냅샷) × 그 스냅샷 이후 실시간 변화.
     # 마지막 스냅샷 = 마지막 매매일지 반영일이라 그 뒤로 보유·예수금 흐름이 없다.
@@ -114,8 +119,8 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
         "asof": now.strftime("%Y-%m-%d %H:%M"), "holdings_asof": str(ah["날짜"].max()), "anchor": anchor,
         "kospi": iq["KOSPI"], "kosdaq": iq["KOSDAQ"], "wk": wk,
         "ex": blend(core.synthetic_kospi_ex_bigcap(idx, bigdf)), "main": blend(idx),
-        "acct": (acct_cum, tot / tot_prev - 1), "acct_won": tot - tot_prev,
-        "stock": (stock_cum, float(val.sum()) / float(prev.sum()) - 1),
+        "acct": (acct_cum, day_acct), "acct_won": val_ok - prev_ok,
+        "stock": (stock_cum, day_stock),
         "total": tot, "initial": st["initial"], "cash": cash, "eval_pl": float(val.sum() - cost.sum()),
         "n": len(h), "n_up": int((ok_chg > 0).sum()), "n_down": int((ok_chg < 0).sum()),
         "n_flat": int((ok_chg == 0).sum()), "quote_failed": failed,
@@ -130,7 +135,7 @@ def main():
     s = live_snapshot()
     pct = lambda v: "-" if v is None else f"{v * 100:+.2f}%"
     if s["quote_failed"]:
-        print(f"[⚠ 시세 실패 {len(s['quote_failed'])}종목 — 등락 0·표시가는 마지막 저장가로 채움, 상승/하락/보합 수에서 뺌] "
+        print(f"[⚠ 시세 실패 {len(s['quote_failed'])}종목 — 당일 %·원과 상승/하락/보합 수에서 뺌(총자산·누적엔 마지막 저장가로 들어감)] "
               + ", ".join(s["quote_failed"]))
     print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 보유 = 매매일지 {s['holdings_asof']} 반영분")
     print(f"코스피 {s['kospi']['change_pct']:+.2f}% ({s['kospi']['price']:,.2f}) · "

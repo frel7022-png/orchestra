@@ -80,7 +80,10 @@ def main() -> None:
     print(f"[오늘 매도]  {len(sell)}건 · {(sell['수량'] * sell['단가']).sum():,.0f}원 · 실현손익 합 {sell['실현손익'].sum():,.0f}원")
     for _, r in sell.sort_values("실현손익", ascending=False).iterrows():
         amt = r["수량"] * r["단가"]
-        pct = (r["실현손익"] / amt * 100) if amt else 0
+        # % = 실현 ÷ 판 물량의 원가(Q-12, 대표 10-22 9-0 ⑤ ⓐ) — 원가 = 매도금액 − 매도세 − 실현(캘린더와 같은 역산).
+        # 예전엔 실현 ÷ 매도금액이라 이익 매도마다 1%p 안팎 작게 나왔다.
+        cost = amt - amt * st.get("fee_rate", 0.0) - r["실현손익"]
+        pct = (r["실현손익"] / cost * 100) if cost else 0
         print(f"   - {r['종목명']}  {r['수량']:.0f}주 @ {r['단가']:,.0f}  실현 {r['실현손익']:,.0f}원 ({pct:+.1f}%)")
 
     print(f"\n[예수금]  {st['cash']:,.0f}원  (총자산 대비 {st['cash'] / total_assets * 100:.1f}%)")
