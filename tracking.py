@@ -144,6 +144,11 @@ def update(data: dict | None = None) -> pd.DataFrame:
                      "추적일수": max(len(pl) - 1, 0), **fs,
                      "상태": _card_state(cd["종목명"], d0, tx, closed, fs.get("외인상태", ""))})
     sm = pd.DataFrame(rows)
+    # 관심 끝 종목은 트래킹을 계속하되 이름 앞에 [관심 끝] 태그(대표 2026-10-22 "트래킹은 하지, 앞에 태그를 붙여서").
+    # 종목명 칸은 그대로 두고(카드 파일 이름·조회 키) 표시용 '표시명' 칸을 따로 둔다.
+    _ended = core.ended_watch_names()
+    if not sm.empty:
+        sm.insert(0, "표시명", ["[관심 끝] " + n if n in _ended else n for n in sm["종목명"]])
     sm.to_csv(SUMMARY, index=False, encoding="utf-8-sig")
     return sm
 
@@ -169,7 +174,7 @@ def main() -> int:
         print(r.to_string())
         print(pd.read_csv(DIR / f"{r['종목명']}_{r['종목코드']}.csv").round(2).to_string(index=False))
         return 0
-    cols = ["종목명", "픽일", "픽횟수", "픽가", "지금가", "수익%", "초과%p", "최고초과%p", "최저초과%p", "첫승까지",
+    cols = ["표시명", "픽일", "픽횟수", "픽가", "지금가", "수익%", "초과%p", "최고초과%p", "최저초과%p", "첫승까지",
             "외인픽후%p", "이탈z", "반납%", "외인상태", "상태"]
     print(sm[[c for c in cols if c in sm]].round(2).to_string(index=False))
     return 0
