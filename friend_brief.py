@@ -120,7 +120,7 @@ def period(n=5):
         print(f"데이터가 {len(idx) - 1}거래일치뿐이야")
         return
     d0 = str(idx["날짜"].iloc[-1 - n])
-    ex = core.synthetic_kospi_ex_bigcap(idx, s["bigdf"])
+    ex = core.fixed_index_levels(idx, s["bigdf"], "ex")
     wk = s["wk"]
 
     def chg(df, col):

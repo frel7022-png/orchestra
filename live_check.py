@@ -141,7 +141,7 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
     return {
         "asof": now.strftime("%Y-%m-%d %H:%M"), "holdings_asof": str(ah["날짜"].max()), "anchor": anchor,
         "kospi": iq["KOSPI"], "kosdaq": iq["KOSDAQ"], "wk": wk,
-        "ex": blend(core.synthetic_kospi_ex_bigcap(idx, bigdf), "ex"), "main": blend(idx, "main"),
+        "ex": blend(core.fixed_index_levels(idx, bigdf, "ex"), "ex"), "main": blend(idx, "main"),
         "acct": (acct_cum, day_acct), "acct_won": val_ok - prev_ok,
         "stock": (stock_cum, day_stock),
         "total": tot, "initial": st["initial"], "cash": cash, "eval_pl": float(val.sum() - cost.sum()),

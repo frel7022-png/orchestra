@@ -2999,7 +2999,8 @@ def _cash_on(cash_map: dict, date: str, initial_capital: float) -> float:
 # 혼합지수 날짜 고정 — bench_history.csv (대표 2026-10-22 "과거 혼합지수는 픽스야 … 그날은 그날로 끝나는 거야")
 # ------------------------------------------------------------------ #
 BENCH_HISTORY_FILE = HERE / "bench_history.csv"
-BENCH_COLS = ["날짜", "wk", "벤치_당일", "벤치ex_당일", "출처", "기록시각"]
+BENCH_COLS = ["날짜", "wk", "벤치_당일", "벤치ex_당일", "코스피ex_당일", "SH_당일", "출처", "기록시각"]
+LEVEL_DAY_COL = {"ex": "코스피ex_당일", "sh": "SH_당일"}   # 2-Track 파랑 선·Sour Grapes SH(wk 안 섞는 레벨 선)
 BENCH_DAY_COL = {"main": "벤치_당일", "ex": "벤치ex_당일"}
 
 
@@ -3009,8 +3010,8 @@ def load_bench_history() -> pd.DataFrame:
     if not BENCH_HISTORY_FILE.exists():
         return pd.DataFrame(columns=BENCH_COLS)
     df = pd.read_csv(BENCH_HISTORY_FILE, dtype={"날짜": str, "출처": str, "기록시각": str})
-    for c in ("wk", "벤치_당일", "벤치ex_당일"):
-        df[c] = pd.to_numeric(df[c], errors="coerce")
+    for c in ("wk", "벤치_당일", "벤치ex_당일", "코스피ex_당일", "SH_당일"):
+        df[c] = pd.to_numeric(df[c], errors="coerce") if c in df.columns else float("nan")
     return df.sort_values("날짜").reset_index(drop=True)
 
 
@@ -3087,11 +3088,48 @@ def bench_day_on(levels: pd.DataFrame, kind: str, d: str, wk_live: float | None,
     return rk if w is None else w * rk + (1.0 - w) * rq
 
 
+def _level_days(levels: pd.DataFrame) -> dict:
+    """레벨 선(KOSPI 칸)의 날짜별 하루 등락 — 첫날 0."""
+    lv = levels.copy()
+    lv["날짜"] = lv["날짜"].astype(str)
+    lv = lv.sort_values("날짜")
+    k = pd.to_numeric(lv["KOSPI"], errors="coerce").to_numpy()
+    out = {}
+    for i, d in enumerate(lv["날짜"]):
+        out[d] = 0.0 if i == 0 else float(k[i] / k[i - 1] - 1.0)
+    return out
+
+
+def fixed_index_levels(index_hist: pd.DataFrame, bigcap_hist: pd.DataFrame, kind: str = "ex",
+                       bench_hist: pd.DataFrame | None = None) -> pd.DataFrame:
+    """synthetic_kospi_ex_bigcap(kind="ex") / synthetic_kospi_sh_only(kind="sh")의 **날짜 고정** 판.
+    bench_history에 그날 하루 등락이 있으면 그걸로 레벨을 잇고(그날 계수 — 상장주식수가 바뀌어도 과거 불변,
+    마-1), 없는 날만 지금 계수로. 첫날 레벨은 같다. 2-Track 파랑 선·Sour Grapes·ex 레벨을 쓰는 곳이 이걸 쓴다."""
+    syn = synthetic_kospi_ex_bigcap(index_hist, bigcap_hist) if kind == "ex" else synthetic_kospi_sh_only(index_hist, bigcap_hist)
+    bh = load_bench_history() if bench_hist is None else bench_hist
+    col = LEVEL_DAY_COL[kind]
+    if bh is None or bh.empty or col not in bh.columns or bh[col].isna().all():
+        return syn
+    out = syn.copy()
+    out["날짜"] = out["날짜"].astype(str)
+    out = out.sort_values("날짜").reset_index(drop=True)
+    stored = dict(zip(bh["날짜"].astype(str), bh[col]))
+    k = pd.to_numeric(out["KOSPI"], errors="coerce").to_numpy()
+    lv = [float(k[0])]
+    for i in range(1, len(out)):
+        s = stored.get(out["날짜"].iloc[i])
+        day = float(s) if s is not None and pd.notna(s) else float(k[i] / k[i - 1] - 1.0)
+        lv.append(lv[-1] * (1.0 + day))
+    out["KOSPI"] = lv
+    return out
+
+
 def seed_bench_history(index_hist: pd.DataFrame, bigcap_hist: pd.DataFrame, wk0: float, upto: str) -> pd.DataFrame:
     """upto(포함)까지를 **지금 값 그대로** 고정한다 — 지금 누적(선형, wk0)을 하루 비율로 쪼개 저장해
     체인으로 이으면 날짜마다 지금 누적과 같다(대표 "지금까지 쌓인 건 픽스, 이 이후부터 복리")."""
     idx = index_hist[index_hist["날짜"].astype(str) <= upto].copy()
     ex = synthetic_kospi_ex_bigcap(idx, bigcap_hist)
+    lvd = {k: _level_days(v) for k, v in (("ex", ex), ("sh", synthetic_kospi_sh_only(idx, bigcap_hist)))}
     anchor = str(idx["날짜"].astype(str).min())
     cm, ce = _linear_blend_cum(idx, wk0, anchor), _linear_blend_cum(ex, wk0, anchor)
     dates = sorted(cm)
@@ -3104,7 +3142,8 @@ def seed_bench_history(index_hist: pd.DataFrame, bigcap_hist: pd.DataFrame, wk0:
             p = dates[i - 1]
             dm = (1.0 + cm[d]) / (1.0 + cm[p]) - 1.0
             de = (1.0 + ce[d]) / (1.0 + ce[p]) - 1.0
-        rows.append({"날짜": d, "wk": float(wk0), "벤치_당일": dm, "벤치ex_당일": de, "출처": "seed", "기록시각": now})
+        rows.append({"날짜": d, "wk": float(wk0), "벤치_당일": dm, "벤치ex_당일": de,
+                     "코스피ex_당일": lvd["ex"].get(d, 0.0), "SH_당일": lvd["sh"].get(d, 0.0), "출처": "seed", "기록시각": now})
     return pd.DataFrame(rows, columns=BENCH_COLS)
 
 
@@ -3149,7 +3188,10 @@ def snapshot_bench_history(trade_date: str, wk: float | None, index_hist: pd.Dat
         return w * (k[-1] / k[-2] - 1.0) + (1.0 - w) * (q[-1] / q[-2] - 1.0)
 
     status = "overwrite" if (not bh.empty and trade_date in set(bh["날짜"])) else "write"
-    new = pd.DataFrame([{"날짜": trade_date, "wk": w, "벤치_당일": _day(idx), "벤치ex_당일": _day(ex.sort_values("날짜")),
+    exs = ex.sort_values("날짜")
+    sh = synthetic_kospi_sh_only(idx, big).sort_values("날짜")
+    new = pd.DataFrame([{"날짜": trade_date, "wk": w, "벤치_당일": _day(idx), "벤치ex_당일": _day(exs),
+                         "코스피ex_당일": _level_days(exs).get(trade_date), "SH_당일": _level_days(sh).get(trade_date),
                          "출처": "ingest", "기록시각": datetime.now(KST).strftime("%Y-%m-%d %H:%M")}], columns=BENCH_COLS)
     bh = pd.concat([bh[bh["날짜"] != trade_date], new], ignore_index=True) if not bh.empty else new
     save_bench_history(bh)

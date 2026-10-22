@@ -91,10 +91,10 @@ def bench_levels(live: bool = True) -> tuple[dict, tuple | None]:
             idx = pd.concat([idx[idx["날짜"] < today],
                              pd.DataFrame([{"날짜": today, "KOSPI": iq["KOSPI"]["price"], "KOSDAQ": iq["KOSDAQ"]["price"]}])])
             big = pd.concat([big[big["날짜"] < today], pd.DataFrame([{"날짜": today, **{n: bq[n] for n in core.BIGCAP_CODES}}])])
-            ex = core.synthetic_kospi_ex_bigcap(idx, big)
+            ex = core.fixed_index_levels(idx, big, "ex")
             now = (float(ex["KOSPI"].iloc[-1]), float(ex["KOSDAQ"].iloc[-1]))
             idx, big = idx[idx["날짜"] < today], big[big["날짜"] < today]
-    ex = core.synthetic_kospi_ex_bigcap(idx, big)
+    ex = core.fixed_index_levels(idx, big, "ex")
     closes = {str(r["날짜"]): (float(r["KOSPI"]), float(r["KOSDAQ"])) for _, r in ex.iterrows()}
     return closes, now
 

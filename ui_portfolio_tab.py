@@ -24,7 +24,7 @@ from portfolio_core import (
     cumulative_price_change_map,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     compute_link_candidates, load_link_watch_log, link_watch_status, fetch_quotes,
-    never_bought_names, drop_ended, ended_watch_names,
+    never_bought_names, drop_ended, ended_watch_names, fixed_index_levels,
     load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
     load_claude_notes, seed_engine_series, compute_fa_win_rate, blended_benchmark_cum,
@@ -560,7 +560,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     _fr = state.get("fee_rate", 0.0)
     _iva_m = compute_index_vs_account(tx, _asset_h, _idx_h, state["initial"], _fr, kospi_weight=_wk, bench_kind="main")
     _bg_h = load_bigcap_history()
-    _idx_ex_h = synthetic_kospi_ex_bigcap(_idx_h, _bg_h) if not _bg_h.empty else None
+    _idx_ex_h = fixed_index_levels(_idx_h, _bg_h, "ex") if not _bg_h.empty else None
     _iva_s = (compute_index_vs_account(tx, _asset_h, _idx_ex_h,
                                        state["initial"], _fr, kospi_weight=_wk, bench_kind="ex")
               if _idx_ex_h is not None else None)

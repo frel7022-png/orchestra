@@ -11,7 +11,7 @@ from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, compute_pnl_actions, _index_day_moves,
-    load_bigcap_history, synthetic_kospi_ex_bigcap, synthetic_kospi_sh_only,
+    load_bigcap_history, synthetic_kospi_ex_bigcap, synthetic_kospi_sh_only, fixed_index_levels,
     load_fund_nav_history, compute_vip_vs_orchestra, compute_sell_fraction_map,
     DAILY_IMPORT_TAG,
 )
@@ -565,7 +565,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     _bg_k = load_bigcap_history()
     if not idx_hist.empty and not _bg_k.empty:
         _ih = idx_hist.sort_values("날짜").reset_index(drop=True)
-        _sh = synthetic_kospi_ex_bigcap(idx_hist, _bg_k).sort_values("날짜").reset_index(drop=True)
+        _sh = fixed_index_levels(idx_hist, _bg_k, "ex").sort_values("날짜").reset_index(drop=True)
         _k = pd.to_numeric(_ih["KOSPI"], errors="coerce")
         _ke = pd.to_numeric(_sh["KOSPI"], errors="coerce")
         _kd = ["—" if pd.isna(d) else f"{d:+.2%}" for d in _k.pct_change()]
@@ -618,7 +618,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         if _bg.empty:
             st.caption("bigcap_history.csv 비어있음 — `python backfill_bigcap_history.py` 먼저.")
         else:
-            _syn = synthetic_kospi_ex_bigcap(idx_hist, _bg)
+            _syn = fixed_index_levels(idx_hist, _bg, "ex")
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
                                                 state.get("fee_rate", 0.0), kospi_weight=wk, bench_kind="ex")
             _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
@@ -632,7 +632,7 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         if _bg2.empty or idx_hist.empty:
             st.caption("bigcap_history.csv 비어있음 — `python backfill_bigcap_history.py` 먼저.")
         else:
-            _sh_only = synthetic_kospi_sh_only(idx_hist, _bg2)
+            _sh_only = fixed_index_levels(idx_hist, _bg2, "sh")
             _iva_sh = compute_index_vs_account(tx, hist, _sh_only, state["initial"],
                                                state.get("fee_rate", 0.0), kospi_weight=wk)
             _me_sh, _idxc_sh, _lat_sh = _iva_sh["me"], _iva_sh["index"], _iva_sh["latest"]

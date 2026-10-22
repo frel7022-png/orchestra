@@ -2475,3 +2475,18 @@ def test_real_bench_history_matches_frozen_values_through_1022():
         lin = core._linear_blend_cum(lv, wk0, str(lv["날짜"].astype(str).min()))
         worst = max(abs(ch[d] - lin[d]) for d in lin)
         assert worst < 1e-6, f"{kind} {worst * 1e4:.4f}bp"   # 1e-6 = 0.01bp
+
+
+def test_fixed_index_levels_keep_past_when_shares_change(tmp_path, monkeypatch):
+    # 마-1: 상장주식수가 바뀌어도 bench_history에 이미 쓴 날의 ex·SH 레벨은 그대로
+    monkeypatch.setattr(core, "BENCH_HISTORY_FILE", tmp_path / "bench_history.csv")
+    idx = _lv([("2026-10-01", 100.0, 50.0), ("2026-10-02", 102.0, 49.0), ("2026-10-05", 99.0, 51.0)])
+    big = pd.DataFrame([("2026-10-01", 100.0, 80.0, 500.0), ("2026-10-02", 103.0, 82.0, 520.0),
+                        ("2026-10-05", 98.0, 79.0, 505.0)], columns=["날짜", "삼성전자", "삼성전자우", "SK하이닉스"])
+    core.save_bench_history(core.seed_bench_history(idx, big, 0.6, "2026-10-05"))
+    for kind, f in (("ex", core.synthetic_kospi_ex_bigcap), ("sh", core.synthetic_kospi_sh_only)):
+        before = f(idx, big).sort_values("날짜")["KOSPI"].to_numpy()
+        assert abs(core.fixed_index_levels(idx, big, kind)["KOSPI"].to_numpy() - before).max() < 1e-9
+        monkeypatch.setitem(core._BIGCAP_SHARES, "SK하이닉스", core._BIGCAP_SHARES["SK하이닉스"] * 2)
+        assert abs(core.fixed_index_levels(idx, big, kind)["KOSPI"].to_numpy() - before).max() < 1e-9
+        monkeypatch.setitem(core._BIGCAP_SHARES, "SK하이닉스", core._BIGCAP_SHARES["SK하이닉스"] / 2)

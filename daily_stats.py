@@ -39,7 +39,7 @@ def main() -> None:
     fr = st.get("fee_rate", 0.0)
     m = core.compute_index_vs_account(tx, ah, idx, st["initial"], fr, kospi_weight=wk, bench_kind="main")
     bg = core.load_bigcap_history()
-    s = (core.compute_index_vs_account(tx, ah, core.synthetic_kospi_ex_bigcap(idx, bg),
+    s = (core.compute_index_vs_account(tx, ah, core.fixed_index_levels(idx, bg, "ex"),
                                        st["initial"], fr, kospi_weight=wk, bench_kind="ex")
          if not bg.empty else None)
 
