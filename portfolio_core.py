@@ -1476,15 +1476,17 @@ def save_link_watch_log(df: pd.DataFrame) -> None:
 
 
 def add_link_watch_entry(row: dict) -> pd.DataFrame:
-    """감시목록에 종목 하나 추가(같은 종목코드가 이미 있으면 최신 플래그로 덮어씀).
+    """감시목록에 줄 하나 **더한다**(장부 원칙: 지우지 않는다 — 대표 2026-10-22 나-2). 같은 종목을 다시 감시하면
+    옛 줄(옛 기준점)은 그대로 두고 새 기준점으로 새 줄. 같은 종목코드·같은 플래그일이 이미 있으면(실수로 두 번 실행)
+    그 줄만 바꾼다. 대체됨(10-22): 같은 종목코드면 최신 플래그로 덮어씀.
     **배포된 앱의 실시간 UI에서는 호출하지 않는다**(§1-7 — 이 앱은 CSV 반영/CLI 스크립트가
     데이터 입력 경로고, 로컬 디스크 쓰기는 재배포 때 사라질 수 있음(§1-5) — 사용자가 채팅으로
     "이 종목 감시목록에 넣어줘" 하면 세션이 이 함수를 스크립트로 실행하고 git commit/push까지
     한다). row 예: {"플래그일":..., "종목코드":..., "종목명":..., "기준일":..., "기준가":...,
     "기준외인비중":..., "P_당시":..., "dF_당시":..., "score_당시":...}"""
     df = load_link_watch_log()
-    df = df[df["종목코드"] != row["종목코드"]]
-    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    same = (df["종목코드"].astype(str) == str(row["종목코드"])) & (df["플래그일"].astype(str) == str(row["플래그일"]))
+    df = pd.concat([df[~same], pd.DataFrame([row])], ignore_index=True)
     save_link_watch_log(df)
     return df
 

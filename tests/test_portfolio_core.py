@@ -1274,7 +1274,7 @@ def test_link_watch_status_empty_log_returns_empty():
     assert core.link_watch_status(pd.DataFrame(), _price_df([]), _flow_df([])).empty
 
 
-def test_add_link_watch_entry_overwrites_same_stock_code(tmp_path, monkeypatch):
+def test_add_link_watch_entry_adds_new_row_and_keeps_old_baseline(tmp_path, monkeypatch):
     monkeypatch.setattr(core, "LINK_WATCH_LOG_FILE", tmp_path / "link_watch_log.csv")
     core.add_link_watch_entry({"플래그일": "2026-08-20", "종목코드": "A", "종목명": "종목A",
                                 "기준일": "2026-08-19", "기준가": 10000.0, "기준외인비중": 10.0,
@@ -1283,8 +1283,16 @@ def test_add_link_watch_entry_overwrites_same_stock_code(tmp_path, monkeypatch):
                                 "기준일": "2026-08-19", "기준가": 10000.0, "기준외인비중": 10.0,
                                 "P_당시": -21.0, "dF_당시": 3.2, "score_당시": 67.2})
     df = core.load_link_watch_log()
-    assert len(df) == 1
-    assert df.iloc[0]["플래그일"] == "2026-08-21"
+    # 나-2(대표 10-22): 다시 감시하면 새 줄 — 옛 줄·옛 기준점은 그대로
+    assert len(df) == 2
+    assert list(df["플래그일"]) == ["2026-08-20", "2026-08-21"]
+    assert list(df["P_당시"]) == [-20.0, -21.0]
+    # 같은 날 실수로 두 번 넣으면 그 줄만 바뀐다(줄이 늘지 않음)
+    core.add_link_watch_entry({"플래그일": "2026-08-21", "종목코드": "A", "종목명": "종목A",
+                                "기준일": "2026-08-19", "기준가": 10000.0, "기준외인비중": 10.0,
+                                "P_당시": -21.5, "dF_당시": 3.2, "score_당시": 68.8})
+    df = core.load_link_watch_log()
+    assert len(df) == 2 and float(df.iloc[-1]["P_당시"]) == -21.5
 
 
 # --- SamHynix extracted (§6-19): synthetic_kospi_ex_bigcap --- #
