@@ -630,7 +630,7 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 <tbody>{tr}</tbody></table></div>
 
 <h2>오늘의 평가</h2>
-<div class="cm">{comment}</div>
+<div class="cm"><!--총평-->{comment}<!--/총평--></div>
 
 <p class="note">단계: {esc(tiers_doc)} · 보충 = P&lt;0, 외인&gt;0이지만 위 단계 미달(명단 채우기용)</p>
 </div>

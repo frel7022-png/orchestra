@@ -409,9 +409,45 @@ def build(data, link_res):
 
 
 # ------------------------------------------------------------------ HTML
+NO_COMMENT = '<p class="note">아직 작성 전</p>'
+CM_OPEN, CM_CLOSE = "<!--총평-->", "<!--/총평-->"
+
+
 def comment(name):
     p = OUT / "comments" / name
-    return p.read_text(encoding="utf-8") if p.exists() else '<p class="note">아직 작성 전</p>'
+    return p.read_text(encoding="utf-8") if p.exists() else NO_COMMENT
+
+
+def attach_comments(day: str) -> list[str]:
+    """이미 만든 그날 리포트 4종의 총평 칸(<!--총평-->…<!--/총평-->)만 comments 파일로 갈아끼운다.
+    대표 10-23 「총평이 달린 리포트를 한 번에 올리면 되지 않아?」 — 09:30 생성 → 세션이 총평을 쓰고 이것만 돌린다.
+    데이터·네트워크를 안 부르고 CSV(cfg_log·ledger·roster·basecamp_rank)도 안 건드려서 숫자는 생성 시각 그대로다.
+    latest_*.html은 그 판이 같은 날 판일 때만(내용이 같을 때만) 같이 고친다. 표시 없는 옛 판은 건너뛰고 알린다."""
+    targets = [
+        ("① 액션", OUT / "action" / f"{day}.html", OUT / "latest_action.html", OUT / "comments" / f"{day}_action.html"),
+        ("② 외인", link.OUT / "daily" / f"{day}.html", link.OUT / "latest.html", link.OUT / "comments" / f"{day}.html"),
+        ("③ CFG", OUT / "cfg" / f"{day}.html", OUT / "latest_cfg.html", OUT / "comments" / f"{day}_cfg.html"),
+        ("④ Basecamp", OUT / "basecamp" / f"{day}.html", OUT / "latest_basecamp.html", OUT / "comments" / f"{day}_basecamp.html"),
+    ]
+    out = []
+    for lab, dated, latest, cpath in targets:
+        if not dated.exists():
+            out.append(f"{lab}: 리포트 없음({dated.name})")
+            continue
+        old = dated.read_text(encoding="utf-8")
+        a, b = old.find(CM_OPEN), old.find(CM_CLOSE)
+        if a < 0 or b < a:
+            out.append(f"{lab}: 총평 표시 없는 판(이 길 이전 생성) — 건너뜀")
+            continue
+        body = cpath.read_text(encoding="utf-8") if cpath.exists() else NO_COMMENT
+        new = old[:a + len(CM_OPEN)] + body + old[b:]
+        dated.write_text(new, encoding="utf-8")
+        same = latest.exists() and latest.read_text(encoding="utf-8") == old
+        if same:
+            latest.write_text(new, encoding="utf-8")
+        out.append(f"{lab}: {'총평 붙임' if cpath.exists() else '총평 파일 없음(작성 전 표시)'}"
+                   f"{' · latest도' if same else ''}")
+    return out
 
 
 # 대표 매매 문턱(10-23 대표 확정) — 리포트는 거르지 않고 넘은 줄만 형광펜(「숫자는 안 박아」).
@@ -582,7 +618,7 @@ def write_action(res, ph):
 {mz_html}
 
 <h2>총평</h2>
-<div class="cm">{comment(f"{today}_action.html")}</div>
+<div class="cm"><!--총평-->{comment(f"{today}_action.html")}<!--/총평--></div>
 <p class="note">속도 배지: 총 하락 중 절반 이상이 최근 3거래일에 났으면 급락, 아니면 완만. N = new1 보유 · M = meritz 보유. 외인 정보는 일부러 넣지 않음(② 외인 리포트에서 독립적으로 보기 위해).</p>
 """
     html_ = page("Overture · Action", f"{today} · 주가 {res['asof']} 기준 · ① 액션 리포트", body)
@@ -612,7 +648,7 @@ def write_cfg(res, data):
 <h2>오늘의 CFG ({len(res["cfg"])}종목)</h2>
 <div class="grid2" style="grid-template-columns:1fr">{"".join(cards) or '<p class="note">오늘은 없음</p>'}</div>
 <h2>총평</h2>
-<div class="cm">{comment(f"{today}_cfg.html")}</div>
+<div class="cm"><!--총평-->{comment(f"{today}_cfg.html")}<!--/총평--></div>
 """
     html_ = page("Overture · CFG", f"{today} · 주가 {res['asof']} 기준 · ③ 두 신호가 겹치는 종목", body)
     (OUT / "cfg").mkdir(parents=True, exist_ok=True)
@@ -697,7 +733,7 @@ def write_basecamp(res, n_names, m_names):
 <div class="grid2">{"".join(cards)}</div>
 
 <h2>총평</h2>
-<div class="cm">{comment(f"{today}_basecamp.html")}</div>
+<div class="cm"><!--총평-->{comment(f"{today}_basecamp.html")}<!--/총평--></div>
 <p class="note">N = new1 보유 · M = meritz 보유. 오늘 거래량은 장중이라 평지 계산과 그래프에서 뺐고, 오늘 실시간 가격은 상태 판정에만 썼어.</p>
 """
     html_ = page("Overture · Basecamp", f"{today} · 주가 {res['asof']} 기준 · ④ Basecamp 리포트", body)
@@ -741,4 +777,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if "--comments" in sys.argv:
+        rest = [a for a in sys.argv[1:] if a != "--comments"]
+        for line in attach_comments(rest[0] if rest else core.today_kst_str()):
+            print(line)
+    else:
+        main()
