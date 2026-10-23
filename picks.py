@@ -128,6 +128,8 @@ def bench_ret_fn(closes: dict, now: tuple | None, wk: float, bench_hist: pd.Data
         d1 = d1 or _today
         if d1 <= seed_end:                                  # 전부 seed 구간 — 옛 식, seed wk
             return _lin(b0, b1, wk_seed) * 100
+        if d1 not in cum or (d0 <= seed_end and (seed_end not in closes or seed_end not in cum)):
+            return _lin(b0, b1, wk) * 100                   # 체인에 날짜가 없으면(지금 값 없이 부름·seed 밖 자료) 옛 식
         if d0 <= seed_end:                                  # seed 끝까지 옛 식 + 그 뒤 체인
             head = _lin(b0, closes[seed_end], wk_seed)
             tail = (1 + cum[d1]) / (1 + cum[seed_end]) - 1
