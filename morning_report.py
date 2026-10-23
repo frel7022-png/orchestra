@@ -485,7 +485,9 @@ def write_action(res, ph):
     _bday = ix.get("벤치")[1] * 100 if ix.get("벤치") and ix["벤치"][1] is not None else None
     mk, mk_line, mk_say = market_regime(_bday)
     n_hit = sum(1 for x in res["updown"] if x["pct"] <= mk_line)
-    mkt_html = (f'<p class="mkt">오늘 장: 혼합지수(삼성·하이닉스 제외) 당일 {sign(_bday, 2) if _bday is not None else "—"} → '
+    _t = str(res["index"]["snap"].get("asof", ""))[-5:]           # 장 판정 시각(대표 10-23: 09:30 = 장 시작 30분이 흐름을 정함)
+    _tl = f"{_t}, 장 시작 30분" if _t[:2] == "09" else _t
+    mkt_html = (f'<p class="mkt">오늘 장({_tl}): 혼합지수(삼성·하이닉스 제외) 당일 {sign(_bday, 2) if _bday is not None else "—"} → '
                 f'<b>{mk}</b> · 재진입 선 {mk_say} · 형광펜 = 매도가 대비 {mk_line:.0f}% 넘은 줄 {n_hit}개'
                 + (' (넘은 줄 없음 — 맨 위가 가장 가까운 것)' if not n_hit and res["updown"] else '') + '</p>')
     rows, cards = [], []
