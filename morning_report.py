@@ -158,6 +158,7 @@ svg{width:100%;height:auto;display:block} .pl{fill:none;stroke:var(--dn);stroke-
 .kpi .k{font-size:11.5px;color:var(--soft)} .kpi .v{font-size:1.2rem;font-weight:600;font-variant-numeric:tabular-nums}
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:6px} @media(max-width:560px){.pair{grid-template-columns:1fr}}
 .alarm li{margin:4px 0;font-size:13.5px}
+.card.near{border-color:#b9bdc6;border-style:dashed;opacity:.92} .near-why{color:var(--soft);margin:0 0 4px}
 tr.hl td{background:#fff3b0;font-weight:700}
 .mkt{margin:4px 0 8px;font-size:13.5px}
 .vb{fill:var(--rule)} .vb.on{fill:var(--fl)} .who{font-size:11px;font-weight:700;margin-left:5px} .who.f{color:var(--fl)} .who.i{color:var(--warn)}
@@ -379,7 +380,8 @@ def build(data, link_res):
         if len(g) < 2:
             return None
         a, b = float(g["외국인보유율"].iloc[0]), float(g["외국인보유율"].iloc[-1])
-        return {"시작": g["날짜"].iloc[0], "시작값": a, "지금": b, "d": b - a,
+        top3 = float(g["외국인보유율"].iloc[1:].tail(3).max())   # 끝 사흘(거래일) 최고 — 짧으면 구간 전체(시작 빼고)
+        return {"시작": g["날짜"].iloc[0], "시작값": a, "지금": b, "d": b - a, "d3": top3 - a,
                 "rel": (b - a) / a * 100 if a else 0, "끝": g["날짜"].iloc[-1]}
     # @뇌 cfg_후보_출처
     srcs = ([("Up/Down", x["코드"], x["종목명"], x["매도일"], x["pct"], "매도가 대비") for x in res["updown"]]
@@ -387,25 +389,97 @@ def build(data, link_res):
             + [("Fishing", x["코드"], x["종목명"], x["기준일"], x["cum"], "기준일 대비") for x in res["fishing"]]
             + [("Basecamp", x["종목코드"], x["종목명"], x["평지시작"], x["고점대비"], "고점 대비(평지 구간 외인)") for x in res["basecamp"]]
             + [("meritz 후보", x["코드"], x["종목명"], x["최초일"], x["pct_avg"], "new1 평단 대비") for x in res["meritz"]])
-    cfg = []
+    cfg, near = [], []
     for src, c, n, start, pct, basis in srcs:
         if not c or pct is None or pct > -3:
             continue
         s = stats.get(c)
         w = fwin(c, start)
-        if not w or not s or s.get("착시") or s.get("꺾임"):
+        if not w or not s:
             continue
-        if w["d"] >= 0.3 or (w["시작값"] >= 3 and w["rel"] >= 5):
-            cfg.append({"출처": src, "코드": c, "종목명": n, "시작": start, "pct": pct, "basis": basis,
-                        "fw": w, "s": s, "score": abs(pct) * max(w["rel"], 0)})
+        row = {"출처": src, "코드": c, "종목명": n, "시작": start, "pct": pct, "basis": basis, "fw": w, "s": s}
+        if not s.get("착시") and not s.get("꺾임") and (w["d"] >= 0.3 or (w["시작값"] >= 3 and w["rel"] >= 5)):
+            cfg.append({**row, "score": abs(pct) * max(w["rel"], 0)})
+        else:
+            dist = cfg_distance(w, s)
+            if dist["max"] <= 1:
+                near.append({**row, "dist": dist})
     merged = {}
     for x in cfg:
         if x["코드"] not in merged or x["score"] > merged[x["코드"]]["score"]:
             merged[x["코드"]] = {**x, "출처들": set()}
         merged[x["코드"]]["출처들"].add(x["출처"])
     res["cfg"] = sorted(merged.values(), key=lambda x: -x["score"])
+    # 가까운 것(대표 10-23 ⓐ): 진짜 CFG가 아닌 종목만, 종목마다 가장 가까운 출처 하나로. 문턱까지 거리의 가장 큰 칸이 작은 순,
+    # 같으면 합이 작은 순. 진짜 위 + 가까운 것으로 CFG_SHOW칸을 채우고, 1~CFG_KEEP위는 cfg_rank.csv에 저장(나중에 연구소 재료).
+    nm = {}
+    for x in near:
+        if x["코드"] in merged:
+            continue
+        k = (x["dist"]["max"], x["dist"]["sum"])
+        if x["코드"] not in nm or k < (nm[x["코드"]]["dist"]["max"], nm[x["코드"]]["dist"]["sum"]):
+            nm[x["코드"]] = {**x, "출처들": nm.get(x["코드"], {}).get("출처들", set())}
+        nm[x["코드"]]["출처들"].add(x["출처"])
+    res["cfg_near"] = sorted(nm.values(), key=lambda x: (x["dist"]["max"], x["dist"]["sum"]))
+    res["cfg_rank"] = (res["cfg"] + res["cfg_near"])[:CFG_KEEP]
     res["stats"] = stats
     return res
+
+
+# ------------------------------------------------------------------ CFG 가까운 것
+CFG_SHOW, CFG_KEEP = 10, 15      # 대표 10-23 「에이가 맞아」 — 매일 10칸(진짜 위 + 가까운 것 회색), 1~15위는 cfg_rank.csv
+CFG_RANK_CSV = OUT / "cfg_rank.csv"
+
+
+def cfg_distance(w: dict, s: dict) -> dict:
+    """CFG 문턱까지 거리(체마다 0~1, 0 = 그 체 통과). 대표 10-23 「착시인지 꺾인 건지 판단 자체가 숫자처럼 명확한 게 아니야
+    … 확률이 가장 낮은 것들은 포함」 → 35·87 합의(주민센터 CFG_가까운것_회의_35_87.md):
+    - 외인: 늘어난 양 = 하락 구간 끝 사흘 최고 − 시작(하루이틀 빠진 건 안 뺌). (0.3%p − 늘어난 양)/0.3,
+      원래 비중 3% 이상이면 상대 (5% − 늘어난 %)/5와 짧은 쪽. 0 이하로 늘었으면 거리 ≥ 1(안 보임).
+    - 착시: (뱉은 비율 − 30%)/30%(착시일 때만). 꺾임: (뱉은 비율 − 15%)/15%(꺾임 셋이 다 맞을 때만).
+    줄 세우기는 가장 큰 거리(max) → 같으면 합(sum)."""
+    inc = w.get("d3", w["d"])
+    df = max(0.0, (0.3 - inc) / 0.3)
+    if w["시작값"] >= 3:
+        df = min(df, max(0.0, (5 - inc / w["시작값"] * 100) / 5))
+    give = float(s.get("반납률") or 0)
+    di = max(0.0, (give - 0.30) / 0.30) if s.get("착시") else 0.0
+    dt = max(0.0, (give - 0.15) / 0.15) if s.get("꺾임") else 0.0
+    parts = {"외인": df, "착시": di, "꺾임": dt}
+    worst = max(parts, key=parts.get)
+    return {"외인": df, "착시": di, "꺾임": dt, "max": parts[worst], "sum": df + di + dt, "주원인": worst}
+
+
+def near_reason(x: dict) -> str:
+    """가까운 것 카드 머리 한 줄 — 무엇이 얼마나 모자랐나."""
+    d, w, s = x["dist"], x["fw"], x["s"]
+    if d["주원인"] == "착시":
+        why = f'착시 문턱 30%에 {s["반납률"]:.0%}로 걸림'
+    elif d["주원인"] == "꺾임":
+        why = f'꺾임(뱉은 비율 {s["반납률"]:.0%}·최근 5일 감소)'
+    elif d["외인"] == 0:
+        why = f'외인 끝 값 {w["d"]:+.2f}%p가 문턱 아래(끝 사흘 최고 {w["d3"]:+.2f}%p는 넘음)'
+    else:
+        why = f'외인 {w["d3"]:+.2f}%p(끝 사흘 최고) — 문턱 +0.3%p 아래'
+    return f'가장 비슷한 쪽으로 골랐어 — {why} (거리 {d["max"]:.2f})'
+
+
+def save_cfg_rank(res: dict, live: dict, asof: str) -> None:
+    """그날 CFG 순위 1~CFG_KEEP를 cfg_rank.csv에(같은 날짜는 교체). 연구소(이관 뒤 새 빌딩)가 가져다 쓰는 재료."""
+    rows = []
+    for i, x in enumerate(res.get("cfg_rank", []), 1):
+        d = x.get("dist") or {"외인": 0.0, "착시": 0.0, "꺾임": 0.0, "max": 0.0}
+        rows.append({"날짜": res["today"], "시각": asof, "순위": i, "구분": "진짜" if "dist" not in x else "가까운 것",
+                     "종목코드": x["코드"], "종목명": x["종목명"], "출처": "|".join(sorted(x["출처들"])),
+                     "시작일": x["시작"], "하락%": round(x["pct"], 2),
+                     "외인시작": round(x["fw"]["시작값"], 2), "외인증가pp": round(x["fw"]["d"], 3),
+                     "외인증가3일pp": round(x["fw"].get("d3", x["fw"]["d"]), 3),
+                     "거리_외인": round(d["외인"], 3), "거리_착시": round(d["착시"], 3), "거리_꺾임": round(d["꺾임"], 3),
+                     "거리max": round(d["max"], 3), "현재가": live.get(x["코드"])})
+    old = pd.read_csv(CFG_RANK_CSV, dtype={"종목코드": str}) if CFG_RANK_CSV.exists() else pd.DataFrame()
+    if not old.empty:
+        old = old[old["날짜"] != res["today"]]
+    pd.concat([old, pd.DataFrame(rows)], ignore_index=True).to_csv(CFG_RANK_CSV, index=False, encoding="utf-8-sig")
 
 
 # ------------------------------------------------------------------ HTML
@@ -632,22 +706,25 @@ def write_action(res, ph):
 def write_cfg(res, data):
     today, ph, fh, live = res["today"], data["ph"], data["fh"], data["live"]
     cards = []
-    for i, x in enumerate(res["cfg"], 1):
+    n_near = max(0, CFG_SHOW - len(res["cfg"]))
+    for i, x in enumerate(res["cfg"] + res.get("cfg_near", [])[:n_near], 1):
         s, w = x["s"], x["fw"]
+        is_near = "dist" in x
         pts = series_from(ph, x["코드"], x["시작"], live.get(x["코드"]), today)
         left = svg_line(pts, refs=[("시작", pts[0][1], "zero")] if pts else (), marks=[], pct_base=pts[0][1] if pts else None)
         right = link.svg_chart(link.price_series(ph, x["코드"], s["기준일"]), link.foreign_series(fh, x["코드"], s["기준일"]),
                                live.get(x["코드"]), today)
         state = ("명단 안" if s.get("자격") else "다시 모으는 중" if s.get("재매집") else "조건 밖")
+        near_html = f'<div class="note near-why">{esc(near_reason(x))}</div>' if is_near else ""
         cards.append(
-            f'<div class="card"><div class="ch">{i}. {esc(x["종목명"])} <span class="bd st">{" · ".join(sorted(x["출처들"]))}</span>'
+            f'<div class="card{" near" if is_near else ""}">{near_html}<div class="ch">{i}. {esc(x["종목명"])} <span class="bd st">{" · ".join(sorted(x["출처들"]))}</span>'
             f'<span class="meta">{x["basis"]} {x["pct"]:+.1f}% ({x["시작"][5:]}부터) · 같은 구간 외인 '
             f'{w["시작값"]:.2f}% ({w["시작"][5:]}) → {w["지금"]:.2f}% ({w["끝"][5:]}) = {w["d"]:+.2f}%p (상대 {w["rel"]:+.1f}%) · ② 상태: {state}</span></div>'
             f'<div class="pair"><div><div class="note">① 그 기능의 하락 구간 주가</div>{left}</div>'
             f'<div><div class="note">② 외인 리포트 그래프 (기준일부터)</div>{right}</div></div></div>')
     body = f"""
-<p class="note">① 액션 리포트 후보(Up/Down·Watering·Fishing·Basecamp·meritz 후보) 중, <b>그 기능이 잰 하락 구간(Basecamp는 평지 구간) 동안</b> 외국인 보유율이 실제로 늘었고(+0.3%p 이상 또는 상대 +5% 이상), ② 외인 리포트에서 착시·꺾임이 아닌 종목. 하락 3% 미만은 제외. 드문 게 정상.</p>
-<h2>오늘의 CFG ({len(res["cfg"])}종목)</h2>
+<p class="note">① 액션 리포트 후보(Up/Down·Watering·Fishing·Basecamp·meritz 후보) 중, <b>그 기능이 잰 하락 구간(Basecamp는 평지 구간) 동안</b> 외국인 보유율이 실제로 늘었고(+0.3%p 이상 또는 상대 +5% 이상), ② 외인 리포트에서 착시·꺾임이 아닌 종목. 하락 3% 미만은 제외. 드문 게 정상. 진짜가 {CFG_SHOW}칸이 안 되면 문턱에 가장 가까운 것(체마다 문턱까지 거리 중 가장 큰 것이 작은 순)을 점선 카드로 채움 — 1~{CFG_KEEP}위는 cfg_rank.csv에 저장.</p>
+<h2>오늘의 CFG (진짜 {len(res["cfg"])} · 가까운 것 {min(len(res.get("cfg_near", [])), max(0, CFG_SHOW - len(res["cfg"])))})</h2>
 <div class="grid2" style="grid-template-columns:1fr">{"".join(cards) or '<p class="note">오늘은 없음</p>'}</div>
 <h2>총평</h2>
 <div class="cm"><!--총평-->{comment(f"{today}_cfg.html")}<!--/총평--></div>
@@ -762,6 +839,7 @@ def main():
     if not old.empty:
         old = old[old["날짜"] != res["today"]]
     pd.concat([old, pd.DataFrame(rows)], ignore_index=True).to_csv(log, index=False, encoding="utf-8-sig")
+    save_cfg_rank(res, data["live"], data["asof"])
     # 후보 장부(바라보는 눈 빌딩 저장고) — 그날 순위에 오른 종목을 하루 한 번. 실패해도 리포트는 그대로.
     try:
         import ledger
