@@ -29,7 +29,7 @@ from portfolio_core import (
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
     load_claude_notes, seed_engine_series, compute_fa_win_rate, blended_benchmark_cum,
     save_ui_cache_df, load_ui_cache_df, save_ui_cache_json, load_ui_cache_json,
-    compute_watering_rows, fishing_decline_population, compute_todays_alarm,
+    compute_watering_rows, fishing_decline_population, compute_todays_alarm, FISHING_THRESHOLD,
 )
 
 _CLAUDE_ORANGE = "#D97757"   # Claude 클레이 오렌지 — "Claude's Read" 마크·라벨·채운 별
@@ -1025,7 +1025,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             st.markdown(f"<div style='font-size:12px;color:{T['muted']};font-weight:600;margin:12px 0 2px'>Undertow</div>",
                         unsafe_allow_html=True)
             fishing_prices_fa = st.session_state.get("fishing_prices")
-            undertow_pop = fishing_decline_population(fishing_prices_fa, threshold=-3.0)
+            undertow_pop = fishing_decline_population(fishing_prices_fa)
             if not undertow_pop:
                 st.caption("Fishing에서 새로고침을 먼저 눌러주세요(하락 3%↓ 종목이 없을 수도 있음).")
             else:
@@ -1103,7 +1103,6 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
                     fishing_dir = st.radio("방향", ["DOWN", "UP"], horizontal=True,
                                             label_visibility="collapsed", key="fishing_dir")
 
-                FISHING_THRESHOLD = 3.0
                 basis_key = "pct_origin" if fishing_basis == "누적" else "pct_ref"
                 if fishing_dir == "DOWN":
                     flagged = [f for f in all_rows if f[basis_key] <= -FISHING_THRESHOLD]

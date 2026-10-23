@@ -2779,7 +2779,12 @@ def compute_watering_rows(tx: pd.DataFrame, df: pd.DataFrame) -> list[dict]:
     return rows
 
 
-def fishing_decline_population(fishing_prices: pd.DataFrame, threshold: float = -3.0) -> list[dict]:
+# Fishing 표시 문턱(%) — Fishing 화면·Undertow·Today's Alarm Fishing 줄이 모두 이 값 하나를 본다
+# (대표 10-23 "한 곳으로 모아"). CFG의 "하락 3% 미만 제외"(morning_report)는 뜻이 다른 체라 따로 둔다.
+FISHING_THRESHOLD = 3.0
+
+
+def fishing_decline_population(fishing_prices: pd.DataFrame, threshold: float = -FISHING_THRESHOLD) -> list[dict]:
     """Fishing 관심종목 중 기준일(최초가 관측일) 대비 누적으로 threshold% 이하 빠진 종목만.
     Quiet Hands "Undertow"(§6-29)와 Today's Alarm(§6-34)이 같은 모집단을 공유하려고 추출
     (2026-09-17, 원래 ui_portfolio_tab.py Quiet Hands 블록 안에만 인라인으로 있었음).
@@ -2835,7 +2840,7 @@ def compute_todays_alarm(tx: pd.DataFrame, df: pd.DataFrame, fishing_prices: pd.
                 if r.get("등락률") is not None and r["등락률"] <= -5.0]
 
     quiet_hands = {"items": [], "is_fallback": False}
-    undertow_pop = fishing_decline_population(fishing_prices, threshold=-3.0)
+    undertow_pop = fishing_decline_population(fishing_prices)
     if undertow_pop and flow_hist is not None and not flow_hist.empty:
         fx_map = {f["종목명"]: f for f in compute_foreign_flags(flow_hist, price_hist_flow)}
         cands = []
@@ -2858,7 +2863,7 @@ def compute_todays_alarm(tx: pd.DataFrame, df: pd.DataFrame, fishing_prices: pd.
         daily = []
         for _, r in fishing_prices.iterrows():
             chg = pd.to_numeric(r.get("전일대비"), errors="coerce")
-            if pd.isna(chg) or chg > -3.0:
+            if pd.isna(chg) or chg > -FISHING_THRESHOLD:
                 continue
             daily.append({"종목명": r["종목명"], "전일대비": float(chg)})
         daily.sort(key=lambda d: d["전일대비"])
