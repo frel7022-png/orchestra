@@ -2070,6 +2070,7 @@ def test_compute_todays_alarm_flags_real_signals_without_fallback():
     alarm = core.compute_todays_alarm(tx, df, fishing_all, flow_hist, None)
 
     assert [r["종목명"] for r in alarm["watering"]] == ["A"]
+    assert alarm["watering_fallback"] is False
     assert alarm["watering"][0]["pct_last"] == pytest.approx((8800 - 9200) / 9200 * 100)
     assert alarm["quiet_hands"]["is_fallback"] is False
     assert [it["종목명"] for it in alarm["quiet_hands"]["items"]] == ["C"]
@@ -2133,6 +2134,21 @@ def test_compute_todays_alarm_falls_back_to_top_one_when_no_stock_meets_threshol
     assert alarm["fishing"]["is_fallback"] is True
     assert len(alarm["fishing"]["items"]) == 1
     assert alarm["fishing"]["items"][0]["종목명"] == "D"   # -4.0이 -2.0보다 더 크게 빠짐
+
+
+def test_compute_todays_alarm_watering_shows_closest_when_no_crash():
+    # 대표 10-23 「응 여기에도 가까운 걸 보여줘」 — −5% 급락이 없으면 전일 대비 가장 많이 빠진
+    # 물타기 종목 1개를 fallback(회색)으로. A −3%, B −1% → A.
+    tx = pd.DataFrame([
+        _tx_row("a1", "2026-01-05", "A", "매수", 10, 10000),
+        _tx_row("a2", "2026-01-06", "A", "매수", 10, 9200),
+        _tx_row("b1", "2026-01-05", "B", "매수", 10, 10000),
+        _tx_row("b2", "2026-01-06", "B", "매수", 10, 9000),
+    ])
+    df = pd.DataFrame([_holding_row("A", 9500, 8800, -3.0), _holding_row("B", 9500, 8800, -1.0)])
+    alarm = core.compute_todays_alarm(tx, df, None, None, None)
+    assert [r["종목명"] for r in alarm["watering"]] == ["A"]
+    assert alarm["watering_fallback"] is True
 
 
 def test_compute_todays_alarm_empty_inputs_returns_no_alarms():

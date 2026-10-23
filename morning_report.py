@@ -495,7 +495,8 @@ def write_action(res, ph):
     al = res["alarm"]
     items = []
     for r in al.get("watering", []):
-        items.append(f'<li>물타기 급락: <b>{esc(r["종목명"])}</b> 전일 {sign(r["등락률"])} · 마지막 매수가 대비 {sign(r["pct_last"])}</li>')
+        fb = ' <span class="mut">(−5% 급락 없음, 가장 가까운 1개)</span>' if al.get("watering_fallback") else ""
+        items.append(f'<li>물타기 급락: <b>{esc(r["종목명"])}</b> 전일 {sign(r["등락률"])} · 마지막 매수가 대비 {sign(r["pct_last"])}{fb}</li>')
     # @뇌 알람_외인_폭락줄
     for key, lab, fld, unit in (("quiet_hands", "외인 급증(최근3일)", "최근3일pp", "%p"), ("fishing", "관심종목 전일 폭락", "전일대비", "%")):
         blk = al.get(key, {})

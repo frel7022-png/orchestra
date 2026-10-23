@@ -74,6 +74,7 @@ def _todays_alarm_html(alarm: dict, T: dict) -> str:
     갱신되는 3줄 요약. 세 규칙 전부 해당 없으면 빈 문자열(카드 자체를 안 그림). fallback
     항목("보여주기식"으로 1개만 낸 것)은 회색으로 — 진짜 경보와 구분(사용자 지시)."""
     watering = alarm.get("watering") or []
+    w_fallback = alarm.get("watering_fallback", False)
     qh = alarm.get("quiet_hands") or {}
     fh = alarm.get("fishing") or {}
     qh_items, qh_fallback = qh.get("items") or [], qh.get("is_fallback", False)
@@ -89,7 +90,7 @@ def _todays_alarm_html(alarm: dict, T: dict) -> str:
     rows = []
     for r in watering:
         rows.append(_row("Watering", r["종목명"],
-                          f'<span style="color:{DOWN_COLOR}">{r["pct_last"]:+.1f}%</span>'))
+                          f'<span style="color:{T["muted"] if w_fallback else DOWN_COLOR}">{r["pct_last"]:+.1f}%</span>'))
     for it in qh_items:
         c = T["muted"] if qh_fallback else UP_COLOR
         rows.append(_row("Undertow", it["종목명"],

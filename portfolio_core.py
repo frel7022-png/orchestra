@@ -2836,8 +2836,14 @@ def compute_todays_alarm(tx: pd.DataFrame, df: pd.DataFrame, fishing_prices: pd.
     회색으로 구분할 수 있게 한다(사용자 지시: "보여주기식으로 한 개 쓰되 그런건 회색글씨로").
     반환: {"watering": [...], "quiet_hands": {"items": [...], "is_fallback": bool},
     "fishing": {"items": [...], "is_fallback": bool}}."""
-    watering = [r for r in compute_watering_rows(tx, df)
-                if r.get("등락률") is not None and r["등락률"] <= -5.0]
+    w_rows = [r for r in compute_watering_rows(tx, df) if r.get("등락률") is not None]
+    watering = [r for r in w_rows if r["등락률"] <= -5.0]
+    # 급락(−5%)이 없으면 −5%에 가장 가까운(전일 대비 가장 많이 빠진) 1개를 회색으로 — 대표 10-23
+    # 「응 여기에도 가까운 걸 보여줘」(문턱 밖이면 제일 가까운 것, 예전엔 이 줄만 fallback 없음).
+    watering_fallback = False
+    if not watering and w_rows:
+        watering = [min(w_rows, key=lambda r: r["등락률"])]
+        watering_fallback = True
 
     quiet_hands = {"items": [], "is_fallback": False}
     undertow_pop = fishing_decline_population(fishing_prices)
@@ -2874,7 +2880,8 @@ def compute_todays_alarm(tx: pd.DataFrame, df: pd.DataFrame, fishing_prices: pd.
             fishing_alarm["items"] = daily[:1]
             fishing_alarm["is_fallback"] = True
 
-    return {"watering": watering, "quiet_hands": quiet_hands, "fishing": fishing_alarm}
+    return {"watering": watering, "watering_fallback": watering_fallback,
+            "quiet_hands": quiet_hands, "fishing": fishing_alarm}
 
 
 PRICE_BRACKET_LABELS = ["1만원 이하", "1~2만원", "2~3만원", "3~4만원", "4~5만원",
