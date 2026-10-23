@@ -34,6 +34,7 @@ ROSTER = OUT / "roster.csv"
 PINNED = OUT / "pinned.csv"
 ROSTER_SIZE = 10
 GIVEBACK_LIMIT = 0.30
+REGEN_NOTE = ""   # 재생성 표시(morning_report --regen이 채움, 대표 10-23 5-5 A)
 # 꺾임: 반납률은 착시 기준(30%) 아래여도, 외인 고점이 TURN_MIN_DAYS 거래일 이상 지났고
 # 최근 TURN_MIN_DAYS 거래일 동안 외인 비중이 줄었으면 "먹고 빠지는 중"으로 본다(E1 사례,
 # 2026-10-02 사용자 지적 — 오늘 숫자만 보면 고를 수 있지만 그래프로 보면 이미 빠지는 그림).
@@ -585,7 +586,7 @@ ul{{padding-left:18px;font-size:13.5px}} .note{{font-size:12px;color:var(--faint
 </style>
 <div class="wrap">
 <h1>Overture · Link</h1>
-<p class="sub">{today} · 주가는 빠지는데 외국인은 모으는 종목 10 · 착시(외인 고점 대비 {GIVEBACK_LIMIT:.0%} 이상 반납)·꺾임 제외</p>
+<p class="sub">{today} · 주가는 빠지는데 외국인은 모으는 종목 10 · 착시(외인 고점 대비 {GIVEBACK_LIMIT:.0%} 이상 반납)·꺾임 제외{REGEN_NOTE}</p>
 
 <h2>오늘의 명단</h2>
 <div class="scroll"><table>

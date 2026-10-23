@@ -165,8 +165,18 @@ tr.hl td{background:#fff3b0;font-weight:700}
 """
 
 
+REGEN_NOTE = ""   # 재생성 표시 — main(regen=사유)이 채운다
+
+
+def regen_note(reason: str, now) -> str:
+    """사고로 숫자가 틀린 리포트를 고친 뒤 다시 만들 때 부제 끝에 붙는 한 줄(대표 10-23 MD 보고 답 5-5 A).
+    다시 만들면 숫자가 그 시각 값이 되니 그것도 같이 밝힌다."""
+    t = now.strftime("%H:%M")
+    return f' · <b>{t} 재생성({html.escape(reason)})</b> — 숫자는 {t} 기준'
+
+
 def page(title, sub, body):
-    return f'<title>{title}</title>\n<style>{CSS}</style>\n<div class="wrap"><h1>{title}</h1><p class="sub">{sub}</p>{body}</div>\n'
+    return f'<title>{title}</title>\n<style>{CSS}</style>\n<div class="wrap"><h1>{title}</h1><p class="sub">{sub}{REGEN_NOTE}</p>{body}</div>\n'
 
 
 # ------------------------------------------------------------------ 계산
@@ -823,7 +833,16 @@ def write_basecamp(res, n_names, m_names):
     (OUT / "latest_basecamp.html").write_text(html_, encoding="utf-8")
 
 
-def main():
+def main(regen: str | None = None):
+    """regen = 재생성 사유(사고로 숫자가 틀린 리포트를 고친 뒤 다시 만들 때). 4종 부제에 "HH:MM 재생성(사유)"를 붙이고
+    logs/auto_report.log에 한 줄 남긴다. 그날 cfg_log·cfg_rank·ledger·rank CSV도 이 시각 값으로 바뀐다(고치는 게 목적)."""
+    global REGEN_NOTE
+    if regen:
+        REGEN_NOTE = link.REGEN_NOTE = regen_note(regen, core.now_kst())
+        log = HERE / "logs" / "auto_report.log"
+        log.parent.mkdir(exist_ok=True)
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(f"{core.now_kst():%Y-%m-%d %H:%M} 재생성 — {regen}\n")
     data = link.load_data()
     link_res = link.main(data)
     res = build(data, link_res)
@@ -860,7 +879,12 @@ def main():
 
 if __name__ == "__main__":
     import sys
-    if "--comments" in sys.argv:
+    if "--regen" in sys.argv:
+        i = sys.argv.index("--regen")
+        if i + 1 >= len(sys.argv) or not sys.argv[i + 1].strip():
+            sys.exit('사유를 같이 줘: python morning_report.py --regen "사유"')
+        main(regen=sys.argv[i + 1])
+    elif "--comments" in sys.argv:
         rest = [a for a in sys.argv[1:] if a != "--comments"]
         for line in attach_comments(rest[0] if rest else core.today_kst_str()):
             print(line)

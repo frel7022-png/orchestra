@@ -76,3 +76,14 @@ def test_save_cfg_rank_keeps_other_days(tmp_path, monkeypatch):
     assert list(df[df["날짜"] == "2026-10-22"]["종목코드"]) == ["000001"]          # 다른 날 그대로
     t = df[df["날짜"] == "2026-10-26"]
     assert list(t["종목코드"]) == ["000002", "000003"] and list(t["구분"]) == ["진짜", "가까운 것"]
+
+
+def test_regen_note_marks_time_and_reason_in_subtitle(monkeypatch):
+    # 대표 10-23 MD 보고 답 5-5 A — 사고로 숫자가 틀린 리포트는 고친 뒤 다시 만들고 "HH:MM 재생성(사유)"를 밝힌다.
+    from datetime import datetime
+    note = mr.regen_note("NXT 종가 섞임 <고침>", datetime(2026, 10, 26, 10, 12))
+    assert "10:12 재생성(NXT 종가 섞임 &lt;고침&gt;)" in note and "숫자는 10:12 기준" in note
+    monkeypatch.setattr(mr, "REGEN_NOTE", note)
+    assert note in mr.page("T", "2026-10-26 · 주가 10:12 기준", "<p>x</p>")
+    monkeypatch.setattr(mr, "REGEN_NOTE", "")
+    assert "재생성" not in mr.page("T", "s", "<p>x</p>")                 # 평소엔 아무것도 안 붙음
