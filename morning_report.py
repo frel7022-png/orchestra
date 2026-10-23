@@ -158,6 +158,8 @@ svg{width:100%;height:auto;display:block} .pl{fill:none;stroke:var(--dn);stroke-
 .kpi .k{font-size:11.5px;color:var(--soft)} .kpi .v{font-size:1.2rem;font-weight:600;font-variant-numeric:tabular-nums}
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:6px} @media(max-width:560px){.pair{grid-template-columns:1fr}}
 .alarm li{margin:4px 0;font-size:13.5px}
+tr.hl td{background:#fff3b0;font-weight:700}
+.mkt{margin:4px 0 8px;font-size:13.5px}
 .vb{fill:var(--rule)} .vb.on{fill:var(--fl)} .who{font-size:11px;font-weight:700;margin-left:5px} .who.f{color:var(--fl)} .who.i{color:var(--warn)}
 """
 
@@ -412,6 +414,26 @@ def comment(name):
     return p.read_text(encoding="utf-8") if p.exists() else '<p class="note">아직 작성 전</p>'
 
 
+# 대표 매매 문턱(10-23 대표 확정) — 리포트는 거르지 않고 넘은 줄만 형광펜(「숫자는 안 박아」).
+NEW_ENTRY_LINE = -10.0   # 신규 진입: Fishing 기준일 대비 −10% 이상
+REENTRY_BASE = -5.0      # 재진입 기본: 마지막 매도가 대비 −5%
+
+
+def market_regime(day_pct):
+    """그날(당일) 혼합지수(삼성·하이닉스 제외) % → (장, 재진입 형광펜 선 %, 대표 말). 대표 10-23 기준 그대로:
+    +1% 이상 좋음(−3%도) / −1% 초과~+1% 미만 보통(−5% 기본) / −2% 초과~−1% 이하 안 좋음(−10%에 가까워짐,
+    −1.5~−2% 빈칸도 안 좋음 — 대표 6-A) / −2% 이하 매우 안 좋음(−10% 쪽). 형광펜은 기본 −5%, 좋은 날만 −3%."""
+    if day_pct is None:
+        return "모름", REENTRY_BASE, "−5% 기본"
+    if day_pct >= 1.0:
+        return "좋음", -3.0, "−3%짜리도 살 수 있음"
+    if day_pct > -1.0:
+        return "보통", REENTRY_BASE, "−5% 기본"
+    if day_pct > -2.0:
+        return "안 좋음", REENTRY_BASE, "−10%에 가까워짐"
+    return "매우 안 좋음", REENTRY_BASE, "−10% 쪽"
+
+
 def write_action(res, ph):
     today, own = res["today"], res["own"]
     ix, im = res["index"]["ex"], res["index"]["main"]
@@ -424,9 +446,16 @@ def write_action(res, ph):
            + kv("주식", "내 주식(예수금 제외)"))
 
     # Up/Down
+    _bday = ix.get("벤치")[1] * 100 if ix.get("벤치") and ix["벤치"][1] is not None else None
+    mk, mk_line, mk_say = market_regime(_bday)
+    n_hit = sum(1 for x in res["updown"] if x["pct"] <= mk_line)
+    mkt_html = (f'<p class="mkt">오늘 장: 혼합지수(삼성·하이닉스 제외) 당일 {sign(_bday, 2) if _bday is not None else "—"} → '
+                f'<b>{mk}</b> · 재진입 선 {mk_say} · 형광펜 = 매도가 대비 {mk_line:.0f}% 넘은 줄 {n_hit}개'
+                + (' (넘은 줄 없음 — 맨 위가 가장 가까운 것)' if not n_hit and res["updown"] else '') + '</p>')
     rows, cards = [], []
     for i, x in enumerate(res["updown"], 1):
-        rows.append(f'<tr><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}</td><td>{x["매도일"][5:]}</td>'
+        hl = ' class="hl"' if x["pct"] <= mk_line else ""
+        rows.append(f'<tr{hl}><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}</td><td>{x["매도일"][5:]}</td>'
                     f'<td>{x["매도가"]:,.0f}</td><td>{x["현재가"]:,.0f}</td><td>{sign(x["pct"])}</td>'
                     f'<td>{x["경과"]}일</td><td>{sign(-(1 - x["저점"] / x["매도가"]) * 100)} ({x["저점일"][5:]})</td>'
                     f'<td>{sign(x["반등"])}</td><td class="l">{speed_badge(x["since"], x["pct"])}</td></tr>')
@@ -455,6 +484,9 @@ def write_action(res, ph):
                f'<tbody>{"".join(rows)}</tbody></table></div><div class="grid2">{"".join(cards)}</div>')
 
     # Fishing
+    n_new = sum(1 for x in res["fishing"] if x["cum"] <= NEW_ENTRY_LINE)
+    fi_mkt = (f'<p class="mkt">형광펜 = 신규 진입 선(기준일 대비 {NEW_ENTRY_LINE:.0f}%) 넘은 줄 {n_new}개'
+              + (' (넘은 줄 없음 — 맨 위가 가장 가까운 것)' if not n_new and res["fishing"] else '') + '</p>')
     rows, cards = [], []
     for x in res["fishing"]:
         mv = "" if res["fishing_first"] else (
@@ -462,7 +494,8 @@ def write_action(res, ph):
             (f'<span class="up">▲{x["이전"] - x["순위"]}</span>' if x["이전"] > x["순위"] else
              f'<span class="dn">▼{x["순위"] - x["이전"]}</span>' if x["이전"] < x["순위"] else '<span class="mut">-</span>'))
         st_, cls = x["상태"]
-        rows.append(f'<tr><td class="rk">{x["순위"]}</td><td>{mv}</td><td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span></td>'
+        hl = ' class="hl"' if x["cum"] <= NEW_ENTRY_LINE else ""
+        rows.append(f'<tr{hl}><td class="rk">{x["순위"]}</td><td>{mv}</td><td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span></td>'
                     f'<td>{sign(x["cum"])}</td><td>{sign(x["저점누적"])} ({x["저점일"][5:]})</td><td>{sign(x["반등"])}</td>'
                     f'<td>{x["저점후"]}일</td><td>{sign(x["최근3일"])}</td><td class="l"><span class="bd st {cls}">{st_}</span></td></tr>')
         cards.append(card(f'{x["순위"]}. {esc(x["종목명"])}',
@@ -526,7 +559,7 @@ def write_action(res, ph):
 <p class="note">{res["index"]["snap"]["asof"]} 기준 · 지수는 확정 종가 + 지금 실시간, 당일은 전일 확정 종가 대비 · 보유·예수금은 매매일지 {res["index"]["asof"]} 반영분. 혼합지수는 보유종목 코스피/코스닥 평가금액 비중으로 가중.</p>
 
 <h2>Up/Down — 재진입 후보 (매도가 대비 많이 빠진 순, 전체 {res["updown_n"]}종목 중 상위 {TOP})</h2>
-<p class="legend">빨간 점선 = 마지막 매도가 · 빨간 점 = 매도일</p>
+{mkt_html}<p class="legend">빨간 점선 = 마지막 매도가 · 빨간 점 = 매도일</p>
 {ud_html}
 
 <h2>Watering Detect — 물타기 후보 (마지막 매수가 대비 많이 빠진 순, 물타기 중 {res["watering_n"]}종목 중 상위 {TOP})</h2>
@@ -535,7 +568,7 @@ def write_action(res, ph):
 
 <h2>Fishing — 관심종목 누적 하락 상위 {TOP} (전체 {res["fishing_n"]}종목)</h2>
 <p class="legend">세로축 = 기준일 대비 % · 파란 점 = 기간 중 바닥 · 상태: 빠지는 중(바닥이 최근) / 바닥 다지는 중 / 반등 중(바닥 대비 +3%↑이고 최근 3일 상승)</p>
-{fi_html}
+{fi_mkt}{fi_html}
 
 <h2>Basecamp — 빠지다 평지에서 물량이 터지는 종목 (점수 상위 {TOP})</h2>
 <p class="legend">점선: 회색 고점 · 녹색 평지 고가 · 주황 평지 저가 · 거래량 = 평지 구간 중간값 ÷ 하락 시작 전 중간값 · 2배↑ = 평지 중 하락 전의 2배 넘게 터진 날</p>
