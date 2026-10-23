@@ -54,6 +54,8 @@ def test_cfg_distance_per_sieve_and_max_ordering():
     b = mr.cfg_distance({"시작값": 2.0, "d": 0.5, "d3": 0.5}, {"반납률": 0.36, "착시": True})     # 0 · 0.2
     assert a["max"] < b["max"]                                   # 체마다 아슬아슬한 A가 앞(87 안)
     assert mr.cfg_distance({"시작값": 2.0, "d": -0.1, "d3": 0.0}, {"반납률": 0})["max"] >= 1
+    assert not mr.cfg_distance({"시작값": 2.0, "d": 0.0, "d3": 0.0}, {"반납률": 0})["max"] < 1   # 증가 0 → 거리 1 → 안 보임(build는 < 1)
+    assert mr.cfg_distance({"시작값": 2.0, "d": 0.5, "d3": 0.5}, {"반납률": 0.30, "착시": True})["주원인"] == "착시"   # 딱 30%
     t = mr.cfg_distance({"시작값": 2.0, "d": 0.5, "d3": 0.5}, {"반납률": 0.27, "꺾임": True})
     assert abs(t["꺾임"] - 0.8) < 1e-9 and t["주원인"] == "꺾임"
     # 원래 비중 3% 이상이면 상대 기준(5%)과 짧은 쪽: 10% 비중에서 +0.45%p = +4.5% → 상대 거리 0.1 < 외인 거리 0 아님

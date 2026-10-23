@@ -402,7 +402,7 @@ def build(data, link_res):
             cfg.append({**row, "score": abs(pct) * max(w["rel"], 0)})
         else:
             dist = cfg_distance(w, s)
-            if dist["max"] <= 1:
+            if dist["max"] < 1:          # 거리 1 = 외인 하나도 안 늘음·착시 60%·꺾임 30% — 비슷한 게 아님(35·87 2차)
                 near.append({**row, "dist": dist})
     merged = {}
     for x in cfg:
@@ -447,6 +447,8 @@ def cfg_distance(w: dict, s: dict) -> dict:
     dt = max(0.0, (give - 0.15) / 0.15) if s.get("꺾임") else 0.0
     parts = {"외인": df, "착시": di, "꺾임": dt}
     worst = max(parts, key=parts.get)
+    if parts[worst] == 0:                    # 셋 다 0인데 진짜가 아님 = 착시·꺾임 문턱에 딱 걸렸거나 외인 끝 값만 모자람
+        worst = "착시" if s.get("착시") else "꺾임" if s.get("꺾임") else "외인"
     return {"외인": df, "착시": di, "꺾임": dt, "max": parts[worst], "sum": df + di + dt, "주원인": worst}
 
 
