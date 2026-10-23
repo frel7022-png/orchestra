@@ -87,3 +87,11 @@ def test_regen_note_marks_time_and_reason_in_subtitle(monkeypatch):
     assert note in mr.page("T", "2026-10-26 · 주가 10:12 기준", "<p>x</p>")
     monkeypatch.setattr(mr, "REGEN_NOTE", "")
     assert "재생성" not in mr.page("T", "s", "<p>x</p>")                 # 평소엔 아무것도 안 붙음
+
+
+def test_day_market_keeps_first_generation_value(tmp_path, monkeypatch):
+    # 대표 10-23 「장 시작 최초 30분이 그날 흐름을 정하니까 그대로 9시 30분」 — 다시 만들어도 장 판정은 첫 생성(09:30) 값.
+    monkeypatch.setattr(mr, "MARKET_DAY_CSV", tmp_path / "market_day.csv")
+    assert mr.day_market("2026-10-26", -1.2, "09:30") == (-1.2, "09:30", False)
+    assert mr.day_market("2026-10-26", -2.6, "11:05") == (-1.2, "09:30", True)    # 재생성 — 09:30 값 그대로
+    assert mr.day_market("2026-10-27", 0.4, "09:30") == (0.4, "09:30", False)      # 다음 날은 새로

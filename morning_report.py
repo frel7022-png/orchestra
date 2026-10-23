@@ -541,6 +541,23 @@ NEW_ENTRY_LINE = -10.0   # 신규 진입: Fishing 기준일 대비 −10% 이상
 REENTRY_BASE = -5.0      # 재진입 기본: 마지막 매도가 대비 −5%
 
 
+MARKET_DAY_CSV = OUT / "market_day.csv"
+
+
+def day_market(today: str, bday, t: str) -> tuple:
+    """그날 장 판정에 쓸 혼합지수(ex) 당일 %와 시각. 그날 첫 생성 때 market_day.csv에 적고, 그 뒤 다시 만들면(--regen 등)
+    적어 둔 값을 돌려준다 — 대표 10-23 「장 시작 최초 30분이 그날 흐름을 정하니까 그대로 9시 30분」.
+    반환 (당일 %, 시각, 적어 둔 값을 썼나)."""
+    old = pd.read_csv(MARKET_DAY_CSV, dtype=str) if MARKET_DAY_CSV.exists() else pd.DataFrame(columns=["날짜", "시각", "혼합ex당일"])
+    row = old[old["날짜"] == today]
+    if not row.empty:
+        v = row.iloc[0]["혼합ex당일"]
+        return (None if v in (None, "", "nan") or pd.isna(v) else float(v)), str(row.iloc[0]["시각"]), True
+    new = pd.DataFrame([{"날짜": today, "시각": t, "혼합ex당일": "" if bday is None else round(bday, 4)}])
+    pd.concat([old, new], ignore_index=True).to_csv(MARKET_DAY_CSV, index=False, encoding="utf-8-sig")
+    return bday, t, False
+
+
 def market_regime(day_pct):
     """그날(당일) 혼합지수(삼성·하이닉스 제외) % → (장, 재진입 형광펜 선 %, 대표 말). 대표 10-23 기준 그대로:
     +1% 이상 좋음(−3%도) / −1% 초과~+1% 미만 보통(−5% 기본) / −2% 초과~−1% 이하 안 좋음(−10%에 가까워짐,
@@ -568,12 +585,16 @@ def write_action(res, ph):
            + kv("주식", "내 주식(예수금 제외)"))
 
     # Up/Down
-    _bday = ix.get("벤치")[1] * 100 if ix.get("벤치") and ix["벤치"][1] is not None else None
+    _now_bday = ix.get("벤치")[1] * 100 if ix.get("벤치") and ix["벤치"][1] is not None else None
+    _now_t = str(res["index"]["snap"].get("asof", ""))[-5:]
+    # 장 판정은 그날 첫 생성(09:30 = 장 시작 30분, 대표 10-23) 값으로 고정 — 다시 만들어도 그 값을 쓴다
+    _bday, _t, _kept = day_market(today, _now_bday, _now_t)
     mk, mk_line, mk_say = market_regime(_bday)
     n_hit = sum(1 for x in res["updown"] if x["pct"] <= mk_line)
-    _t = str(res["index"]["snap"].get("asof", ""))[-5:]           # 장 판정 시각(대표 10-23: 09:30 = 장 시작 30분이 흐름을 정함)
     _tl = f"{_t}, 장 시작 30분" if _t[:2] == "09" else _t
-    mkt_html = (f'<p class="mkt">오늘 장({_tl}): 혼합지수(삼성·하이닉스 제외) 당일 {sign(_bday, 2) if _bday is not None else "—"} → '
+    _later = (f' · 지금({_now_t}) 혼합지수 당일 {sign(_now_bday, 2)} — 장 판정은 {_t}판 그대로'
+              if _kept and _now_t != _t and _now_bday is not None else "")
+    mkt_html = (f'<p class="mkt">오늘 장({_tl}): 혼합지수(삼성·하이닉스 제외) 당일 {sign(_bday, 2) if _bday is not None else "—"}{_later} → '
                 f'<b>{mk}</b> · 재진입 선 {mk_say} · 형광펜 = 매도가 대비 {mk_line:.0f}% 넘은 줄 {n_hit}개'
                 + (' (넘은 줄 없음 — 맨 위가 가장 가까운 것)' if not n_hit and res["updown"] else '') + '</p>')
     rows, cards = [], []
