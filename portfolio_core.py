@@ -1797,6 +1797,7 @@ def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
             price_raw = d.get("closePrice") or d.get("cv") or d.get("nv")
             chg_raw = d.get("fluctuationsRatio") or d.get("cr")
             vol_raw = d.get("accumulatedTradingVolume")
+            cmp_raw = d.get("compareToPreviousClosePriceRaw")
             if not code or price_raw is None:
                 continue
             try:
@@ -1811,7 +1812,13 @@ def fetch_quotes(codes: list[str]) -> tuple[dict, list[str]]:
                 volume = int(str(vol_raw).replace(",", "")) if vol_raw is not None else None
             except ValueError:
                 volume = None
-            result[code] = {"price": price, "change_pct": change_pct, "volume": volume}
+            # 전일 종가 = 지금가 − 전일 대비. 정규장(09:00~15:30) 동안 이 "전일"은 KRX 종가다(다음 금융과 8/8 일치,
+            # 2026-10-23 실측). 저녁(NXT 마감 뒤) closePrice는 NXT 끝값이라 price_history 종가로 쓰면 안 된다.
+            try:
+                prev_close = price - float(cmp_raw) if cmp_raw is not None else None
+            except (TypeError, ValueError):
+                prev_close = None
+            result[code] = {"price": price, "change_pct": change_pct, "volume": volume, "prev_close": prev_close}
 
     return result, errors
 

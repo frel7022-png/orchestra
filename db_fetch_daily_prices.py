@@ -49,6 +49,8 @@ HEADERS = {
     "Content-Type": "application/json",
     "Prefer": "return=representation,resolution=merge-duplicates",
 }
+# 이미 있는 줄은 그대로 두고 없는 줄만 넣는다 — 저녁 cron이 15:35 KRX 종가를 NXT 끝값으로 덮지 않게(2026-10-23 대표 A).
+HEADERS_KEEP = {**HEADERS, "Prefer": "return=representation,resolution=ignore-duplicates"}
 
 
 def rest_get(path):
@@ -57,14 +59,16 @@ def rest_get(path):
     return r.json()
 
 
-def upsert(table: str, records: list[dict], on_conflict: str, chunk_size: int | None = None) -> int:
-    """records를 chunk_size씩(없으면 한 번에) upsert하고 총 적재 건수를 반환."""
+def upsert(table: str, records: list[dict], on_conflict: str, chunk_size: int | None = None,
+           keep_existing: bool = False) -> int:
+    """records를 chunk_size씩(없으면 한 번에) upsert하고 총 적재 건수를 반환.
+    keep_existing=True면 이미 있는 줄은 안 건드리고 없는 줄만 넣는다(ignore-duplicates)."""
     url = f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={on_conflict}"
     chunks = [records[i:i + chunk_size] for i in range(0, len(records), chunk_size)] \
         if chunk_size else [records]
     total = 0
     for chunk in chunks:
-        resp = requests.post(url, headers=HEADERS, json=chunk, timeout=60)
+        resp = requests.post(url, headers=HEADERS_KEEP if keep_existing else HEADERS, json=chunk, timeout=60)
         if not resp.ok:
             raise RuntimeError(f"{table} 적재 실패 ({resp.status_code}): {resp.text}")
         total += len(resp.json())
@@ -109,9 +113,11 @@ def main():
         for code, q in quotes.items()
     ]
 
-    print(f"3) price_history에 {len(records)}건 upsert (날짜: {today})...")
+    # 2026-10-23 대표 A: 종가는 KRX 15:30 종가. cron은 실제로 21~22시에 돌아(GitHub 지연) 그때 closePrice는
+    # NXT 끝값이다 → 15:35 record_krx_close가 넣은 줄은 덮지 않고, 빠진 줄만 넣는다(다음 날 09:2x fix_prev_close가 고침).
+    print(f"3) price_history에 {len(records)}건 — 없는 줄만 넣음 (날짜: {today})...")
     try:
-        n = upsert("price_history", records, "stock_code,trade_date")
+        n = upsert("price_history", records, "stock_code,trade_date", keep_existing=True)
         print(f"   완료: {n}건")
     except RuntimeError as e:
         if "volume" in str(e) and "does not exist" in str(e):
@@ -119,7 +125,7 @@ def main():
                   "미실행) — volume 없이 재시도합니다.")
             for r in records:
                 r.pop("volume", None)
-            n = upsert("price_history", records, "stock_code,trade_date")
+            n = upsert("price_history", records, "stock_code,trade_date", keep_existing=True)
             print(f"   완료(volume 제외): {n}건")
         else:
             raise
@@ -249,5 +255,90 @@ def fill_recent_gaps(watchlist: list[dict], today: str) -> None:
         print(f"   {days[0]}~{days[-1]} 빈 날 없음")
 
 
+# ------------------------------------------------------------------ KRX 종가 (2026-10-23 대표 A)
+# 대표: 「A가 맞는데 지금까지 한 건 픽스해 두고. 오늘부터 3:30분의 종가를 기록하면 되지 않을까?」
+# 네이버 실시간 closePrice는 정규장 동안 KRX 값이고, 15:30 마감 뒤 NXT 애프터(15:40~20:00)가 열리면 NXT 값으로 바뀐다.
+# 그래서 ① 15:30~15:40 사이 한 번 KRX 종가를 적고(record_krx_close, 로컬 예약 15:35) ② 다음 날 장중에 실시간 "전일"
+# (= KRX 종가)과 어제 줄을 맞대 다르면 고친다(fix_prev_close, 09:2x 리포트 직전 — 15:35를 놓친 날 안전망).
+# 지난 줄(~10-22)은 다시 쓰지 않는다(대표 「지금까지 한 건 픽스」).
+KRX_CLOSE_WINDOW = ((15, 30), (15, 40))   # KRX 마감 ~ NXT 애프터 시작
+
+
+def in_krx_close_window(now) -> bool:
+    lo, hi = KRX_CLOSE_WINDOW
+    return lo <= (now.hour, now.minute) < hi
+
+
+def prev_trading_day(day: str) -> str:
+    d = date.fromisoformat(day) - timedelta(days=1)
+    while core.is_krx_closed(d.isoformat()):
+        d -= timedelta(days=1)
+    return d.isoformat()
+
+
+def build_prev_fix_records(db_rows: list[dict], krx_prev: dict, prevprev_close: dict, day: str,
+                           tol: float = 0.5) -> list[dict]:
+    """어제(day) price_history 줄 중 KRX 종가(krx_prev: 코드→종가)와 다른 것만 고칠 줄로. change_pct는
+    그 전 거래일 DB 종가 대비로 다시 잰다(없으면 None). volume은 안 보냄(그 줄 그대로)."""
+    out = []
+    for r in db_rows:
+        c, k = r["stock_code"], krx_prev.get(r["stock_code"])
+        if k is None or r.get("close_price") is None or abs(float(r["close_price"]) - k) < tol:
+            continue
+        pp = prevprev_close.get(c)
+        out.append({"stock_code": c, "trade_date": day, "close_price": k,
+                    "change_pct": round((k / pp - 1) * 100, 2) if pp else None})
+    return out
+
+
+def record_krx_close(force: bool = False, dry_run: bool = False) -> int:
+    """오늘 KRX 종가를 price_history 오늘 줄로(있으면 덮음). 15:30~15:40 KST에만(force면 시각 막이 없음)."""
+    now, today = core.now_kst(), core.today_kst_str()
+    if core.is_krx_closed(today):
+        print(f"{today} 휴장일 — 안 함")
+        return 0
+    if not force and not in_krx_close_window(now):
+        print(f"{now:%H:%M}은 KRX 종가 창(15:30~15:40) 밖 — 안 함(이 시각 closePrice는 KRX 종가가 아님)")
+        return 0
+    watchlist = rest_get("watchlist?select=stock_code,stock_name")
+    quotes, errors = core.fetch_quotes([r["stock_code"] for r in watchlist])
+    for e in errors:
+        print("   경고:", e)
+    records = [{"stock_code": c, "trade_date": today, "close_price": q["price"],
+                "change_pct": q["change_pct"], "volume": q.get("volume")} for c, q in quotes.items()]
+    print(f"KRX 종가 {today} {len(records)}/{len(watchlist)}종목 ({now:%H:%M})"
+          f"{' — dry run, 안 씀' if dry_run else ''}")
+    return 0 if dry_run else upsert("price_history", records, "stock_code,trade_date")
+
+
+def fix_prev_close(dry_run: bool = False) -> int:
+    """장중(09:00~15:20)에 실시간 "전일"(KRX 종가)로 어제 줄을 맞춘다. 다른 줄만 고침."""
+    now, today = core.now_kst(), core.today_kst_str()
+    if core.is_krx_closed(today) or not ((9, 0) <= (now.hour, now.minute) < (15, 20)):
+        print(f"{today} {now:%H:%M} — 장중(09:00~15:20)이 아니라 안 함(전일가가 KRX 종가인 시간에만)")
+        return 0
+    day = prev_trading_day(today)
+    pday = prev_trading_day(day)
+    watchlist = rest_get("watchlist?select=stock_code")
+    quotes, _ = core.fetch_quotes([r["stock_code"] for r in watchlist])
+    krx_prev = {c: q["prev_close"] for c, q in quotes.items() if q.get("prev_close")}
+    rows = rest_get(f"price_history?select=stock_code,close_price&trade_date=eq.{day}")
+    pp = {r["stock_code"]: float(r["close_price"]) for r in
+          rest_get(f"price_history?select=stock_code,close_price&trade_date=eq.{pday}") if r.get("close_price")}
+    recs = build_prev_fix_records(rows, krx_prev, pp, day)
+    print(f"{day} 종가 KRX 맞추기: {len(rows)}줄 중 {len(recs)}줄 다름{' — dry run, 안 씀' if dry_run else ''}")
+    for r in recs[:10]:
+        print(f"   {r['stock_code']} → {r['close_price']:,.0f}")
+    return 0 if (dry_run or not recs) else upsert("price_history", recs, "stock_code,trade_date")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    dry = "--dry-run" in sys.argv
+    if "--krx-close" in sys.argv:
+        record_krx_close(force="--force" in sys.argv, dry_run=dry)
+    elif "--fix-prev-close" in sys.argv:
+        fix_prev_close(dry_run=dry)
+    else:
+        main()
+
