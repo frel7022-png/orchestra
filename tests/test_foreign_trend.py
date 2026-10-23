@@ -112,3 +112,16 @@ def test_link_report_section_renders_and_notes_unmeasurable_window():
     assert "60거래일</b> — 아직 못 잼" in html_
     assert "5거래일</b>" in html_ and "누적</b>" in html_
     assert "극단 이탈 — 트래킹" in html_ and "B" in html_   # B 20 → 18 = −10%
+
+
+def test_link_report_basic_layer_units_are_percent_not_pp():
+    """기본층(원천 변화 · 평균 대비)은 시작 대비 % − 평균이라 단위가 % — %p는 심화층만(10-23 첫날 "+20.8%p" 표시 버그).
+    머리 문장의 바닥은 "중앙값 이상"(× 1만 → 1만(10,000)으로 읽힘)."""
+    import daily_link_report as dlr
+    fh = _fh({"A": [10.0] * 25 + [11.5], "B": [20.0] * 25 + [18.0], "C": [5.0] * 26})
+    ph = fh.rename(columns={"외국인보유율": "종가"})[["종목코드", "종목명", "날짜", "종가"]]
+    html_ = dlr.foreign_trend_section(sorted(fh["날짜"])[-1], ph, fh, {}, set(), set())
+    basic = html_.split("기본 — 원천 변화")[1].split("<h3")[0]
+    assert "%p" not in basic and "%</span>" in basic
+    assert "중앙값 이상" in html_ and "× 1만" not in html_
+

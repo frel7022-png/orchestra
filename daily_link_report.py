@@ -366,7 +366,7 @@ def foreign_trend_section(today, ph, fh, live, holds_n, holds_m) -> str:
 
     def basic_row(r):
         return (f'<tr><td class="nm">{esc(r.종목명)}<span class="own">{own(r.종목명)}</span></td>'
-                f'<td>{r.시작:.2f} → {r.끝:.2f}</td><td>{sign(r.rel)}</td><td>{sign(r.dev_rel, 1, "%p")}</td></tr>')
+                f'<td>{r.시작:.2f} → {r.끝:.2f}</td><td>{sign(r.rel)}</td><td>{sign(r.dev_rel)}</td></tr>')
 
     def deep_row(r):
         near = ' <span class="mut">(가까운 순)</span>' if r.가까운순 else ""
@@ -425,10 +425,12 @@ def foreign_trend_section(today, ph, fh, live, holds_n, holds_m) -> str:
             bits.append(f'감시 뒤 외인 {v["외인픽후"]:+.2f}%p')
         tw_items.append(f'<li><b>{esc(v["종목명"])}</b> — {" · ".join(bits)}</li>')
     tw_html = "".join(tw_items) or '<li class="mut">없음</li>'
+    # "중앙값 × 1만"이 1만(10,000)으로 읽혀서(10-23 위크) — 1배면 "중앙값 이상"
+    floor_txt = "중앙값 이상" if ft.IMPACT_FLOOR == 1 else f"중앙값의 {ft.IMPACT_FLOOR:g}배 이상"
     return f"""
 <h2>외인 추이 — 관심종목 전체 평균 대비</h2>
 <p class="note">창 넷(5·20·60거래일·누적) · 기준선 = 대상 종목 전체의 평균 외인 변화(창마다 따로). 기본 = 원천 변화(시작 대비 %, 비중 크기로 가중 안 함) ·
-심화 = 영향력 %p(|%p| ≥ 전체 |%p| 중앙값 × {ft.IMPACT_FLOOR:g}만, 영향력 = %p ÷ 그 중앙값). σ배 ★ = 평소와 다름(|σ| ≥ {ft.SIGMA_FLAG:g}, 거르지 않음). 외인은 DB 최신일(T−1).</p>
+심화 = 영향력 %p(|%p| ≥ 전체 |%p| {floor_txt}만, 영향력 = %p ÷ 그 중앙값). σ배 ★ = 평소와 다름(|σ| ≥ {ft.SIGMA_FLAG:g}, 거르지 않음). 외인은 DB 최신일(T−1).</p>
 <div class="legend"><i style="background:var(--dn)"></i>평균 주가(%, 왼쪽) <i style="background:var(--fl)"></i>평균 외인 변화(누적 시작 대비 %, 오른쪽) · 세로선 = 60·20·5거래일 시작</div>
 <div class="card">{overall}</div>
 {''.join(blocks)}
