@@ -2463,7 +2463,7 @@ CFG_TAG_PATH = HERE / "cfg_tagged.csv"
 CFG_TAG_COLUMNS = ["종목명", "태그일", "메모"]
 
 
-WATER_GREEN_BAND = 0.5  # %, 평단 −이 이상이면 녹색(본전 근처부터)
+WATER_GREEN_BAND = 0.5  # %, 현재가가 평단 −0.5% 이상이고 최초진입가 미만이면 녹색(본전 근처부터 최초진입가 직전까지 쭉)
 
 
 def watering_card_state(n_buy: int, avg: float, cur: float, first_px: float) -> str | None:

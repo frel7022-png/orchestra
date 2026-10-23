@@ -1490,7 +1490,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             _div_inner = _dv_html + _sep + _fr_html
             dividend_row_html = f'<div class="dividend-row">{_div_inner}</div>' if _div_inner else ""
 
-            # 물타기(현재 사이클 매수 2회+) 카드 색 — 평단 ±0.5% 녹색, 최초진입가 도달 파랑(2026-10-20 대표)
+            # 물타기(현재 사이클 매수 2회+) 카드 색 — 평단 −0.5% 이상~최초진입가 미만 녹색, 최초진입가 이상 파랑(2026-10-20 대표, 10-23 재확인)
             _pts = get_holding_trade_points(tx, r["종목명"])
             _buys = _pts[_pts["구분"] == "매수"] if not _pts.empty else _pts
             _wstate = watering_card_state(len(_buys), float(r["평단가"]), float(r["현재가"]),
