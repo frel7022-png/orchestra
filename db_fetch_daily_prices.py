@@ -262,6 +262,10 @@ def fill_recent_gaps(watchlist: list[dict], today: str) -> None:
 # (= KRX 종가)과 어제 줄을 맞대 다르면 고친다(fix_prev_close, 09:2x 리포트 직전 — 15:35를 놓친 날 안전망).
 # 지난 줄(~10-22)은 다시 쓰지 않는다(대표 「지금까지 한 건 픽스」).
 KRX_CLOSE_WINDOW = ((15, 30), (15, 40))   # KRX 마감 ~ NXT 애프터 시작
+# 안전망 막이(2026-10-26 대표 「안전망 ±30% 막이 지금 넣어 … 15% 어때?」): 전일가가 어제 줄과 이만큼 넘게 다르면
+# 권리락·분할·병합 날의 "수정 기준가"일 수 있어 덮지 않고 로그만. 10-26 엘앤씨바이오 — 권리락 날 전일가 30,150이
+# 10-23 KRX 종가 60,000을 덮어 가짜 −48.9%를 만든 일. 정상 차이(NXT 끝값 vs KRX)는 1~3%. 숫자 집 = 뇌_초안 데이터센터/세팅.
+PREV_FIX_MAX_DIFF = 0.15
 
 
 def in_krx_close_window(now) -> bool:
@@ -277,13 +281,19 @@ def prev_trading_day(day: str) -> str:
 
 
 def build_prev_fix_records(db_rows: list[dict], krx_prev: dict, prevprev_close: dict, day: str,
-                           tol: float = 0.5) -> list[dict]:
+                           tol: float = 0.5, suspects: list | None = None) -> list[dict]:
     """어제(day) price_history 줄 중 KRX 종가(krx_prev: 코드→종가)와 다른 것만 고칠 줄로. change_pct는
-    그 전 거래일 DB 종가 대비로 다시 잰다(없으면 None). volume은 안 보냄(그 줄 그대로)."""
+    그 전 거래일 DB 종가 대비로 다시 잰다(없으면 None). volume은 안 보냄(그 줄 그대로).
+    차이가 PREV_FIX_MAX_DIFF를 넘으면 고치지 않고 suspects에 (코드, 어제 줄, 전일가)를 담는다(권리락·분할 의심)."""
     out = []
     for r in db_rows:
         c, k = r["stock_code"], krx_prev.get(r["stock_code"])
         if k is None or r.get("close_price") is None or abs(float(r["close_price"]) - k) < tol:
+            continue
+        old = float(r["close_price"])
+        if old > 0 and abs(k / old - 1) > PREV_FIX_MAX_DIFF:
+            if suspects is not None:
+                suspects.append((c, old, k))
             continue
         pp = prevprev_close.get(c)
         out.append({"stock_code": c, "trade_date": day, "close_price": k,
@@ -325,10 +335,13 @@ def fix_prev_close(dry_run: bool = False) -> int:
     rows = rest_get(f"price_history?select=stock_code,close_price&trade_date=eq.{day}")
     pp = {r["stock_code"]: float(r["close_price"]) for r in
           rest_get(f"price_history?select=stock_code,close_price&trade_date=eq.{pday}") if r.get("close_price")}
-    recs = build_prev_fix_records(rows, krx_prev, pp, day)
+    suspects = []
+    recs = build_prev_fix_records(rows, krx_prev, pp, day, suspects=suspects)
     print(f"{day} 종가 KRX 맞추기: {len(rows)}줄 중 {len(recs)}줄 다름{' — dry run, 안 씀' if dry_run else ''}")
     for r in recs[:10]:
         print(f"   {r['stock_code']} → {r['close_price']:,.0f}")
+    for c, old, k in suspects:
+        print(f"   권리락·분할 또는 NXT 큰 차이 의심 — 안 고침 {c} 어제 줄 {old:,.0f} · 전일가 {k:,.0f} ({(k / old - 1) * 100:+.1f}%)")
     return 0 if (dry_run or not recs) else upsert("price_history", recs, "stock_code,trade_date")
 
 

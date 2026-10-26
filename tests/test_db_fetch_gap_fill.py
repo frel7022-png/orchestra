@@ -123,3 +123,15 @@ def test_fix_prev_close_touches_only_previous_trading_day(monkeypatch):
     monkeypatch.setattr(m.core, "now_kst", lambda: datetime(2026, 10, 26, 16, 0))
     m.fix_prev_close()
     assert sent == []
+
+
+def test_prev_fix_skips_rights_issue_like_gap(monkeypatch):
+    # 2026-10-26 엘앤씨바이오: 권리락 날 전일가(수정 기준가 30,150)가 10-23 KRX 종가 60,000을 덮던 일 — 15% 넘게 다르면 안 고침.
+    m = _load(monkeypatch)
+    rows = [{"stock_code": "290650", "close_price": 60000.0},
+            {"stock_code": "031430", "close_price": 10580.0}]
+    sus = []
+    recs = m.build_prev_fix_records(rows, {"290650": 30150.0, "031430": 11200.0}, {}, "2026-10-23", suspects=sus)
+    assert [r["stock_code"] for r in recs] == ["031430"]          # 정상 차이(약 6%)는 그대로 고침
+    assert sus == [("290650", 60000.0, 30150.0)]
+
