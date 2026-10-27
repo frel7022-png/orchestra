@@ -58,3 +58,14 @@ def test_text_path_check_flags_moved_office_but_not_history_or_particles(tmp_pat
         "\n## 이력\n- 데이터센터/옛_사무실에서 옮김\n",         # 이력 칸은 뺌
         encoding="utf-8")
     assert bl.text_path_problems(root) == [("데이터센터/꺼내는_창구.md", 5, "데이터센터/현행값_집")]
+
+
+def test_address_problems_flag_malformed_resident_line(tmp_path):
+    """"주민:"으로 시작하는데 꼴이 틀린 줄(네 자리 아님 등)은 주소록에서 조용히 빠지지 않고 문제로 잡힌다(b8 10-27)."""
+    root = _city(tmp_path)
+    book = root / "뇌관리" / "주소록.csv"
+    book.write_text(bl.address_book_text(root), encoding="utf-8")
+    (root / "뇌관리" / "틀림.md").write_text("# 틀림\n주민: C-007 틀림\n", encoding="utf-8")
+    probs = bl.address_problems(root, book)
+    assert any("꼴이 틀림" in x and "틀림.md:2" in x for x in probs)
+

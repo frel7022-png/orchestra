@@ -480,6 +480,10 @@ def address_problems(root: Path | None = None, book: Path | None = None) -> list
         for r in rs:
             seen.setdefault(r[i], []).append(r[2])
         probs += [f"주민 {what} 겹침: {k} — {', '.join(v)}" for k, v in seen.items() if len(v) > 1]
+    for q in _city_md(root):
+        for i, ln in enumerate(q.read_text(encoding="utf-8").split("\n"), 1):
+            if ln.startswith("주민:") and not RESIDENT.fullmatch(ln.rstrip()):
+                probs.append(f"주민 줄 꼴이 틀림(주소록에서 빠짐): {q.relative_to(root).as_posix()}:{i}  {ln.strip()}")
     paths = [r[2] for r in rs]
     probs += [f"한 md에 주민 줄 둘 이상: {x}" for x in sorted({x for x in paths if paths.count(x) > 1})]
     if not book.exists():
