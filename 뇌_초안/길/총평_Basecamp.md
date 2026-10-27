@@ -13,6 +13,7 @@
 - 이력
 
 ## 꼬리표
+주민: C-0043 총평_Basecamp
 종류: 길(기능 + 판단)
 옛 이름: [옮김] claude.md §6-35(Basecamp — 문턱 대신 점수 순위·평지 누적·하락 전 거래량 기준·받는손·④ 리포트 2026-10-15 신설) · [새] ⚠외인% 경계(10-21 아이센스)·①②③ 경계(f043821)
 저장고: `morning_report/comments/날짜_basecamp.html` · 순위 기록 `morning_report/basecamp_rank.csv` · 견본 `morning_report/comments/2026-10-15_basecamp.html`

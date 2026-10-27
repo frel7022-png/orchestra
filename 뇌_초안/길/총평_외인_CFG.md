@@ -13,6 +13,7 @@
 - 이력
 
 ## 꼬리표
+주민: C-0045 총평_외인_CFG
 종류: 길(기능 + 판단)
 옛 이름: (없음 — 옛 뇌는 ② 명단 규칙(코드)·③ 출처 시작일(코드)·지난 총평 꼴을 기억으로 엮음, 해부_2차_B1_234)
 저장고: `link_sample/comments/날짜.html`(②) · `morning_report/comments/날짜_cfg.html`(③) · 견본 `link_sample/comments/2026-10-13.html` · `morning_report/comments/2026-10-15_cfg.html`
