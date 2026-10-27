@@ -8,6 +8,8 @@
     python brain_log.py oldcheck mark        # 옛 뇌 지문 찍기(출근 점검 첫머리) — 옛 claude.md·ARCHIVE.md·메모리 줄별 해시를 상태 파일에
     python brain_log.py oldcheck [--md]      # 지문 뒤로 바뀐 옛 뇌 줄 중 새 뇌 주소가 없는 줄 · 열린 〔새뇌 대기〕 · 세팅↔코드 값 다름(하루 끝)
     python brain_log.py where 이름|파일.py    # 이름표·심볼의 지금 줄 / 그 파일을 가리키는 셀 문 목록(구조 바꾸기 전)
+    python brain_log.py addr [--check]       # 동사무소 주소록: md의 `주민:` 줄을 긁어 뇌관리/주소록.csv를 다시 만든다(--check는 쓰지 않고 다른 점만)
+                                             #   + 본문 속 끊긴 경로(`빌딩/이름` 글자, U-027) — 동사무소 최소판(대표 2026-10-27, 원-2026-10-27-10)
 """
 import datetime
 import re
@@ -434,6 +436,93 @@ def old_setting_mismatch(setting: Path | None = None, olds: list[Path] | None = 
     return out
 
 
+# ---------- 동사무소 최소판 (대표 2026-10-27 「동사무소 최소판은 지금 넣어. 주민 카드 전체는 이관 뒤.」 원-2026-10-27-10)
+# md 한 장 = 주민. 안 바뀌는 이름(주민번호 + 이름)은 그 md의 `주민:` 줄에, 지금 주소(경로)는 주소록에.
+# 주소록은 손으로 쓰지 않는다 — 이 함수가 `주민:` 줄을 긁어 만든다. 이사하면 주소록만 다시 만들면 된다.
+ADDR_BOOK = BRAIN / "뇌관리" / "주소록.csv"
+RESIDENT = re.compile(r"^주민: (C-\d{4}) (\S+)\s*$", re.M)
+ADDR_HEADER = "번호,이름,지금_경로"
+
+
+def _city_md(root: Path | None = None) -> list[Path]:
+    root = root or BRAIN
+    return sorted(p for p in root.rglob("*.md") if p.relative_to(root).parts[0] not in ("HISTORY", "ARCHIVE"))
+
+
+def residents(root: Path | None = None) -> list[tuple[str, str, str]]:
+    """[(번호, 이름, 지금_경로)] — 도시 md의 `주민:` 줄(HISTORY·ARCHIVE 뺌). 경로는 뇌_초안 기준."""
+    root = root or BRAIN
+    out = []
+    for p in _city_md(root):
+        for m in RESIDENT.finditer(p.read_text(encoding="utf-8")):
+            out.append((m.group(1), m.group(2), p.relative_to(root).as_posix()))
+    return sorted(out)
+
+
+def address_book_text(root: Path | None = None) -> str:
+    return ADDR_HEADER + "\n" + "".join(f"{n},{name},{path}\n" for n, name, path in residents(root))
+
+
+def address_problems(root: Path | None = None, book: Path | None = None) -> list[str]:
+    """주소록 ↔ 실제 파일: 번호·이름 겹침, 한 md에 주민 줄 둘, 주소록 파일이 지금 도시와 다름, 주소록의 경로가 없음."""
+    root = root or BRAIN
+    book = book or (root / "뇌관리" / "주소록.csv")
+    rs = residents(root)
+    probs = []
+    for i, what in ((0, "번호"), (1, "이름")):
+        seen = {}
+        for r in rs:
+            seen.setdefault(r[i], []).append(r[2])
+        probs += [f"주민 {what} 겹침: {k} — {', '.join(v)}" for k, v in seen.items() if len(v) > 1]
+    paths = [r[2] for r in rs]
+    probs += [f"한 md에 주민 줄 둘 이상: {x}" for x in sorted({x for x in paths if paths.count(x) > 1})]
+    if not book.exists():
+        probs.append(f"주소록 없음: {book.name} — `python brain_log.py addr`")
+        return probs
+    lines = book.read_text(encoding="utf-8").splitlines()
+    for ln in lines[1:]:
+        parts = ln.split(",")
+        if len(parts) == 3 and not (root / parts[2]).exists():
+            probs.append(f"주소록 경로가 없음: {ln}")
+    if book.read_text(encoding="utf-8") != address_book_text(root):
+        probs.append("주소록이 지금 도시의 `주민:` 줄과 다름 — `python brain_log.py addr`로 다시 만든다")
+    return probs
+
+
+# 본문 속 끊긴 경로(U-027): `빌딩/이름`이 글자로 적혔는데(백틱·.md 없이도) 그 빌딩에 그 사무실이 없는 것.
+# 옛 주소를 남기는 자리(이력 칸 · "옛 이름"·"옛 주소"·"대체됨" 줄 · 기록관 원문)는 뺀다.
+# 조사가 붙은 꼴("일과/지금_숫자로_답하기에서")은 그 빌딩의 파일 이름으로 시작하면 산 것으로 본다.
+TEXT_PATH_SKIP_NAMES = {"X", "사무실", "길", "이름", "파일"}
+
+
+def text_path_problems(root: Path | None = None) -> list[tuple[str, int, str]]:
+    root = root or BRAIN
+    blds = sorted((d.name for d in root.iterdir() if d.is_dir() and d.name not in ("HISTORY", "ARCHIVE")), key=len, reverse=True)
+    if not blds:
+        return []
+    pat = re.compile(r"(?<![\w/.가-힣])(" + "|".join(map(re.escape, blds)) + r")/([0-9A-Za-z가-힣_§\-]+)")
+    names = {b: [q.stem for q in (root / b).iterdir()] + [q.name for q in (root / b).iterdir()] for b in blds}
+    bad = []
+    for p in _city_md(root):
+        rel = p.relative_to(root).as_posix()
+        if rel.startswith("기록관/"):
+            continue
+        sec = ""
+        for i, ln in enumerate(p.read_text(encoding="utf-8").split("\n"), 1):
+            if ln.startswith("## "):
+                sec = ln[3:].strip()
+            if sec.startswith("이력") or "옛 이름" in ln or "옛 주소" in ln or "대체됨" in ln:
+                continue
+            for m in pat.finditer(ln):
+                b, name = m.group(1), m.group(2)
+                if name in TEXT_PATH_SKIP_NAMES or len(name) < 2:
+                    continue
+                if any(name == n or name.startswith(n) for n in names[b] if len(n) >= 2):
+                    continue
+                bad.append((rel, i, f"{b}/{name}"))
+    return bad
+
+
 def main() -> int:
     for st in (sys.stdout, sys.stderr):
         try:
@@ -495,6 +584,18 @@ def main() -> int:
     elif a and a[0] == "where" and len(a) > 1:
         for ln in where(" ".join(a[1:])) or ["없음"]:
             print(ln)
+    elif a and a[0] == "addr":
+        if "--check" not in a:
+            ADDR_BOOK.write_text(address_book_text(), encoding="utf-8")
+            print(f"주소록 {len(residents())}명 → {ADDR_BOOK}")
+        probs = address_problems()
+        tp = text_path_problems()
+        for x in probs:
+            print(x)
+        for f, i, ref in tp:
+            print(f"본문 속 끊긴 경로: {f}:{i}  {ref}")
+        print(f"주소록 문제 {len(probs)}개 · 본문 속 끊긴 경로 {len(tp)}개")
+        return 1 if probs or tp else 0
     elif a and a[0] == "heads":
         bad = 0
         for p in cell_files():
