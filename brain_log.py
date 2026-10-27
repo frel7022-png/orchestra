@@ -71,6 +71,7 @@ def write_storage() -> None:
 
 LSTART, LEND = "<!-- 길 표: brain_log.py links가 만든다 -->", "<!-- 길 표 끝 -->"
 REF = re.compile(r"`((?:\.\./)?(?:뇌_초안/)?(?:[^`/\s]+/)?[^`/\s]+\.md)`")
+NAME_REF = re.compile(r"(?<![\w/.가-힣`])([가-힣A-Za-z_]+)/([0-9A-Za-z가-힣_\-]+)(?![\w가-힣.])")
 
 
 def _cell_key(p: Path) -> str:
@@ -107,6 +108,11 @@ def links() -> tuple[dict, dict, list]:
             for m in REF.finditer(ln):
                 t = _resolve(m.group(1), p)
                 k = f"{t.parent.name}/{t.stem}"
+                if k in keys and k != _cell_key(p):
+                    hits.add(k)
+            # 이름 꼴(2026-10-27 — 소견서는 경로 대신 "빌딩/사무실 이름", 주소는 동사무소 주소록)
+            for m in NAME_REF.finditer(ln):
+                k = f"{m.group(1)}/{m.group(2)}"
                 if k in keys and k != _cell_key(p):
                     hits.add(k)
         out[_cell_key(p)] = hits
