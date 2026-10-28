@@ -113,3 +113,17 @@ def test_line_addr_warnings_flags_unnamed_range(tmp_path):
     assert any(":2" in x and "12–14행" in x for x in w) and any(":4" in x for x in w)
     assert not any(":3" in x for x in w)
 
+
+
+def test_cell_files_include_nested_office_folder():
+    """빌딩 안 사무실 폴더(데이터센터/관측소 — 2026-10-28 이사 나)의 셀도 셀 목록·저장고 표에 든다."""
+    keys = {bl._cell_key(p) for p in bl.cell_files()}
+    assert {"관측소/바다", "관측소/외인_변화", "관측소/주가_변화", "관측소/거래량", "관측소/받음"} <= keys
+    table = bl.storage_table(bl.cell_files())
+    assert "| `관측소/바다` |" in table
+
+
+def test_links_read_name_with_particle():
+    """새 포맷 꼴 "가치척도/누구와_싸우나가 도움이 될 수 있다" — 조사가 붙어도 나가는 길로 센다."""
+    out, _, _ = bl.links()
+    assert "가치척도/누구와_싸우나" in out["바라보는_눈/견주는_법"]

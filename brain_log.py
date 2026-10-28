@@ -25,7 +25,10 @@ START, END = "<!-- 저장고 표: brain_log.py storage가 만든다 -->", "<!-- 
 
 
 def cell_files() -> list[Path]:
-    return sorted(p for p in BRAIN.glob("*/*.md") if not p.name.startswith("_") and p.parent.name not in ("기록관", "설계도실", "ARCHIVE", "HISTORY"))   # 기록관은 원문 보관, HISTORY는 날짜별 서사(셀 아님)
+    # 기록관은 원문 보관, HISTORY는 날짜별 서사(셀 아님). 빌딩 안 사무실 폴더(데이터센터/관측소 — 2026-10-28 이사 나)도 읽는다.
+    skip = {"기록관", "설계도실", "ARCHIVE", "HISTORY"}
+    return sorted(p for p in BRAIN.rglob("*.md")
+                  if len(p.relative_to(BRAIN).parts) >= 2 and not p.name.startswith("_") and not (skip & set(p.relative_to(BRAIN).parts)))
 
 
 def cell_lines(since: str | None = None, until: str | None = None) -> list[tuple[str, str, str]]:
@@ -55,7 +58,11 @@ def storage_table(files: list[Path]) -> str:
     for p in files:
         m = re.search(r"^저장고: (.+)$", p.read_text(encoding="utf-8"), re.M)
         if m:
-            out.append(f"| `{p.parent.name}/{p.stem}` | {m.group(1)} |")
+            # 저장고 줄 속 md 경로는 그 셀 기준이라, 셀관리(도시 맨 위)에서도 풀리게 도시 기준 경로로 바꿔 적는다
+            def _rebase(mm, p=p):
+                t_ = _resolve(mm.group(1), p)
+                return f"`{t_.relative_to(BRAIN.resolve()).as_posix()}`" if t_.exists() and BRAIN.resolve() in t_.parents else mm.group(0)
+            out.append(f"| `{p.parent.name}/{p.stem}` | {REF.sub(_rebase, m.group(1))} |")
     return "\n".join(out)
 
 
@@ -72,6 +79,8 @@ def write_storage() -> None:
 LSTART, LEND = "<!-- 길 표: brain_log.py links가 만든다 -->", "<!-- 길 표 끝 -->"
 REF = re.compile(r"`((?:\.\./)?(?:뇌_초안/)?(?:[^`/\s]+/)?[^`/\s]+\.md)`")
 NAME_REF = re.compile(r"(?<![\w/.가-힣`])([가-힣A-Za-z_]+)/([0-9A-Za-z가-힣_\-]+)(?![\w가-힣.])")
+NAME_REF_PARTICLE = re.compile(r"(?<![\w/.가-힣`])([가-힣A-Za-z_]+)/([0-9A-Za-z가-힣_\-]+)")
+PARTICLES = ("으로", "이", "가", "은", "는", "을", "를", "로", "에", "와", "과", "도", "의")
 
 
 def _cell_key(p: Path) -> str:
@@ -115,6 +124,15 @@ def links() -> tuple[dict, dict, list]:
                 k = f"{m.group(1)}/{m.group(2)}"
                 if k in keys and k != _cell_key(p):
                     hits.add(k)
+            # 새 포맷 꼴 "○○/△△가 도움이 될 수 있다" — 이름 뒤에 조사가 붙어도 이름으로 읽는다(2026-10-28 md 포맷)
+            for m in NAME_REF_PARTICLE.finditer(ln):
+                b, nm = m.group(1), m.group(2)
+                for suf in PARTICLES:
+                    if nm.endswith(suf) and f"{b}/{nm[:-len(suf)]}" in keys:
+                        k = f"{b}/{nm[:-len(suf)]}"
+                        if k != _cell_key(p):
+                            hits.add(k)
+                        break
         out[_cell_key(p)] = hits
     inc = {k: {a for a, v in out.items() if k in v} for k in keys}
     broken = []
