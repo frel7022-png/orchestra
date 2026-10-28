@@ -6,7 +6,7 @@
 **고장이 아니라 설계다.** 히스토리 다섯(`index_history` · `bigcap_history` · `asset_history` · `sector_history` · `bench_history`)은 **매매일지를 반영할 때만**(`ingest_daily.py`) git 쪽에 한 줄씩 쌓인다. 10-27·10-28 매매일지가 아직 안 들어왔다(`todaytrans/`엔 1026.csv까지 · `transactions.csv` 마지막 날 10-26). 그래서 다섯이 같이 10-26에서 멈춰 있다 — 서로 어긋난 건 없다(lock-step 그대로).
 
 ## 확인한 것
-- 쓰는 곳은 둘뿐이다: `ingest_daily.py`(95·107·117행 — 매매일지 반영 때 그 날짜 확정 종가로) · `app.py` 새로고침(469·470행 — 배포 서버 디스크에만, git엔 안 올라감, 옛 claude.md §6-1).
+- 쓰는 곳은 둘뿐이다: `ingest_daily.py`(95·107·117행 — 매매일지 반영 때 그 날짜 확정 종가로) · `app.py` 새로고침(asset·sector 스냅샷 465·466행, index·bigcap 469·470행 — 배포 서버 디스크에만, git엔 안 올라감, 옛 claude.md §6-1).
 - 9/1~10/28 평일 중 휴장일을 빼고 빠진 날은 10-27 · 10-28 둘뿐이다(그 전엔 매일 매매일지가 있었다).
 - 다섯 파일의 마지막 날이 모두 2026-10-26 — 정합성 OK.
 
