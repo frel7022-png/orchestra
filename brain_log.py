@@ -507,11 +507,15 @@ TEXT_PATH_SKIP_NAMES = {"X", "사무실", "길", "이름", "파일"}
 
 def text_path_problems(root: Path | None = None) -> list[tuple[str, int, str]]:
     root = root or BRAIN
-    blds = sorted((d.name for d in root.iterdir() if d.is_dir() and d.name not in ("HISTORY", "ARCHIVE")), key=len, reverse=True)
+    # 빌딩 폴더 + 그 안 사무실 폴더(2026-10-28 이사 나 — 데이터센터/관측소처럼 중첩된 이름 "관측소/바다"도 검사)
+    dirs = [d for d in root.rglob("*") if d.is_dir() and not ({"HISTORY", "ARCHIVE", "__pycache__"} & set(d.relative_to(root).parts))]
+    names: dict[str, list[str]] = {}
+    for d in dirs:
+        names.setdefault(d.name, []).extend([q.stem for q in d.iterdir()] + [q.name for q in d.iterdir()])
+    blds = sorted(names, key=len, reverse=True)
     if not blds:
         return []
     pat = re.compile(r"(?<![\w/.가-힣])(" + "|".join(map(re.escape, blds)) + r")/([0-9A-Za-z가-힣_§\-]+)")
-    names = {b: [q.stem for q in (root / b).iterdir()] + [q.name for q in (root / b).iterdir()] for b in blds}
     bad = []
     for p in _city_md(root):
         rel = p.relative_to(root).as_posix()

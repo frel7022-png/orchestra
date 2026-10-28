@@ -69,3 +69,12 @@ def test_address_problems_flag_malformed_resident_line(tmp_path):
     probs = bl.address_problems(root, book)
     assert any("꼴이 틀림" in x and "틀림.md:2" in x for x in probs)
 
+
+
+def test_text_path_check_covers_nested_office_folder(tmp_path):
+    """빌딩 안 사무실 폴더(데이터센터/관측소 — 2026-10-28 이사 나)의 이름 "관측소/바다"도 검사한다."""
+    root = tmp_path / "뇌_초안"
+    (root / "데이터센터" / "관측소").mkdir(parents=True)
+    (root / "데이터센터" / "관측소" / "바다.md").write_text(
+        "# 바다\n- 관측소/바다 산 이름\n- 관측소/없는방 틀림\n", encoding="utf-8")
+    assert bl.text_path_problems(root) == [("데이터센터/관측소/바다.md", 3, "관측소/없는방")]
