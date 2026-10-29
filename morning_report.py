@@ -38,6 +38,12 @@ esc = html.escape
 
 
 # ------------------------------------------------------------------ 공통 도우미
+def bc_tags(x) -> str:
+    """Basecamp 꼬리표 — 사건(거래 재개·권리락)·고점 하루 튐. 순위는 그대로 두고 표시만(대표 2026-10-29)."""
+    return "".join(f'<span class="tag">[{esc(t)}]</span>'
+                   for t in ((x.get("사건") and "사건: " + x["사건"]), x.get("고점튐")) if t)
+
+
 def sign(v, d=1, unit="%"):
     if v is None or pd.isna(v):
         return '<span class="mut">-</span>'
@@ -139,6 +145,7 @@ th,td{padding:7px 8px;border-bottom:1px solid var(--rule);text-align:right;white
 th{color:var(--soft);font-weight:600;font-size:12px} .l{text-align:left} td.rk{font-weight:700}
 .up{color:var(--up)} .dn{color:var(--dn)} .mut{color:var(--faint)} .new{color:var(--fl);font-weight:700;font-size:11px}
 .own{font-size:10px;color:var(--faint);margin-left:5px}
+.tag{font-size:10px;color:var(--warn);margin-left:5px;white-space:nowrap}
 .bd{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid currentColor;margin-left:4px}
 .fast{color:var(--up)} .slow{color:var(--soft)} .st{color:var(--fl)} .st.down{color:var(--dn)} .st.base{color:var(--warn)}
 .grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-top:10px}
@@ -386,6 +393,7 @@ def build(data, link_res):
 
     # ③ CFG — ①의 후보 중, 그 하락 구간 동안 외인이 실제로 늘었고 외인 상태가 나쁘지 않은 종목
     stats = link_res["stats"]
+    res["link_members"] = set(link_res.get("members", []))
     def fwin(code, start):
         g = fh[(fh["종목코드"] == code) & (fh["날짜"] >= start)].sort_values("날짜")
         if len(g) < 2:
@@ -656,7 +664,7 @@ def write_action(res, ph):
     rows, cards = [], []
     st_cls = {"돌파": "", "다지는 중": "base", "이탈": "down"}
     for i, x in enumerate(res["basecamp"], 1):
-        rows.append(f'<tr><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span></td>'
+        rows.append(f'<tr><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span>{bc_tags(x)}</td>'
                     f'<td>{x["고점일"][5:]}</td><td>{sign(x["하락률"])}</td><td>{x["평지시작"][5:]} · {x["평지일수"]}일</td>'
                     f'<td>{x["밴드"]:.1f}%</td><td>×{x["거래량배수"]:.1f}</td><td>{x["대량일수"]}/{x["거래량일수"]}일</td>'
                     f'<td>{sign(x["고점대비"])}</td><td class="l"><span class="bd st {st_cls[x["상태"]]}">{x["상태"]}</span></td></tr>')
@@ -748,7 +756,9 @@ def write_cfg(res, data):
         left = svg_line(pts, refs=[("시작", pts[0][1], "zero")] if pts else (), marks=[], pct_base=pts[0][1] if pts else None)
         right = link.svg_chart(link.price_series(ph, x["코드"], s["기준일"]), link.foreign_series(fh, x["코드"], s["기준일"]),
                                live.get(x["코드"]), today)
-        state = ("명단 안" if s.get("자격") else "다시 모으는 중" if s.get("재매집") else "조건 밖")
+        # "명단 안" = ② 명단 10에 실제로 든 것, 자격만 있고 10칸에 못 든 것은 따로(대표 2026-10-29 — 코메론·LS·세진중공업 불일치)
+        state = ("명단 안" if x["코드"] in res.get("link_members", set()) else "자격 있음(명단 밖)" if s.get("자격")
+                 else "다시 모으는 중" if s.get("재매집") else "조건 밖")
         near_html = f'<div class="note near-why">{esc(near_reason(x))}</div>' if is_near else ""
         cards.append(
             f'<div class="card{" near" if is_near else ""}">{near_html}<div class="ch">{i}. {esc(x["종목명"])} <span class="bd st">{" · ".join(sorted(x["출처들"]))}</span>'
@@ -815,7 +825,7 @@ def write_basecamp(res, n_names, m_names):
     def floor_ol(rows):
         if not rows:
             return '<li class="mut">없음</li>'
-        return "".join(f'<li><b>{esc(x["종목명"])}</b><span class="own">{own(x["종목명"])}</span>{who(x)} '
+        return "".join(f'<li><b>{esc(x["종목명"])}</b><span class="own">{own(x["종목명"])}</span>{who(x)}{bc_tags(x)} '
                        f'{sign(x["하락률"])} · 평지 {x["평지시작"][5:]}부터 {x["평지일수"]}일 · 밴드 {x["밴드"]:.1f}% · '
                        f'거래량 하락 전 ×{x["거래량배수"]:.2f} / 하락 기간 {dr(x)} · 점수 {x["점수순위"]}위 · 길이 {x["길이순위"]}위 · '
                        f'{x["상태"]}</li>' for x in rows)
@@ -825,7 +835,7 @@ def write_basecamp(res, n_names, m_names):
     rows, cards = [], []
     for x in full:
         rows.append(f'<tr><td class="rk">{x["순위"]}</td><td>{delta(x)}</td>'
-                    f'<td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span>{who(x)}</td>'
+                    f'<td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span>{who(x)}{bc_tags(x)}</td>'
                     f'<td>{x["score"]:.2f}</td><td>{x["고점일"][5:]}</td><td>{sign(x["하락률"])}</td>'
                     f'<td>{x["평지시작"][5:]} · {x["평지일수"]}일</td><td>{x["길이순위"]}</td><td>{x["밴드"]:.1f}%</td><td>×{x["거래량배수"]:.1f}</td>'
                     f'<td>{dr(x)}</td><td>{x["대량일수"]}/{x["거래량일수"]}일</td><td>{fx(x)}</td>'
@@ -892,6 +902,15 @@ def main(regen: str | None = None):
         log.parent.mkdir(exist_ok=True)
         with open(log, "a", encoding="utf-8") as f:
             f.write(f"{core.now_kst():%Y-%m-%d %H:%M} 재생성 — {regen}\n")
+    # 픽 추적 카드(tracking/summary.csv)를 먼저 갱신 — ② "트래킹 중"이 이 파일을 읽는데, 사람이 tracking.py를
+    # 돌려야만 갱신돼서 10-19부터 멈춰 있었다(대표 2026-10-29 「09:30 자동 생성 맨 앞에서 tracking.py 돌려」).
+    # 실패해도 리포트는 만든다.
+    try:
+        import tracking
+        tracking.update()
+        print("[트래킹] tracking/summary.csv 갱신")
+    except Exception as e:
+        print(f"[경고] tracking 갱신 실패(리포트는 계속): {e}")
     data = link.load_data()
     link_res = link.main(data)
     res = build(data, link_res)

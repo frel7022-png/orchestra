@@ -30,6 +30,9 @@ PRE_MIN = 8                     # 평지 앞에 최소 이만큼의 구간이 �
 BASELINE_MAX = 20               # 하락 전 거래량 기준 구간 최대 길이
 MIN_DROP = 0.05                 # "빠졌다"고 부를 최소 하락(이보다 덜 빠지면 그냥 횡보)
 HEAVY_MULT = 2.0                # "대량" = 기준 거래량의 2배 이상
+EVENT_GAP_DAYS = 3              # 다른 종목은 거래한 날이 이만큼 이어서 빠지면 거래정지 → 그 뒤 첫날 = "거래 재개"
+EVENT_JUMP = 0.30               # 하루 종가 변화가 가격제한폭(±30%)을 넘으면 장에서 생길 수 없는 값 → 권리락·분할·병합
+PEAK_POP = 0.10                 # 고점 날 하루 상승이 이만큼 넘으면 "고점 하루 튐" 꼬리표(필터는 SPIKE_JUMP 그대로)
 SHAPE_MIN = 5                   # "모양이 잘 보이는 다지기" 줄에 올릴 최소 평지 일수
 SPIKE_JUMP = 0.15               # 고점이 직전 대비 이만큼 1~3일 만에 튀었으면 뉴스 급등 고점으로 보고 제외
 
@@ -131,6 +134,36 @@ def _score(closes: np.ndarray, vols: np.ndarray, L: int) -> dict | None:
             "baseline": baseline, "drop_ratio": drop_ratio, "sigma": sigma, "shape": shape, "base_hi": float(base.max()), "base_lo": float(base.min())}
 
 
+def _tags(dates: list, closes: np.ndarray, vols: np.ndarray, peak_i: int, all_days: list) -> tuple[str, str]:
+    """순위에서 빼지 않고 붙이는 꼬리표 둘(대표 2026-10-29 「사건 종목 '사건' 꼬리표 자동, 순위에서 빼지는 마」 ·
+    「고점이 하루 튄 종목은 필터 그대로 두고 '고점 하루 튐' 꼬리표만」).
+    사건 = 고점 10거래일 앞부터 지금까지 안에 ① 거래정지 뒤 재개 — 거래량 없이 종가가 그대로인 날이 EVENT_GAP_DAYS일
+    넘게 이어지다(price_history는 정지 중에도 종가를 복사해 쌓는다 — 해태제과식품 09-17~10-23) 거래량이 다시 생긴 첫날,
+    또는 다른 종목이 거래한 날이 그만큼 이 종목만 비었다가 다시 생긴 첫날 ② 하루 종가 변화가 가격제한폭을 넘은 날(권리락·분할·병합 — 수정 안 된 종가라서).
+    유상증자처럼 작은 권리락은 못 잡는다."""
+    lo = dates[max(0, peak_i - 10)]
+    pos = {d: i for i, d in enumerate(all_days)}
+    ev = []
+    halt = 0   # 직전까지 이어진 "거래량 없고 종가 그대로" 날 수
+    for i in range(1, len(dates)):
+        dead = (np.isnan(vols[i]) or vols[i] <= 0) and closes[i] == closes[i - 1]
+        resumed = not dead and halt >= EVENT_GAP_DAYS and not np.isnan(vols[i]) and vols[i] > 0
+        halt = halt + 1 if dead else 0
+        if dates[i] < lo:
+            continue
+        a, b = pos.get(dates[i - 1]), pos.get(dates[i])
+        if resumed or (a is not None and b is not None and b - a - 1 >= EVENT_GAP_DAYS):
+            ev.append(f"거래 재개 {dates[i][5:]}")
+        elif closes[i - 1] > 0 and abs(closes[i] / closes[i - 1] - 1) > EVENT_JUMP:
+            ev.append(f"권리락·분할 {dates[i][5:]} ({(closes[i] / closes[i - 1] - 1) * 100:+.0f}%)")
+    pop = ""
+    if peak_i > 0 and closes[peak_i - 1] > 0:
+        r = closes[peak_i] / closes[peak_i - 1] - 1
+        if r >= PEAK_POP:
+            pop = f"고점 하루 튐 {r * 100:+.1f}% ({dates[peak_i][5:]})"
+    return (" · ".join(ev), pop)
+
+
 def _absorber(flow_hist: pd.DataFrame, code: str, start: str, end: str) -> dict:
     """평지 구간에 누가 받았나 — 외인·기관 순매수 합(거래량 대비 %)과 외인 보유율 변화."""
     need = {"외국인보유율", "외국인순매수", "기관순매수", "거래량"}
@@ -161,6 +194,7 @@ def scan(price_hist: pd.DataFrame, flow_hist: pd.DataFrame, live_quotes: dict | 
     if today:
         df = df[df["날짜"] < today]
     live_quotes = live_quotes or {}
+    all_days = sorted(df["날짜"].unique())
     out = []
     for code, g in df.groupby("종목코드"):
         closes, vols, dates = g["종가"].to_numpy(float), g["거래량"].to_numpy(float), g["날짜"].tolist()
@@ -187,6 +221,7 @@ def scan(price_hist: pd.DataFrame, flow_hist: pd.DataFrame, live_quotes: dict | 
             "거래량배수": r["ratio"], "하락기간배수": r["drop_ratio"], "모양점수": r["shape"], "대량일수": r["heavy"], "거래량일수": r["n_vol"],
             "기준거래량": r["baseline"], "평지고": r["base_hi"], "평지저": r["base_lo"],
             "현재가": float(now), "고점대비": (float(now) / r["peak"] - 1) * 100, "상태": status,
+            **dict(zip(("사건", "고점튐"), _tags(dates, closes, vols, r["peak_i"], all_days))),
             **_absorber(flow_hist, code, dates[-L], dates[-1]),
         })
     out.sort(key=lambda x: -x["score"])
@@ -224,7 +259,8 @@ def _fmt_line(title: str, rows: list[dict], cnt: dict) -> str:
         dr = "-" if x.get("하락기간배수") is None else f"×{x['하락기간배수']:.2f}"
         out.append(f"  {i}. {x['종목명']}  하락 {x['하락률']:+.1f}% · 평지 {x['평지시작'][5:]}부터 {x['평지일수']}일 · 밴드 {x['밴드']:.1f}%"
                    f" · 거래량 하락 전 ×{x['거래량배수']:.2f} / 하락 기간 {dr} · 점수 {x['score']:.2f}({x['점수순위']}위)"
-                   f" · 길이 {x['길이순위']}위 · 받는손 {x.get('받는손') or '-'} · {x['상태']}")
+                   f" · 길이 {x['길이순위']}위 · 받는손 {x.get('받는손') or '-'} · {x['상태']}"
+                   + "".join(f" · [{t}]" for t in (x.get("사건") and "사건: " + x["사건"], x.get("고점튐")) if t))
     return "\n".join(out)
 
 
