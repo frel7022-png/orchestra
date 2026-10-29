@@ -350,6 +350,15 @@ if __name__ == "__main__":
     dry = "--dry-run" in sys.argv
     if "--krx-close" in sys.argv:
         record_krx_close(force="--force" in sys.argv, dry_run=dry)
+        # 같은 15:35에 시장 쪽 · 계좌 쪽 히스토리 CSV도 그날 종가로(대표 2026-10-29 원-2026-10-29-18 — 매매일지와
+        # 상관없이 매일). 파일만 찍고 commit/push는 안 한다(무인 push는 대표 결정 대기 — 세션이 아침에 커밋).
+        _now = core.now_kst()
+        if not dry and not core.is_krx_closed(core.today_kst_str()) and ("--force" in sys.argv or in_krx_close_window(_now)):
+            try:
+                import daily_close
+                daily_close.close_day()
+            except Exception as e:
+                print(f"[경고] daily_close 실패(price_history는 이미 적음): {e}")
     elif "--fix-prev-close" in sys.argv:
         fix_prev_close(dry_run=dry)
     else:

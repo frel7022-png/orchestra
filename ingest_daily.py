@@ -13,7 +13,10 @@
        portfolio_data.csv / transactions.csv / account_state.csv에 저장한다 — 매번 전체를
        처음부터 재생하지 않고, 체크포인트(checkpoint_holdings.csv / checkpoint_state.csv) 이후
        구간만 재생한다(rebuild_portfolio_incremental, portfolio_core.py 참고).
-    4. 자산/섹터 스냅샷을 그 날짜 기준으로 남긴다 (거래 캘린더/자산추이 그래프용).
+    4. 계좌 쪽 스냅샷(asset·sector)을 그 날짜부터 히스토리 마지막 날까지 날마다 "그날까지의 보유"로
+       다시 남긴다(daily_close.value_account_days — 사흘치를 늦게 넣어도 그 뒤 날들이 맞춰진다).
+       시장 쪽(지수·대형주·혼합지수)은 매일 15:35 daily_close.close_day가 따로 찍고, 여기선 그날이
+       비어 있을 때만 채운다(대표 2026-10-29 원-2026-10-29-18 「시장은 시장대로」).
     5. 결과 요약(보유종목 수, 총자산, 현금 등)을 출력한다 — 이 값을 실제
        메리츠 앱 화면과 대조해서 반영이 정확한지 확인할 것.
 
@@ -23,50 +26,11 @@
 
 import sys
 
+import daily_close as dc
 import portfolio_core as core
 
-
-def snapshot_market_closes(trade_date: str, df) -> None:
-    """그날 확정 종가로 index_history·bigcap_history·bench_history를 찍는다(df = 그날 종가 기준 보유,
-    혼합지수 wk용). 거래가 있는 날은 asset/sector 스냅샷 뒤에, 거래 없는 날은 이것만 부른다 —
-    거래 없는 날 ingest가 그냥 끝나면 세 파일이 그날에서 멈춰, 배포판 '당일'이 며칠치로 잡혔다
-    (2026-10-29: 10-27 무거래·10-28 미반영으로 10-26에서 멈춤). 대표 「거래 없는 날도 지수·대형주·벤치만
-    그날 확정 종가로 찍는 작은 길을 만들어.」(2026-10-29)"""
-    _close_on = core.confirmed_close_or_live
-
-    try:
-        iq = core.fetch_index_quotes() or {}
-        kospi = _close_on("KOSPI", trade_date, (iq.get("KOSPI") or {}).get("price"))
-        kosdaq = _close_on("KOSDAQ", trade_date, (iq.get("KOSDAQ") or {}).get("price"))
-        if kospi and kosdaq:
-            core.snapshot_index_history(kospi, kosdaq, on_date=trade_date)
-            print(f"[지수] {trade_date} 코스피 {kospi:,.2f} · 코스닥 {kosdaq:,.2f} index_history 반영")
-    except Exception as e:
-        print(f"[경고] index_history 갱신 실패(무시): {e}")
-
-    # SamHynix extracted(§6-19)도 같은 이유로 lock-step. bigcap_history가 index_history보다
-    # 하루라도 비면 synthetic_kospi_ex_bigcap이 '여러 날치 대형주 수익률'을 'KOSPI 하루치'에서
-    # 빼서 ex 지수가 폭주한다(2026-09-08 실제로 -10%까지 튐).
-    try:
-        bq = core.fetch_bigcap_quotes() or {}
-        closes = {n: _close_on(core.BIGCAP_CODES[n], trade_date, bq.get(n)) for n in core.BIGCAP_CODES}
-        if all(closes.get(n) for n in core.BIGCAP_CODES):
-            core.snapshot_bigcap_history(closes, on_date=trade_date)
-            print(f"[대형주] {trade_date} " + " · ".join(f"{n} {closes[n]:,.0f}" for n in core.BIGCAP_CODES)
-                  + " bigcap_history 반영")
-    except Exception as e:
-        print(f"[경고] bigcap_history 갱신 실패(무시): {e}")
-
-    # 혼합지수 날짜 고정(2026-10-22 대표 "그날은 그날로 끝난다"): 그날 확정 종가 기준 wk와 그날 계수로
-    # 하루 등락을 bench_history에 한 줄. 지난 날짜·seed는 안 덮고, 같은 날 재반영만 덮는다.
-    try:
-        _wk_close = core.wk_from_holdings(df)
-        _st = core.snapshot_bench_history(trade_date, _wk_close)
-        print(f"[혼합지수] {trade_date} wk {_wk_close:.3f} bench_history {_st}" if _wk_close is not None
-              else f"[혼합지수] {trade_date} wk 못 잼 — bench_history 건너뜀")
-    except Exception as e:
-        print(f"[경고] bench_history 갱신 실패(무시 — 그날 벤치는 다음 화면에서 지금 wk로 재짐): {e}")
-
+# 시장 쪽(지수·대형주·혼합지수)은 daily_close가 맡는다 — 매매일지와 상관없이 따로 간다(원-2026-10-29-18).
+snapshot_market_closes = dc.snapshot_market_closes
 
 
 def main():
@@ -95,10 +59,10 @@ def main():
     # @뇌 매매0건_종료
     if n_new == 0:
         print(f"[알림] {trade_date}: 이 파일에는 매수/매도 내역이 없습니다 (전량 0). 반영할 거래가 없어요.")
-        # 거래는 없어도 지수·대형주·벤치는 그날 확정 종가로 찍는다(대표 2026-10-29). 보유·예수금·asset은 안 건드림.
-        _st0 = core.load_state()
-        _df0 = core.compute_metrics_at_close(core.load_holdings(), _st0["cash"], trade_date)[0]
-        snapshot_market_closes(trade_date, _df0)
+        # 거래가 없어도 그날 계좌 줄(asset·sector)은 그날까지의 보유 × 그날 종가로, 시장 줄은 그날이 비었을
+        # 때만 채운다(대표 2026-10-29 원-2026-10-29-17·18 — 시장은 따로 간다, 계좌는 매매일지 없이도 매일).
+        _v0 = dc.value_account_days([trade_date])
+        dc.ensure_market_day(trade_date, _v0[trade_date][0])
         sys.exit(0)
 
     state = core.load_state()
@@ -116,15 +80,17 @@ def main():
     # 스냅샷이 항상 그 날짜의 실제 마감 기준이 되게 한다(2026-09-14, 9/11 낮 12:36 스냅
     # 오염으로 DC 캡처가 -1 근처까지 왜곡된 것을 계기로 도입). portfolio_data.csv의 표시용
     # 현재가는 그대로 두고(save_holdings는 위에서 이미 끝남) 스냅샷 계산에만 별도로 씀.
-    df, stock_val, total_assets, unrealized_loss = core.compute_metrics_at_close(
-        holdings2, state2["cash"], trade_date)
-    core.snapshot_history(total_assets, total_assets + unrealized_loss, on_date=trade_date)
-    core.snapshot_sector_history(core.compute_sector_weights(df), on_date=trade_date)
+    # 계좌 쪽만 다시(원-2026-10-29-17·18): 이 매매일지 날짜부터 히스토리 마지막 날까지, 날마다 그날까지의
+    # 보유(holdings_as_of)로 다시 덮는다 — 사흘치를 늦게 넣어도 그 뒤 날들이 맞춰진다. 시장 줄은 안 건드린다.
+    _vals = dc.value_account_days(dc.account_days_from(trade_date), tx=tx2, state=state2)
+    df, stock_val, total_assets, unrealized_loss = _vals[trade_date]
 
     # 지수 대비 계좌(§6-17): asset_history엔 trade_date 행이 생기는데 index_history는 앱
     # 새로고침에서만 갱신됐고(그건 배포 서버 로컬에만 쓰여 git엔 안 올라감 → 재배포 때 초기화),
     # 그래서 배포판에서 index_history가 asset_history보다 며칠 뒤처져 "혼합지수 당일 0.00%"
-    # 버그가 났다(2026-09-07 실제로 겪음). ingest에서도 같이 찍어 두 파일을 lock-step으로.
+    # 버그가 났다(2026-09-07 실제로 겪음). 그때는 ingest에서도 같이 찍어 lock-step으로 막았다.
+    # 대체됨(2026-10-29, 원-2026-10-29-18): 시장 줄은 매일 15:35 daily_close.close_day가 따로 찍는다 —
+    # 여기서는 그날이 아예 비어 있을 때만 채운다(이미 있는 시장 줄은 안 건드림, 오늘 장중이면 안 찍음).
     #
     # **확정 종가 우선(2026-09-10, 2026-09-17 core.confirmed_close_or_live로 통합)**: 과거
     # 날짜의 매매일지를 오늘(장중)에 반영하면 fetch_index_quotes()/fetch_bigcap_quotes()는
@@ -132,7 +98,7 @@ def main():
     # new1/meritz가 각자 로컬 클로저로 복제하던 걸(§6-2 4번째 재발 당시) portfolio_core.py의
     # 공유 함수로 통합함 — 실제로 그 복제 때문에 meritz의 index_history[9/16]이 확정 종가와
     # 65p 어긋난 채 방치된 사고가 재발했음(2026-09-17).
-    snapshot_market_closes(trade_date, df)
+    dc.ensure_market_day(trade_date, df)
 
     # @뇌 펀드기준가_수동
     # 펀드 기준가(§6-21)는 자동 조회 경로가 없어서 세션이 채팅으로 값을 받아
@@ -189,6 +155,9 @@ def main():
     _al = core.check_history_alignment(trade_date)
     if _al["aligned"] and _al["target_ok"]:
         print(f"[정합성 OK] asset/sector/index/bigcap_history 전부 {_al['latest']}까지 · {trade_date} 포함")
+    elif _al["behind"] and set(_al["behind"]) <= {"index_history", "bigcap_history", "bench_history"}             and trade_date == core.today_kst_str() and (core.now_kst().hour, core.now_kst().minute) < (15, 35):
+        print(f"[정합성 — 정상] 오늘 15:35 전 반영이라 시장 셋(index·bigcap·bench)이 하루 뒤처짐 — 고치지 않는다"
+              f"(15:35 daily_close가 확정 종가로 찍음, 원-2026-10-29-18)")
     else:
         print("[⚠️ 정합성] 히스토리 파일 커버가 어긋남 — git commit 전에 확인:")
         for _n, _mx in _al["maxes"].items():

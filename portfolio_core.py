@@ -3989,6 +3989,23 @@ def _apply_prior_prices(holdings: pd.DataFrame, prior_holdings: pd.DataFrame | N
     return holdings
 
 
+def holdings_as_of(tx: pd.DataFrame, initial_capital: float, fee_rate: float, day: str,
+                   prior_holdings: pd.DataFrame | None = None) -> tuple[pd.DataFrame, float]:
+    """day 장 마감 시점의 (보유, 예수금) — transactions 중 날짜 ≤ day만 처음부터 재생한다.
+    계좌 쪽 값 매기기(asset·sector)가 "그날까지의 보유"로 그날을 재려고 쓴다(대표 2026-10-29
+    원-2026-10-29-17·18: 매매일지는 계좌만 바꾸고, 늦게 들어오면 그날부터 다시 계산). 재생 루프는
+    _replay_transactions 하나를 그대로 쓴다(복제 금지). prior_holdings의 현재가는 시세 조회가 다
+    실패했을 때 쓰는 마지막 폴백 자리만 채운다(_apply_prior_prices와 같음)."""
+    holdings = pd.DataFrame(columns=HOLD_COLUMNS)
+    state = {"cash": float(initial_capital), "initial": float(initial_capital), "fee_rate": fee_rate}
+    if tx is None or tx.empty:
+        return holdings, state["cash"]
+    sub = tx[tx["날짜"].astype(str) <= str(day)]
+    holdings, state, _ = _replay_transactions(holdings, state, _sort_tx_for_replay(sub),
+                                              load_code_cache(), load_sector_cache(), fee_rate)
+    return _apply_prior_prices(holdings, prior_holdings), state["cash"]
+
+
 def _stamp_realized(tx: pd.DataFrame, realized_map: dict) -> pd.DataFrame:
     """realized_map({거래id: 실현손익})을 tx 사본의 "실현손익" 컬럼에 채워 넣는다.
     이 함수를 거치지 않은(이번에 재생 안 된) 행은 그대로 둔다 — rebuild_portfolio_incremental이
