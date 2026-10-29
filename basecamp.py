@@ -30,6 +30,7 @@ PRE_MIN = 8                     # 평지 앞에 최소 이만큼의 구간이 �
 BASELINE_MAX = 20               # 하락 전 거래량 기준 구간 최대 길이
 MIN_DROP = 0.05                 # "빠졌다"고 부를 최소 하락(이보다 덜 빠지면 그냥 횡보)
 HEAVY_MULT = 2.0                # "대량" = 기준 거래량의 2배 이상
+SHAPE_MIN = 5                   # "모양이 잘 보이는 다지기" 줄에 올릴 최소 평지 일수
 SPIKE_JUMP = 0.15               # 고점이 직전 대비 이만큼 1~3일 만에 튀었으면 뉴스 급등 고점으로 보고 제외
 
 
@@ -101,13 +102,33 @@ def _score(closes: np.ndarray, vols: np.ndarray, L: int) -> dict | None:
     if baseline <= 0:
         return None
     ratio = float(np.median(bv)) / baseline
+    # 하락 기간 대비(대표 원-2026-10-28-18 "두 바탕 나란히") — 고점 다음 날 ~ 평지 시작 전날 거래량 중간값.
+    # 점수엔 안 넣고 보여만 준다(대표 2026-10-29 A1 「점수는 그대로, 두 비율과 '1배 넘은 수'만 붙여」).
+    dv = vols[:-L][peak_i + 1:]
+    dv = dv[~np.isnan(dv)]
+    drop_base = float(np.median(dv)) if len(dv) >= 2 else None
+    drop_ratio = float(np.median(bv)) / drop_base if drop_base else None
+    # 모양 점수 — "모양이 잘 보이는 다지기" 줄용(대표 2026-10-29 「두 줄 다 내」). 거래량은 안 본다.
+    # 낙폭·평지 폭을 그 종목 하루 변동폭 σ(고점 전 최대 60일 로그수익률)×√일수로 재서 고정 % 문턱을 피한다
+    # (2026-10-28 다지기 5종목 방식, 창은 고정하지 않고 Basecamp가 거슬러 찾은 고점·평지를 그대로 씀 — 원-21).
+    rets = np.diff(np.log(pre[:peak_i + 1]))[-60:]
+    if len(rets) < 10:
+        rets = np.diff(np.log(closes[:-L]))[-60:]
+    sigma = float(np.std(rets)) if len(rets) >= 5 else 0.0
+    drop_days = len(pre) - peak_i
+    shape = None
+    if sigma > 0:
+        clear = drop / (sigma * math.sqrt(drop_days))
+        tight = max(band / (sigma * math.sqrt(L)), 0.1)
+        shape = clear / tight * math.sqrt(L / 20)
     heavy = int((bv >= HEAVY_MULT * baseline).sum())
     depth_s = min(drop, 0.35) / 0.25
     flat_s = math.exp(-band / 0.08) * math.exp(-abs(slope) / 0.05)
     vol_s = math.log2(1 + ratio) * (0.5 + heavy / len(bv))
-    return {"score": depth_s * flat_s * vol_s, "peak_i": peak_i, "peak": peak, "drop": drop,
+    # 평지 길이 가중(대표 2026-10-29 B1 「약하게 — 점수 × √(평지 일수 ÷ 3)」, 원-2026-10-28-16 「평지가 길수록 더 무게를 줘」)
+    return {"score": depth_s * flat_s * vol_s * math.sqrt(L / BASE_MIN), "peak_i": peak_i, "peak": peak, "drop": drop,
             "band": band, "slope": slope, "ratio": ratio, "heavy": heavy, "n_vol": len(bv),
-            "baseline": baseline, "base_hi": float(base.max()), "base_lo": float(base.min())}
+            "baseline": baseline, "drop_ratio": drop_ratio, "sigma": sigma, "shape": shape, "base_hi": float(base.max()), "base_lo": float(base.min())}
 
 
 def _absorber(flow_hist: pd.DataFrame, code: str, start: str, end: str) -> dict:
@@ -163,10 +184,65 @@ def scan(price_hist: pd.DataFrame, flow_hist: pd.DataFrame, live_quotes: dict | 
             "고점일": dates[r["peak_i"]], "고점": r["peak"], "하락률": -r["drop"] * 100,
             "평지시작": dates[-L], "평지끝": dates[-1], "평지일수": L,
             "밴드": r["band"] * 100, "기울기": r["slope"] * 100,
-            "거래량배수": r["ratio"], "대량일수": r["heavy"], "거래량일수": r["n_vol"],
+            "거래량배수": r["ratio"], "하락기간배수": r["drop_ratio"], "모양점수": r["shape"], "대량일수": r["heavy"], "거래량일수": r["n_vol"],
             "기준거래량": r["baseline"], "평지고": r["base_hi"], "평지저": r["base_lo"],
             "현재가": float(now), "고점대비": (float(now) / r["peak"] - 1) * 100, "상태": status,
             **_absorber(flow_hist, code, dates[-L], dates[-1]),
         })
     out.sort(key=lambda x: -x["score"])
+    # 점수 순위와 평지 길이 순위를 나란히(대표 2026-10-29 B3). 길이 같으면 점수 순.
+    for i, x in enumerate(out, 1):
+        x["점수순위"] = i
+    for i, x in enumerate(sorted(out, key=lambda x: (-x["평지일수"], -x["score"])), 1):
+        x["길이순위"] = i
     return out[:top_n] if top_n else out
+
+
+def over_one(results: list[dict]) -> dict:
+    """평지 잡힌 종목 전체 중 평지 거래량이 두 바탕 각각의 1배를 넘은 수(대표 원-2026-10-28-20 「응 오케이」) —
+    정말 받아내는 날인지, 그중 나은 것만 고른 날인지 갈리게 순위 위에 한 줄로 붙인다."""
+    return {"전체": len(results),
+            "하락전": sum(1 for x in results if x["거래량배수"] > 1),
+            "하락기간": sum(1 for x in results if x.get("하락기간배수") is not None and x["하락기간배수"] > 1)}
+
+
+def floor_lines(results: list[dict], n: int = 5) -> dict:
+    """"다지는 거 뽑아줘"의 답 — 두 줄(대표 2026-10-29 「두 줄 다 내. 모양이 잘 보이는 다지기 5 + 다지며 담기는 5.
+    각 줄 위에 '1배 넘은 수'」). 모양 = 모양점수 순(거래량 안 봄), 담기 = Basecamp 점수 순. 문턱으로 거르지 않는다 —
+    1배 넘는 게 없어도 순위대로 n개(원-19)."""
+    # 모양 줄은 평지 SHAPE_MIN일 이상만 — 사흘짜리 평지는 밴드가 작게 나와 "평평함"이 공짜로 커진다
+    # (2026-10-28 다지기 5종목도 평지 5~14일에서 골랐다).
+    shape = sorted([x for x in results if x.get("모양점수") is not None and x["평지일수"] >= SHAPE_MIN],
+                   key=lambda x: -x["모양점수"])[:n]
+    absorb = sorted(results, key=lambda x: -x["score"])[:n]
+    return {"모양": shape, "담기": absorb, "1배": over_one(results)}
+
+
+def _fmt_line(title: str, rows: list[dict], cnt: dict) -> str:
+    out = [f"{title} — 평지 거래량 1배 넘은 수: 하락 전 대비 {cnt['하락전']}/{cnt['전체']} · 하락 기간 대비 {cnt['하락기간']}/{cnt['전체']}"]
+    for i, x in enumerate(rows, 1):
+        dr = "-" if x.get("하락기간배수") is None else f"×{x['하락기간배수']:.2f}"
+        out.append(f"  {i}. {x['종목명']}  하락 {x['하락률']:+.1f}% · 평지 {x['평지시작'][5:]}부터 {x['평지일수']}일 · 밴드 {x['밴드']:.1f}%"
+                   f" · 거래량 하락 전 ×{x['거래량배수']:.2f} / 하락 기간 {dr} · 점수 {x['score']:.2f}({x['점수순위']}위)"
+                   f" · 길이 {x['길이순위']}위 · 받는손 {x.get('받는손') or '-'} · {x['상태']}")
+    return "\n".join(out)
+
+
+if __name__ == "__main__":
+    # python basecamp.py [N] — "다지는 거 뽑아줘" 두 줄을 DB(읽기만)로 바로 찍는다.
+    import sys
+    import portfolio_core as core
+    try:
+        import tomllib
+        with open(core.HERE / ".streamlit" / "secrets.toml", "rb") as f:
+            sb = tomllib.load(f).get("supabase", {})
+    except Exception:
+        sb = {}
+    url, key = sb.get("url", ""), sb.get("anon_key", "")
+    n = int(sys.argv[1]) if len(sys.argv) > 1 else 5
+    ph = core.load_watchlist_history_db(url, key)
+    fh = core.load_investor_flow_db(url, key)
+    res = scan(ph, fh, today=core.today_kst_str(), top_n=None)
+    fl = floor_lines(res, n)
+    print(_fmt_line(f"모양이 잘 보이는 다지기 {n}", fl["모양"], fl["1배"]))
+    print(_fmt_line(f"다지며 담기는 {n}", fl["담기"], fl["1배"]))

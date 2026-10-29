@@ -349,6 +349,7 @@ def build(data, link_res):
                                    "순위": x["순위"], "상태": x["상태"]} for x in full])], ignore_index=True)
     bh.to_csv(bpath, index=False, encoding="utf-8-sig")
     res["bc_full"], res["bc_n"], res["bc_prev"] = full, len(camps), (bprev_d[-1] if bprev_d else None)
+    res["bc_floor"] = basecamp.floor_lines(camps, 5)   # 다지는 거 두 줄 + 1배 넘은 수(대표 2026-10-29)
 
     # E. Today's Alarm — 앱과 같은 함수, 입력만 리포트 데이터로 구성
     fp = pd.DataFrame([{"종목명": f["종목명"], "최초가": f["기준가"], "최근가": f["현재가"],
@@ -802,6 +803,23 @@ def write_basecamp(res, n_names, m_names):
         rel = f" · 비중대비 {pp / a * 100:+.1f}%" if a else ""
         return f"{a:.2f}→{b:.2f}% ({pp:+.2f}%p{rel})"
 
+    def dr(x):
+        v = x.get("하락기간배수")
+        return "-" if v is None or pd.isna(v) else f"×{v:.1f}"
+
+    fl = res["bc_floor"]
+    one = fl["1배"]
+    one_txt = (f'평지 거래량 1배 넘은 수 — 하락 전 대비 {one["하락전"]}/{one["전체"]} · '
+               f'하락 기간 대비 {one["하락기간"]}/{one["전체"]}')
+
+    def floor_ol(rows):
+        if not rows:
+            return '<li class="mut">없음</li>'
+        return "".join(f'<li><b>{esc(x["종목명"])}</b><span class="own">{own(x["종목명"])}</span>{who(x)} '
+                       f'{sign(x["하락률"])} · 평지 {x["평지시작"][5:]}부터 {x["평지일수"]}일 · 밴드 {x["밴드"]:.1f}% · '
+                       f'거래량 하락 전 ×{x["거래량배수"]:.2f} / 하락 기간 {dr(x)} · 점수 {x["점수순위"]}위 · 길이 {x["길이순위"]}위 · '
+                       f'{x["상태"]}</li>' for x in rows)
+
     full = res["bc_full"]
     cnt = {k: sum(1 for x in full if x["상태"] == k) for k in ("돌파", "다지는 중", "이탈")}
     rows, cards = [], []
@@ -809,8 +827,8 @@ def write_basecamp(res, n_names, m_names):
         rows.append(f'<tr><td class="rk">{x["순위"]}</td><td>{delta(x)}</td>'
                     f'<td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span>{who(x)}</td>'
                     f'<td>{x["score"]:.2f}</td><td>{x["고점일"][5:]}</td><td>{sign(x["하락률"])}</td>'
-                    f'<td>{x["평지시작"][5:]} · {x["평지일수"]}일</td><td>{x["밴드"]:.1f}%</td><td>×{x["거래량배수"]:.1f}</td>'
-                    f'<td>{x["대량일수"]}/{x["거래량일수"]}일</td><td>{fx(x)}</td>'
+                    f'<td>{x["평지시작"][5:]} · {x["평지일수"]}일</td><td>{x["길이순위"]}</td><td>{x["밴드"]:.1f}%</td><td>×{x["거래량배수"]:.1f}</td>'
+                    f'<td>{dr(x)}</td><td>{x["대량일수"]}/{x["거래량일수"]}일</td><td>{fx(x)}</td>'
                     f'<td>{share(x["외인몫"])}</td><td>{share(x["기관몫"])}</td><td>{sign(x["고점대비"])}</td>'
                     f'<td class="l"><span class="bd st {st_cls[x["상태"]]}">{x["상태"]}</span></td></tr>')
         cards.append(card(f'{x["순위"]}. {esc(x["종목명"])}{who(x)}',
@@ -831,10 +849,20 @@ def write_basecamp(res, n_names, m_names):
 <div><div class="k">다지는 중</div><div class="v">{cnt["다지는 중"]}</div></div>
 <div><div class="k">이탈</div><div class="v">{cnt["이탈"]}</div></div></div>
 
+<h2>다지는 거 두 줄</h2>
+<p class="legend">{one_txt}</p>
+<h3>모양이 잘 보이는 다지기 5</h3>
+<p class="legend">낙폭·평지 폭을 그 종목 하루 변동폭 σ×√일수로 잰 모양 순 · 거래량은 안 봄 · 평지 {basecamp.SHAPE_MIN}일 이상</p>
+<ol class="alarm">{floor_ol(fl["모양"])}</ol>
+<h3>다지며 담기는 5</h3>
+<p class="legend">Basecamp 점수 순(거래량 포함)</p>
+<ol class="alarm">{floor_ol(fl["담기"])}</ol>
+
 <h2>점수 상위 {BC_TOP} ({prev_txt})</h2>
-<p class="legend">점수 = 하락 깊이 × 평지 평탄도 × 거래량 배수 · 받는손: <span class="who f">외인</span> 평지 구간 외인 순매수 합&gt;0이고 보유율도 오름 / <span class="who i">기관</span> 기관 순매수 합&gt;0 · 평지 외인 비중 = 평지 직전 보유율→끝 (변화 %p · 원래 비중 대비 %) · 외인몫·기관몫 = 평지 구간 순매수 합 ÷ 거래량 합(비중 변화가 아니다) · 상태: 돌파(평지 고가 위) / 다지는 중 / 이탈(평지 저가 −3% 아래)</p>
-<div class="scroll"><table><thead><tr><th>#</th><th></th><th class="l">종목</th><th>점수</th><th>고점</th><th>평지까지 하락</th><th>평지</th><th>밴드</th>
-<th>거래량</th><th>2배↑</th><th>평지 외인 비중</th><th>외인몫(거래량)</th><th>기관몫(거래량)</th><th>지금(고점 대비)</th><th class="l">상태</th></tr></thead>
+<p class="legend">{one_txt}</p>
+<p class="legend">점수 = 하락 깊이 × 평지 평탄도 × 거래량 배수 × √(평지 일수÷3) · 길이 = 평지 길이 순위(전체 중) · 거래량 = 평지 ÷ 하락 전, 하락기간 = 평지 ÷ 하락 기간(점수엔 안 넣음) · 받는손: <span class="who f">외인</span> 평지 구간 외인 순매수 합&gt;0이고 보유율도 오름 / <span class="who i">기관</span> 기관 순매수 합&gt;0 · 평지 외인 비중 = 평지 직전 보유율→끝 (변화 %p · 원래 비중 대비 %) · 외인몫·기관몫 = 평지 구간 순매수 합 ÷ 거래량 합(비중 변화가 아니다) · 상태: 돌파(평지 고가 위) / 다지는 중 / 이탈(평지 저가 −3% 아래)</p>
+<div class="scroll"><table><thead><tr><th>#</th><th></th><th class="l">종목</th><th>점수</th><th>고점</th><th>평지까지 하락</th><th>평지</th><th>길이</th><th>밴드</th>
+<th>거래량</th><th>하락기간</th><th>2배↑</th><th>평지 외인 비중</th><th>외인몫(거래량)</th><th>기관몫(거래량)</th><th>지금(고점 대비)</th><th class="l">상태</th></tr></thead>
 <tbody>{"".join(rows)}</tbody></table></div>
 
 <h2>명단에서 빠진 종목</h2>
