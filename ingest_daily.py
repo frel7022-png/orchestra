@@ -26,65 +26,12 @@ import sys
 import portfolio_core as core
 
 
-def main():
-    if len(sys.argv) != 3:
-        print("사용법: python ingest_daily.py <파일경로> <YYYY-MM-DD>")
-        sys.exit(1)
-
-    file_path, trade_date = sys.argv[1], sys.argv[2]
-
-    with open(file_path, "rb") as f:
-        raw = f.read()
-
-    try:
-        parsed = core.parse_daily_trade_csv(raw)
-    except Exception as e:
-        print(f"[오류] CSV를 읽는 중 문제가 발생했습니다: {e}")
-        sys.exit(1)
-
-    if parsed.empty:
-        print("[알림] 파일에서 종목 데이터를 찾지 못했습니다. 형식을 확인해주세요.")
-        sys.exit(1)
-
-    tx = core.load_transactions()
-    tx2, n_new, n_replaced = core.import_daily_trades(parsed, tx, trade_date)
-
-    # @뇌 매매0건_종료
-    if n_new == 0:
-        print(f"[알림] {trade_date}: 이 파일에는 매수/매도 내역이 없습니다 (전량 0). 반영할 거래가 없어요.")
-        sys.exit(0)
-
-    state = core.load_state()
-    prior_holdings = core.load_holdings()
-    holdings2, state2, tx2 = core.rebuild_portfolio_incremental(
-        tx2, state.get("initial", 10_000_000.0), state.get("fee_rate", 0.0),
-        prior_holdings=prior_holdings, replaced_date=trade_date)
-
-    core.save_transactions(tx2)
-    core.save_holdings(holdings2)
-    core.save_state(state2)
-
-    # @뇌 확정종가_스냅샷
-    # 확정 종가 기준(compute_metrics_at_close) — 반영 시점이 장중이어도 asset_history
-    # 스냅샷이 항상 그 날짜의 실제 마감 기준이 되게 한다(2026-09-14, 9/11 낮 12:36 스냅
-    # 오염으로 DC 캡처가 -1 근처까지 왜곡된 것을 계기로 도입). portfolio_data.csv의 표시용
-    # 현재가는 그대로 두고(save_holdings는 위에서 이미 끝남) 스냅샷 계산에만 별도로 씀.
-    df, stock_val, total_assets, unrealized_loss = core.compute_metrics_at_close(
-        holdings2, state2["cash"], trade_date)
-    core.snapshot_history(total_assets, total_assets + unrealized_loss, on_date=trade_date)
-    core.snapshot_sector_history(core.compute_sector_weights(df), on_date=trade_date)
-
-    # 지수 대비 계좌(§6-17): asset_history엔 trade_date 행이 생기는데 index_history는 앱
-    # 새로고침에서만 갱신됐고(그건 배포 서버 로컬에만 쓰여 git엔 안 올라감 → 재배포 때 초기화),
-    # 그래서 배포판에서 index_history가 asset_history보다 며칠 뒤처져 "혼합지수 당일 0.00%"
-    # 버그가 났다(2026-09-07 실제로 겪음). ingest에서도 같이 찍어 두 파일을 lock-step으로.
-    #
-    # **확정 종가 우선(2026-09-10, 2026-09-17 core.confirmed_close_or_live로 통합)**: 과거
-    # 날짜의 매매일지를 오늘(장중)에 반영하면 fetch_index_quotes()/fetch_bigcap_quotes()는
-    # '오늘 장중값'을 준다 — 그걸 그 과거 날짜 행에 찍으면 히스토리가 오염된다. 이 로직을
-    # new1/meritz가 각자 로컬 클로저로 복제하던 걸(§6-2 4번째 재발 당시) portfolio_core.py의
-    # 공유 함수로 통합함 — 실제로 그 복제 때문에 meritz의 index_history[9/16]이 확정 종가와
-    # 65p 어긋난 채 방치된 사고가 재발했음(2026-09-17).
+def snapshot_market_closes(trade_date: str, df) -> None:
+    """그날 확정 종가로 index_history·bigcap_history·bench_history를 찍는다(df = 그날 종가 기준 보유,
+    혼합지수 wk용). 거래가 있는 날은 asset/sector 스냅샷 뒤에, 거래 없는 날은 이것만 부른다 —
+    거래 없는 날 ingest가 그냥 끝나면 세 파일이 그날에서 멈춰, 배포판 '당일'이 며칠치로 잡혔다
+    (2026-10-29: 10-27 무거래·10-28 미반영으로 10-26에서 멈춤). 대표 「거래 없는 날도 지수·대형주·벤치만
+    그날 확정 종가로 찍는 작은 길을 만들어.」(2026-10-29)"""
     _close_on = core.confirmed_close_or_live
 
     try:
@@ -119,6 +66,73 @@ def main():
               else f"[혼합지수] {trade_date} wk 못 잼 — bench_history 건너뜀")
     except Exception as e:
         print(f"[경고] bench_history 갱신 실패(무시 — 그날 벤치는 다음 화면에서 지금 wk로 재짐): {e}")
+
+
+
+def main():
+    if len(sys.argv) != 3:
+        print("사용법: python ingest_daily.py <파일경로> <YYYY-MM-DD>")
+        sys.exit(1)
+
+    file_path, trade_date = sys.argv[1], sys.argv[2]
+
+    with open(file_path, "rb") as f:
+        raw = f.read()
+
+    try:
+        parsed = core.parse_daily_trade_csv(raw)
+    except Exception as e:
+        print(f"[오류] CSV를 읽는 중 문제가 발생했습니다: {e}")
+        sys.exit(1)
+
+    if parsed.empty:
+        print("[알림] 파일에서 종목 데이터를 찾지 못했습니다. 형식을 확인해주세요.")
+        sys.exit(1)
+
+    tx = core.load_transactions()
+    tx2, n_new, n_replaced = core.import_daily_trades(parsed, tx, trade_date)
+
+    # @뇌 매매0건_종료
+    if n_new == 0:
+        print(f"[알림] {trade_date}: 이 파일에는 매수/매도 내역이 없습니다 (전량 0). 반영할 거래가 없어요.")
+        # 거래는 없어도 지수·대형주·벤치는 그날 확정 종가로 찍는다(대표 2026-10-29). 보유·예수금·asset은 안 건드림.
+        _st0 = core.load_state()
+        _df0 = core.compute_metrics_at_close(core.load_holdings(), _st0["cash"], trade_date)[0]
+        snapshot_market_closes(trade_date, _df0)
+        sys.exit(0)
+
+    state = core.load_state()
+    prior_holdings = core.load_holdings()
+    holdings2, state2, tx2 = core.rebuild_portfolio_incremental(
+        tx2, state.get("initial", 10_000_000.0), state.get("fee_rate", 0.0),
+        prior_holdings=prior_holdings, replaced_date=trade_date)
+
+    core.save_transactions(tx2)
+    core.save_holdings(holdings2)
+    core.save_state(state2)
+
+    # @뇌 확정종가_스냅샷
+    # 확정 종가 기준(compute_metrics_at_close) — 반영 시점이 장중이어도 asset_history
+    # 스냅샷이 항상 그 날짜의 실제 마감 기준이 되게 한다(2026-09-14, 9/11 낮 12:36 스냅
+    # 오염으로 DC 캡처가 -1 근처까지 왜곡된 것을 계기로 도입). portfolio_data.csv의 표시용
+    # 현재가는 그대로 두고(save_holdings는 위에서 이미 끝남) 스냅샷 계산에만 별도로 씀.
+    df, stock_val, total_assets, unrealized_loss = core.compute_metrics_at_close(
+        holdings2, state2["cash"], trade_date)
+    core.snapshot_history(total_assets, total_assets + unrealized_loss, on_date=trade_date)
+    core.snapshot_sector_history(core.compute_sector_weights(df), on_date=trade_date)
+
+    # 지수 대비 계좌(§6-17): asset_history엔 trade_date 행이 생기는데 index_history는 앱
+    # 새로고침에서만 갱신됐고(그건 배포 서버 로컬에만 쓰여 git엔 안 올라감 → 재배포 때 초기화),
+    # 그래서 배포판에서 index_history가 asset_history보다 며칠 뒤처져 "혼합지수 당일 0.00%"
+    # 버그가 났다(2026-09-07 실제로 겪음). ingest에서도 같이 찍어 두 파일을 lock-step으로.
+    #
+    # **확정 종가 우선(2026-09-10, 2026-09-17 core.confirmed_close_or_live로 통합)**: 과거
+    # 날짜의 매매일지를 오늘(장중)에 반영하면 fetch_index_quotes()/fetch_bigcap_quotes()는
+    # '오늘 장중값'을 준다 — 그걸 그 과거 날짜 행에 찍으면 히스토리가 오염된다. 이 로직을
+    # new1/meritz가 각자 로컬 클로저로 복제하던 걸(§6-2 4번째 재발 당시) portfolio_core.py의
+    # 공유 함수로 통합함 — 실제로 그 복제 때문에 meritz의 index_history[9/16]이 확정 종가와
+    # 65p 어긋난 채 방치된 사고가 재발했음(2026-09-17).
+    snapshot_market_closes(trade_date, df)
 
     # @뇌 펀드기준가_수동
     # 펀드 기준가(§6-21)는 자동 조회 경로가 없어서 세션이 채팅으로 값을 받아
