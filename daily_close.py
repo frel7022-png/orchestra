@@ -52,14 +52,11 @@ def push_histories(day: str) -> bool:
     if c.returncode:
         log_failure(day, f"commit 실패: {c.stderr.strip() or c.stdout.strip()}")
         return False
-    p = git("pull", "--rebase", "--autostash")
-    if p.returncode:
-        git("rebase", "--abort")
-        log_failure(day, f"pull 실패 — push 안 함(로컬 커밋은 남음): {p.stderr.strip()}")
-        return False
+    # pull · rebase는 안 한다 — 15:35에 다른 창이 장을 고치는 중이면 autostash가 그 변경을 건드리고, rebase가
+    # 아직 안 올린 다른 커밋 id를 바꾼다(b8 검산 10-30). push만 시도하고 거절되면 다음 아침 출근 점검이 처리.
     p = git("push")
     if p.returncode:
-        log_failure(day, f"push 실패(로컬 커밋은 남음): {p.stderr.strip()}")
+        log_failure(day, f"push 실패(로컬 커밋은 남음 — 출근 점검에서 pull 뒤 push): {p.stderr.strip()}")
         return False
     print("[push] 히스토리 다섯 push 완료")
     return True

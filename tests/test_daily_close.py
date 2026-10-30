@@ -149,7 +149,7 @@ def test_push_histories_commits_only_history_files(monkeypatch, tmp_path):
     assert dc.push_histories("2026-10-30") is True
     commit = next(c for c in calls if c[0] == "commit")
     assert commit[commit.index("--") + 1:] == list(dc.HISTORY_FILES)
-    assert [c[0] for c in calls][-2:] == ["pull", "push"]
+    assert [c[0] for c in calls][-1] == "push" and not any(c[0] == "pull" for c in calls)
     assert not dc.FAIL_LOG.exists()
 
 
