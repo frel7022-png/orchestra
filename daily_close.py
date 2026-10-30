@@ -14,14 +14,55 @@
 
 부르는 곳:
     - db_fetch_daily_prices.py --krx-close(평일 15:35 예약 Orchestra_KRXClose) 끝 → close_day(오늘).
-      파일만 찍는다 — commit/push는 안 한다(세션이 아침 루틴에서. 무인 push는 대표 결정 대기, 2026-10-29 위크).
+      찍은 다섯 파일만 바로 commit·push한다(push_histories — 2026-10-30 위크 편지 B2, origin 대표 「모두 위크 추천대로」).
+      실패하면 logs/daily_close_fail.log에 한 줄 → 다음 날 출근 점검(check_daily_db.py)이 잡는다.
     - ingest_daily.py — 매매일지 반영 뒤 계좌 쪽만 다시(시장 쪽은 빠진 날만 채움).
     - 손으로: python daily_close.py [YYYY-MM-DD]   (기본 = 오늘, 휴장일이면 아무것도 안 함)
 """
 
+import subprocess
 import sys
+from pathlib import Path
 
 import portfolio_core as core
+
+HERE = Path(__file__).resolve().parent
+FAIL_LOG = HERE / "logs" / "daily_close_fail.log"
+HISTORY_FILES = ("asset_history.csv", "sector_history.csv", "index_history.csv", "bigcap_history.csv", "bench_history.csv")
+
+
+def log_failure(day: str, msg: str) -> None:
+    """15:35 일이 실패하면 한 줄 남긴다 — 무인이라 아무도 못 보니 다음 출근 점검이 이 파일을 읽는다."""
+    FAIL_LOG.parent.mkdir(exist_ok=True)
+    with FAIL_LOG.open("a", encoding="utf-8") as f:
+        f.write(f"{day} {core.now_kst():%H:%M} {' '.join(msg.split())}\n")
+
+
+def push_histories(day: str) -> bool:
+    """찍은 히스토리 다섯만 commit하고 push(작업 중인 다른 변경은 안 섞음 — `git commit -- 파일`).
+    바뀐 게 없으면 True. 실패는 log_failure로 남기고 False."""
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=HERE, capture_output=True, text=True, encoding="utf-8")
+    files = [f for f in HISTORY_FILES if (HERE / f).exists()]
+    if not git("status", "--porcelain", "--", *files).stdout.strip():
+        print("[push] 히스토리 바뀐 것 없음")
+        return True
+    c = git("commit", "-m", f"KRXClose {day}: 15:35 히스토리 다섯(시장 쪽 · 계좌 쪽, KRX 종가)\n\n"
+            "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>", "--", *files)
+    if c.returncode:
+        log_failure(day, f"commit 실패: {c.stderr.strip() or c.stdout.strip()}")
+        return False
+    p = git("pull", "--rebase", "--autostash")
+    if p.returncode:
+        git("rebase", "--abort")
+        log_failure(day, f"pull 실패 — push 안 함(로컬 커밋은 남음): {p.stderr.strip()}")
+        return False
+    p = git("push")
+    if p.returncode:
+        log_failure(day, f"push 실패(로컬 커밋은 남음): {p.stderr.strip()}")
+        return False
+    print("[push] 히스토리 다섯 push 완료")
+    return True
 
 
 def snapshot_market_closes(trade_date: str, df) -> None:

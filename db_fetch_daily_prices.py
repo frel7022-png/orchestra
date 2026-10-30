@@ -349,16 +349,26 @@ if __name__ == "__main__":
     import sys
     dry = "--dry-run" in sys.argv
     if "--krx-close" in sys.argv:
-        record_krx_close(force="--force" in sys.argv, dry_run=dry)
+        try:
+            record_krx_close(force="--force" in sys.argv, dry_run=dry)
+        except Exception as e:   # 무인이라 실패가 묻히지 않게 — 다음 출근 점검이 읽는다(2026-10-30 B2)
+            if not dry:
+                import daily_close
+                daily_close.log_failure(core.today_kst_str(), f"record_krx_close 실패: {e}")
+            raise
         # 같은 15:35에 시장 쪽 · 계좌 쪽 히스토리 CSV도 그날 종가로(대표 2026-10-29 원-2026-10-29-18 — 매매일지와
-        # 상관없이 매일). 파일만 찍고 commit/push는 안 한다(무인 push는 대표 결정 대기 — 세션이 아침에 커밋).
+        # 상관없이 매일). 찍은 다섯 파일은 바로 commit·push, 실패는 logs/daily_close_fail.log(2026-10-30 위크 편지 B2).
         _now = core.now_kst()
         if not dry and not core.is_krx_closed(core.today_kst_str()) and ("--force" in sys.argv or in_krx_close_window(_now)):
+            import daily_close
+            _day = core.today_kst_str()
             try:
-                import daily_close
                 daily_close.close_day()
             except Exception as e:
                 print(f"[경고] daily_close 실패(price_history는 이미 적음): {e}")
+                daily_close.log_failure(_day, f"close_day 실패: {e}")
+            else:
+                daily_close.push_histories(_day)
     elif "--fix-prev-close" in sys.argv:
         fix_prev_close(dry_run=dry)
     else:

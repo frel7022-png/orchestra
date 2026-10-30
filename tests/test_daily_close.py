@@ -120,3 +120,41 @@ def test_account_days_from_keeps_pre_krx_rows_fixed(city):
     for d in ("2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23"):
         core.snapshot_history(1.0, 1.0, on_date=d)
     assert dc.account_days_from("2026-10-20") == ["2026-10-20", "2026-10-23"]
+
+
+# ④ 15:35 push 실패는 조용히 묻히지 않는다(2026-10-30 위크 편지 B2) — 실패 로그에 한 줄, 커밋은 히스토리 파일만.
+class _R:
+    def __init__(self, rc=0, out="", err=""):
+        self.returncode, self.stdout, self.stderr = rc, out, err
+
+
+def _fake_git(monkeypatch, tmp_path, fail_on=None):
+    calls = []
+    for f in dc.HISTORY_FILES:
+        (tmp_path / f).write_text("날짜\n", encoding="utf-8")
+    monkeypatch.setattr(dc, "HERE", tmp_path)
+    monkeypatch.setattr(dc, "FAIL_LOG", tmp_path / "logs" / "daily_close_fail.log")
+
+    def run(args, **kw):
+        calls.append(args[1:])
+        if args[1] == "status":
+            return _R(out=" M asset_history.csv\n")
+        return _R(rc=1, err="거절") if args[1] == fail_on else _R()
+    monkeypatch.setattr(dc.subprocess, "run", run)
+    return calls
+
+
+def test_push_histories_commits_only_history_files(monkeypatch, tmp_path):
+    calls = _fake_git(monkeypatch, tmp_path)
+    assert dc.push_histories("2026-10-30") is True
+    commit = next(c for c in calls if c[0] == "commit")
+    assert commit[commit.index("--") + 1:] == list(dc.HISTORY_FILES)
+    assert [c[0] for c in calls][-2:] == ["pull", "push"]
+    assert not dc.FAIL_LOG.exists()
+
+
+def test_push_histories_failure_writes_fail_log(monkeypatch, tmp_path):
+    _fake_git(monkeypatch, tmp_path, fail_on="push")
+    assert dc.push_histories("2026-10-30") is False
+    line = dc.FAIL_LOG.read_text(encoding="utf-8").strip()
+    assert line.startswith("2026-10-30 ") and "push 실패" in line and "거절" in line

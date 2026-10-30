@@ -19,6 +19,26 @@ import portfolio_core as core  # noqa: E402
 for _w in core.krx_calendar_warnings():
     print(_w)
 
+# 히스토리 다섯 · 픽 추적 · 15:35 실패 로그(2026-10-30 위크 편지 B1·B2) — 무인으로 도는 일이 멈춰도 다음 아침에 보이게.
+import os  # noqa: E402
+from datetime import date as _date, datetime as _dt, timedelta as _td  # noqa: E402
+_al = core.check_history_alignment()
+print(f"[히스토리 다섯 OK] 모두 {_al['latest']}" if _al["aligned"]
+      else "[⚠️ 히스토리 다섯] " + " · ".join(f"{k} {v}" for k, v in _al["maxes"].items()) + " — 뒤처짐: " + ", ".join(_al["behind"]))
+_today, _now = core.today_kst_str(), core.now_kst()
+_ts = core.HERE / "tracking" / "summary.csv"
+_tsd = _dt.fromtimestamp(os.path.getmtime(_ts)).strftime("%Y-%m-%d") if _ts.exists() else None
+if core.is_krx_closed(_today) or (_now.hour, _now.minute) < (9, 35):
+    print(f"[픽 추적] tracking/summary.csv 마지막 갱신 {_tsd} (휴장 · 09:35 전 — 오늘 것은 아직 안 봄)")
+elif _tsd == _today:
+    print(f"[픽 추적 OK] tracking/summary.csv 오늘 {_tsd} 갱신")
+else:
+    print(f"[⚠️ 픽 추적] tracking/summary.csv 마지막 갱신 {_tsd} — 오늘 09:30 자동 생성에서 안 돎")
+_fl = core.HERE / "logs" / "daily_close_fail.log"
+_since = (_date.fromisoformat(_today) - _td(days=7)).isoformat()
+_fails = [l.strip() for l in (_fl.read_text(encoding="utf-8").splitlines() if _fl.exists() else []) if l.strip()[:10] >= _since]
+print("[15:35 실패 없음(최근 7일)]" if not _fails else "[⚠️ 15:35 실패] " + " | ".join(_fails[-3:]))
+
 sec = tomllib.load(open(".streamlit/secrets.toml", "rb"))["supabase"]
 URL = sec["url"]
 KEY = sec.get("anon_key") or sec.get("key")
