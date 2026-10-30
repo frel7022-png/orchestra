@@ -376,10 +376,11 @@ def save_sector_history(df: pd.DataFrame) -> None:
 
 
 def check_history_alignment(trade_date: str | None = None) -> dict:
-    """asset/sector/index/bigcap_history 4개가 같은 날짜까지 커버하는지 점검(§6-2 "lock-step").
-    이 4개는 전부 매매일지 반영일(trade_date)까지 나란히 있어야 하는데, 앱 새로고침은 배포
-    서버 로컬에만 쓰고 git엔 안 올려서 어긋나기 쉽다 — ingest 끝에서 이걸 불러 ⚠️를 띄운다.
-    반환: {maxes:{파일명:마지막날짜|None}, latest, aligned(4개 마지막날짜 동일 & 빈 파일 없음),
+    """asset/sector/index/bigcap_history(+ bench_history 파일이 있으면, 다섯)가 같은 날짜까지 커버하는지 점검(§6-2 "lock-step").
+    2026-10-29부터 시장 줄(index·bigcap·bench)은 15:35 daily_close가 따로, 계좌 줄(asset·sector)은 15:35 +
+    매매일지 반영 때 다시 찍는다(원-2026-10-29-18) — 그래도 다섯이 같은 날까지 있어야 화면 계산이 맞아서
+    ingest 끝 · daily_close.close_day 끝에서 이걸 불러 ⚠️를 띄운다(앱 새로고침은 배포 서버 로컬에만 써서 git과 어긋날 수 있다).
+    반환: {maxes:{파일명:마지막날짜|None}, latest, aligned(마지막날짜 전부 동일 & 빈 파일 없음),
            behind:[뒤처진 파일명], target_ok(모든 파일에 trade_date 존재; trade_date 없으면 None)}."""
     loaders = {"asset_history": load_history, "sector_history": load_sector_history,
                "index_history": load_index_history, "bigcap_history": load_bigcap_history}

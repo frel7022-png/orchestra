@@ -182,7 +182,7 @@ basecamp.py                 # Basecamp 점수 — 빠지다 평지에서 거래�
 ingest_daily.py              # 일일 매매일지 CSV 반영 스크립트 (§6-2 참고, 내부적으로 rebuild_portfolio_incremental 사용 — §6-14).
 fix_sector.py                  # 보유종목 섹터만 안전하게 고치는 스크립트 (§1-7 참고, 2026-08-28 신설).
 live_check.py                  # 지금 이 순간 시장·계좌 상태 출력(파일 안 씀). 사용자가 뭘 물으면 세션이 먼저 돌려 그 숫자로 답한다
-                               #   (2026-10-13 사용자 지시). 히스토리 CSV는 마지막 매매일지 반영 시점(장중일 수도)에 멈춰있어
+                               #   (2026-10-13 사용자 지시). 히스토리 CSV는 마지막 매매일지 반영 시점(장중일 수도)에 멈춰있어(대체됨(2026-10-29, 원-2026-10-29-18·20): 이제 마지막 15:35 daily_close 또는 매매일지 반영 시점)
                                #   "오늘" 숫자로 쓰면 틀림 — 이 스크립트는 지수·대형주를 네이버 일별시세 확정 종가로 다시 받고
                                #   오늘만 실시간으로 덮어씀. 보유 수량·예수금은 마지막 매매일지 반영분 기준. morning_report.py 액션
                                #   리포트 맨 위 "계좌 vs 혼합지수" 칸도 live_snapshot()을 그대로 씀(같은 계산 한 곳).
@@ -230,7 +230,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
 | `transactions.csv` | **유일한 진실 공급원.** 모든 매수/매도 + 예수금 증감(입금/출금) 이력 | id, 날짜, 종목명, 구분(매수/매도/입금/출금), 수량, 단가, 실현손익, 메모, 정산반영 (§6-25) |
 | `portfolio_data.csv` | transactions에서 파생된 현재 보유종목 스냅샷 | 종목명, 종목코드, 섹터, 수량, 평단가, 현재가, 등락률, 업데이트시각 |
 | `account_state.csv` | 현금/초기자본 | 예수금, 최초자본 |
-| `asset_history.csv` | 일별 총자산 스냅샷 (새로고침/거래 시마다 오늘자 갱신) | 날짜, 총자산, 조정자산 |
+| `asset_history.csv` | 일별 총자산 스냅샷 (평일 15:35 `daily_close`가 그날까지의 보유 × KRX 종가로 · 매매일지가 들어오면 그날부터 다시 · 앱 새로고침은 배포 서버에만 — 대체됨(2026-10-29, 원-2026-10-29-18·20): "새로고침/거래 시마다 오늘자 갱신") | 날짜, 총자산, 조정자산 |
 | `sector_history.csv` | 일별 섹터그룹 비중 스냅샷 | 날짜, 섹터그룹, 비중 |
 | `stock_code_cache.csv` | 종목코드 영구 캐시 | 종목명, 종목코드 |
 | `stock_sector_cache.csv` | 섹터 영구 캐시 — 수정 섹터 체계(§6-24). 2026-10-21 기타·기타2 해체 — 모든 종목이 기존 섹터, 캐시에 없는 새 종목은 기본값 기타2로 잡히니 반영 때 섹터 지정 | 종목명, 섹터 〔새뇌 반영 기존〕 |
@@ -423,9 +423,10 @@ manual/                           # report/와 성격이 다름 — **살아있�
   반영한 날엔 어긋나기 쉽다. `ingest_daily.py`가 이 4개를 매번 같이 찍게 해뒀지만(2026-09-08
   기준), 그래도 소비하는 계산 함수는 "히스토리가 어긋나 있을 수 있다"는 전제로 방어적으로 짤 것
   (한쪽이 뒤처지면 폭주하지 말고 공통 커버 구간까지만 쓰거나 그 구간을 스킵).
+  **대체됨(2026-10-29, 원-2026-10-29-18·20)**: 이제 시장 줄(index·bigcap·bench)은 평일 15:35 `daily_close.close_day`(Orchestra_KRXClose 끝 — 파일만, 커밋은 세션)가 매매일지와 상관없이 따로 찍고, 계좌 줄(asset·sector)은 15:35에 그날까지의 보유 × KRX 15:30 종가로 + 매매일지가 들어오면 ingest가 그 날짜부터 히스토리 마지막 날까지 다시 덮는다(시장 줄은 빈 날만). 계좌 줄 10-23~10-29는 KRX로 다시 씀, 10-22까지 픽스.
 - **정합성 자동 체크 (2026-09-10 도입)**: `portfolio_core.check_history_alignment(trade_date)` —
   asset/sector/index/bigcap_history(meritz는 +dom_asset, 5개)의 마지막 날짜를 비교해서 어긋나거나
-  일부에 trade_date가 없으면 알려준다. `ingest_daily.py`가 "반영 후 상태" 출력 직전에 불러서
+  일부에 trade_date가 없으면 알려준다. `ingest_daily.py`가 "반영 후 상태" 출력 직전에 불러서(2026-10-29부터 `daily_close.close_day` 끝에서도 — 오늘 15:35 전 반영의 시장 셋 하루 뒤처짐은 "[정합성 — 정상]")
   `[정합성 OK]` 또는 `[⚠️ 정합성] ... <-- 뒤처짐`을 찍음(자동 수정은 안 함 — 세션이 보고 판단).
   회귀 테스트 `test_check_history_alignment_flags_misaligned`.
 - **4번째 재발 + 근본 원인 수정 (2026-09-10)**: `ingest_daily.py`가 `index_history`/`bigcap_history`를
@@ -440,7 +441,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
   이러면 new1/meritz가 언제 반영하든 같은 값으로 수렴한다. 오염된 데이터는 8/14~9/10 전체를
   `fetch_daily_price_history`로 재생성해 두 레포에 **동일 파일**로 덮어씀(`index_history.csv`,
   `bigcap_history.csv`, `fund_nav_history.csv` 9/10 행도 meritz에 누락돼 있어 같이 맞춤).
-  당일(9/10) 값은 장중이라 잠정 — 다음날 9/11 ingest가 9/10을 확정 종가로 자동 정정한다.
+  당일(9/10) 값은 장중이라 잠정 — 다음날 9/11 ingest가 9/10을 확정 종가로 자동 정정한다. 대체됨(2026-10-29, 원-2026-10-29-18·20): 그때도 아니었다(ingest는 그날 한 줄만 썼다) — 지금은 15:35 `daily_close`가 그날 줄을 확정 종가로 찍고, 매매일지가 늦게 오면 그 날부터 다시 덮는다.
 - **5번째 재발 (2026-09-14) — 같은 병이 보유종목 평가(asset_history/sector_history)에도 있었음**:
   위 수정은 index_history/bigcap_history에만 적용됐고, `asset_history`(보유종목 평가금액+현금)는
   여전히 `compute_metrics(holdings2, ...)`로 **portfolio_data.csv에 남아있는 현재가**(마지막으로
@@ -577,7 +578,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
 
 ### 6-9. Supabase DB 파이프라인 (거래량/수급 포함)
 - GitHub Actions(`.github/workflows/daily-price-fetch.yml`)가 **매 평일 07:13 UTC(=16:13
-  KST, 장마감 30분 후)**에 자동 실행 → `db_fetch_daily_prices.py`가 Supabase `watchlist`
+  KST, 장마감 30분 후 — 실제로는 15:30 뒤 43분)**에 자동 실행 → `db_fetch_daily_prices.py`가 Supabase `watchlist`
   테이블의 종목코드 전부(153개)에 대해:
   1. 시세+거래량 조회(`fetch_quotes`) → `price_history`에 upsert
   2. 종목별 외국인/기관 수급 조회(`fetch_investor_flow`, 종목당 1회 스크레이핑) → `investor_flow`에 upsert
@@ -1177,7 +1178,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
   - 하루치 append: `app.py`의 "시세 새로고침" 핸들러에서 `snapshot_history` 직후
     `snapshot_index_history(iq["KOSPI"]["price"], iq["KOSDAQ"]["price"])` 호출 —
     `fetch_index_quotes()`는 그 핸들러가 이미 부르고 있어서 새 네트워크 요청 없음.
-    **별도 cron 불필요**(§6-9 Supabase 파이프라인에 얹지 않음 — 지수는 Fishing 최초가처럼
+    **별도 cron 불필요**(대체됨(2026-10-29, 원-2026-10-29-18·20): 평일 15:35 `daily_close`가 매일 찍음 — 로컬 예약 Orchestra_KRXClose 끝)(§6-9 Supabase 파이프라인에 얹지 않음 — 지수는 Fishing 최초가처럼
     DB에 넣을 필요가 없고 로컬 CSV로 충분). `resolve_trading_date()`를 써서 장 시작 전
     새로고침이면 그 지수값을 직전 거래일 종가로 저장(§6-16 cron 날짜 밀림과 같은 맥락).
   - 최초 백필: `core.fetch_daily_price_history("KOSPI"|"KOSDAQ", start, end)` — §6-16의
@@ -1207,7 +1208,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
     + 오늘이 even일로 분류 + 내 계좌·주식 당일이 벤치보다 낮은데 빨강으로 (0 대비 이겼다고).
     표의 "코스피 당일 +X%"도 사실 그 뒤처진 날의 값이지 진짜 오늘 게 아님. **고침 3종**:
     (1) `ingest_daily.py`가 `snapshot_history` 옆에서 `snapshot_index_history
-    (fetch_index_quotes())`도 같이 찍어 두 히스토리를 lock-step으로. (2) `compute_index_vs_account`
+    (fetch_index_quotes())`도 같이 찍어 두 히스토리를 lock-step으로(대체됨(2026-10-29, 원-2026-10-29-18·20): 둘 다 15:35 `daily_close`, ingest는 계좌만 다시). (2) `compute_index_vs_account`
     안전장치 — `me`를 `asset_hist`·`index_hist` 공통 커버 마지막 날(`idx_cum["날짜"].max()`)까지만
     자름(index가 뒤처져도 가짜 0% even일 안 생기고, 대신 "최신"이 며칠 stale하게 보일 뿐).
     회귀 `test_compute_index_vs_account_caps_me_to_index_coverage`. (3) 겪은 시점의
@@ -1303,7 +1304,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
 - **데이터**: `bigcap_history.csv`(날짜, 삼성전자, 삼성전자우, SK하이닉스 종가). 백필
   `python backfill_bigcap_history.py`(재실행 가능, index_history 시작일부터 빠진 날짜만).
   일별 갱신: `app.py` 새로고침 핸들러(`snapshot_index_history` 바로 뒤) **와**
-  `ingest_daily.py`(2026-09-08 추가 — `index_history`와 lock-step. app 새로고침은 배포 서버
+  `ingest_daily.py`(대체됨(2026-10-29, 원-2026-10-29-18·20): 15:35 `daily_close`가 찍고 ingest는 빈 날만)(2026-09-08 추가 — `index_history`와 lock-step. app 새로고침은 배포 서버
   로컬에만 쓰여 git엔 안 올라가서, ingest에서 안 찍으면 매매일지만 반영한 날 bigcap이 하루
   비어 위의 폭주 버그가 남). `index_history.csv`류와 같은 로컬 CSV라 세션이 git commit/push.
 - **읽는 법 / 주의**: 최근엔 반도체가 코스피를 떠받쳐서 "코스피 ex-반도체"가 헤드라인보다
@@ -1461,7 +1462,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
   마감됐다고 해서 알아서 daily_stats를 돌리고 코멘트를 쓰지 말 것. 아래 "루틴" 항목은 요청받았을
   때 *어떻게* 쓰는지(절차·톤·별점 기준)로만 참고하고, "하루 1회 자동"이라는 전제는 무효.
 - **루틴 (하루 1회, 오후 3:30 KST 이후 = 장 마감 후) — 위 지시로 요청 시에만 수행**: 매매일지 반영 + `sync_both_accounts.py`
-  뒤에 `python daily_stats.py [YYYY-MM-DD]`로 그날 수치(내 주식/계좌 어제대비, 코스피·코스닥·혼합·
+  뒤에(2026-10-29부터는 반영 없이도 15:35 `daily_close`가 그날 줄을 찍는다) `python daily_stats.py [YYYY-MM-DD]`로 그날 수치(내 주식/계좌 어제대비, 코스피·코스닥·혼합·
   W/O SH 당일, DC/UC 오늘·누적, 오늘 매수/매도 종목별, 예수금 비중, P&L Actions, 물타기, 신규진입)를
   덤프 → **세션이 그걸 읽고 코멘트+별점 작성** → CSV에 append → git commit/push.
   LLM 호출은 앱이 아니라 세션이 함(하루 1회라 굳이 앱에 API 안 붙임).
