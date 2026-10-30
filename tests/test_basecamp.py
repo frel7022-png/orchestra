@@ -80,3 +80,18 @@ def test_today_row_is_excluded_from_base():
     today = ph["날짜"].iloc[-1]
     out = basecamp.scan(ph, fh, today=today)
     assert out and out[0]["평지끝"] < today
+
+
+def test_three_eyes_are_shown_but_do_not_change_score():
+    # 바닥 세 눈(위크 편지 10-30 B3): 같은 모양 두 종목 + 바다 열 종목(평탄) → 바다 = 그 종목 하락 − 관심종목 가운데(0)
+    c1, v1 = _decline_then_flat(3)
+    parts = [_stock("000001", "매집", c1, v1)]
+    for i in range(10):
+        parts.append(_stock(f"1{i:05d}", f"바다{i}", [100] * len(c1), [1000] * len(c1)))
+    ph, fh = pd.concat([p for p, _ in parts]), pd.concat([f for _, f in parts])
+    x = next(r for r in basecamp.scan(ph, fh, top_n=None) if r["종목명"] == "매집")
+    alone = basecamp.scan(*_stock("000001", "매집", c1, v1), top_n=None)[0]
+    assert x["score"] == alone["score"]                          # 점수는 그대로
+    assert x["하락일수"] > 0 and abs(x["평지하락비"] - x["평지일수"] / x["하락일수"]) < 1e-9
+    assert x["바다"] is not None and abs(x["바다"] - (c1[-x["평지일수"]] / x["고점"] - 1) * 100) < 1e-9
+    assert alone["바다"] is None                                 # 비교할 관심종목이 10 미만이면 빈칸

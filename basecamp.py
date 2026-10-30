@@ -131,7 +131,7 @@ def _score(closes: np.ndarray, vols: np.ndarray, L: int) -> dict | None:
     # 평지 길이 가중(대표 2026-10-29 B1 「약하게 — 점수 × √(평지 일수 ÷ 3)」, 원-2026-10-28-16 「평지가 길수록 더 무게를 줘」)
     return {"score": depth_s * flat_s * vol_s * math.sqrt(L / BASE_MIN), "peak_i": peak_i, "peak": peak, "drop": drop,
             "band": band, "slope": slope, "ratio": ratio, "heavy": heavy, "n_vol": len(bv),
-            "baseline": baseline, "drop_ratio": drop_ratio, "sigma": sigma, "shape": shape, "base_hi": float(base.max()), "base_lo": float(base.min())}
+            "baseline": baseline, "drop_ratio": drop_ratio, "sigma": sigma, "shape": shape, "drop_days": drop_days - 1, "base_hi": float(base.max()), "base_lo": float(base.min())}
 
 
 def _tags(dates: list, closes: np.ndarray, vols: np.ndarray, peak_i: int, all_days: list) -> tuple[str, str]:
@@ -185,6 +185,23 @@ def _absorber(flow_hist: pd.DataFrame, code: str, start: str, end: str) -> dict:
             "기관몫": inn / vol * 100 if vol else None}
 
 
+def _three_eyes(r, L, dates, closes, wide) -> dict:
+    """바닥 세 눈 — 점수엔 안 넣고 보여만 준다(위크 편지 10-30 B3, origin 대표 「모두 위크 추천대로」 · 원-2026-10-29-23
+    「절대적인것, 상대적 … 바다(시장,섹터)를 대입하면 또 달라질 수 있어」). 문턱 없음 — 예로 든 숫자는 어디에도 안 쓴다(원-24).
+    절대 = 하락 일수(고점 다음 날 ~ 평지 시작 전날, 그 종목 거래일) · 상대 = 평지 ÷ 하락 일수, 하락 폭 ÷ (σ × √하락 일수)
+    (σ = 모양 점수와 같은 σ — 고점 전 최대 60일, 고점 전 수익률 10개 미만이면 평지 앞 전체 최대 60일) · 바다 = 하락 기간(고점일 → 평지 시작) 그 종목 수익률 − 같은 기간 관심종목 가운데 값(%p)."""
+    dd = r["drop_days"]
+    rel_len = L / dd if dd > 0 else None
+    rel_sig = r["drop"] / (r["sigma"] * math.sqrt(dd)) if r["sigma"] > 0 and dd > 0 else None
+    d0, d1 = dates[r["peak_i"]], dates[-L]
+    sea = None
+    if d0 in wide.index and d1 in wide.index:
+        allr = (wide.loc[d1] / wide.loc[d0] - 1).dropna()
+        if len(allr) >= 10:
+            sea = ((closes[-L] / r["peak"] - 1) - float(allr.median())) * 100
+    return {"하락일수": dd, "평지하락비": rel_len, "하락σ": rel_sig, "바다": sea}
+
+
 def scan(price_hist: pd.DataFrame, flow_hist: pd.DataFrame, live_quotes: dict | None = None,
          today: str | None = None, top_n: int | None = 15) -> list[dict]:
     """관심종목 전체를 Basecamp 점수 순으로. 오늘(today) 행은 장중일 수 있어 평지 계산에서 뺀다."""
@@ -195,6 +212,8 @@ def scan(price_hist: pd.DataFrame, flow_hist: pd.DataFrame, live_quotes: dict | 
         df = df[df["날짜"] < today]
     live_quotes = live_quotes or {}
     all_days = sorted(df["날짜"].unique())
+    # 바다 칸(위크 편지 10-30 B3 — 바닥 세 눈, 원-2026-10-29-23): 하락 기간 그 종목 수익률 − 같은 기간 관심종목 가운데 값.
+    wide = df.pivot_table(index="날짜", columns="종목코드", values="종가", aggfunc="last")
     out = []
     for code, g in df.groupby("종목코드"):
         closes, vols, dates = g["종가"].to_numpy(float), g["거래량"].to_numpy(float), g["날짜"].tolist()
@@ -221,6 +240,7 @@ def scan(price_hist: pd.DataFrame, flow_hist: pd.DataFrame, live_quotes: dict | 
             "거래량배수": r["ratio"], "하락기간배수": r["drop_ratio"], "모양점수": r["shape"], "대량일수": r["heavy"], "거래량일수": r["n_vol"],
             "기준거래량": r["baseline"], "평지고": r["base_hi"], "평지저": r["base_lo"],
             "현재가": float(now), "고점대비": (float(now) / r["peak"] - 1) * 100, "상태": status,
+            **_three_eyes(r, L, dates, closes, wide),
             **dict(zip(("사건", "고점튐"), _tags(dates, closes, vols, r["peak_i"], all_days))),
             **_absorber(flow_hist, code, dates[-L], dates[-1]),
         })

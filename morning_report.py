@@ -817,6 +817,9 @@ def write_basecamp(res, n_names, m_names):
         v = x.get("하락기간배수")
         return "-" if v is None or pd.isna(v) else f"×{v:.1f}"
 
+    def num(v, fmt):
+        return "-" if v is None or pd.isna(v) else format(v, fmt)
+
     fl = res["bc_floor"]
     one = fl["1배"]
     one_txt = (f'평지 거래량 1배 넘은 수 — 하락 전 대비 {one["하락전"]}/{one["전체"]} · '
@@ -840,7 +843,9 @@ def write_basecamp(res, n_names, m_names):
                     f'<td>{x["평지시작"][5:]} · {x["평지일수"]}일</td><td>{x["길이순위"]}</td><td>{x["밴드"]:.1f}%</td><td>×{x["거래량배수"]:.1f}</td>'
                     f'<td>{dr(x)}</td><td>{x["대량일수"]}/{x["거래량일수"]}일</td><td>{fx(x)}</td>'
                     f'<td>{share(x["외인몫"])}</td><td>{share(x["기관몫"])}</td><td>{sign(x["고점대비"])}</td>'
-                    f'<td class="l"><span class="bd st {st_cls[x["상태"]]}">{x["상태"]}</span></td></tr>')
+                    f'<td class="l"><span class="bd st {st_cls[x["상태"]]}">{x["상태"]}</span></td>'
+                    f'<td>{x.get("하락일수", "-")}일</td><td>{num(x.get("평지하락비"), ".2f")} · {num(x.get("하락σ"), ".1f")}</td>'
+                    f'<td>{sign(x.get("바다"), 1, "%p") if x.get("바다") is not None else "-"}</td></tr>')
         cards.append(card(f'{x["순위"]}. {esc(x["종목명"])}{who(x)}',
                           f'고점 {x["고점일"][5:]} {x["고점"]:,.0f} → 평지 {x["평지시작"][5:]}부터 {x["평지일수"]}일 '
                           f'({x["평지저"]:,.0f}~{x["평지고"]:,.0f}) · 거래량 ×{x["거래량배수"]:.1f}, '
@@ -871,8 +876,10 @@ def write_basecamp(res, n_names, m_names):
 <h2>점수 상위 {BC_TOP} ({prev_txt})</h2>
 <p class="legend">{one_txt}</p>
 <p class="legend">점수 = 하락 깊이 × 평지 평탄도 × 거래량 배수 × √(평지 일수÷3) · 길이 = 평지 길이 순위(전체 중) · 거래량 = 평지 ÷ 하락 전, 하락기간 = 평지 ÷ 하락 기간(점수엔 안 넣음) · 받는손: <span class="who f">외인</span> 평지 구간 외인 순매수 합&gt;0이고 보유율도 오름 / <span class="who i">기관</span> 기관 순매수 합&gt;0 · 평지 외인 비중 = 평지 직전 보유율→끝 (변화 %p · 원래 비중 대비 %) · 외인몫·기관몫 = 평지 구간 순매수 합 ÷ 거래량 합(비중 변화가 아니다) · 상태: 돌파(평지 고가 위) / 다지는 중 / 이탈(평지 저가 −3% 아래)</p>
+<p class="legend">바닥 세 눈(점수엔 안 들어감, 보여만): 절대 = 하락 일수(고점 다음 날~평지 시작 전날, 평지 일수 · 하락 폭은 앞 칸) · 상대 = 평지 일수 ÷ 하락 일수 · 하락 폭 ÷ (자기 σ × √하락 일수, σ = 모양 점수와 같은 σ — 고점 전 최대 60일, 고점 전 수익률이 10개 미만이면 평지 앞 전체 최대 60일) · 바다 = 하락 기간(고점일→평지 시작) 그 종목 수익률 − 같은 기간 관심종목 가운데 값(음수 = 바다보다 더 빠짐)</p>
 <div class="scroll"><table><thead><tr><th>#</th><th></th><th class="l">종목</th><th>점수</th><th>고점</th><th>평지까지 하락</th><th>평지</th><th>길이</th><th>밴드</th>
-<th>거래량</th><th>하락기간</th><th>2배↑</th><th>평지 외인 비중</th><th>외인몫(거래량)</th><th>기관몫(거래량)</th><th>지금(고점 대비)</th><th class="l">상태</th></tr></thead>
+<th>거래량</th><th>하락기간</th><th>2배↑</th><th>평지 외인 비중</th><th>외인몫(거래량)</th><th>기관몫(거래량)</th><th>지금(고점 대비)</th><th class="l">상태</th>
+<th>절대: 하락 일수</th><th>상대: 평지÷하락 · 하락÷σ√일</th><th>바다: 관심 가운데 대비</th></tr></thead>
 <tbody>{"".join(rows)}</tbody></table></div>
 
 <h2>명단에서 빠진 종목</h2>
