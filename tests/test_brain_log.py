@@ -8,6 +8,12 @@ def test_head_len_counts_lines_before_tail_block():
     assert bl.head_len("# 꼬리표 없음\n") is None
 
 
+def test_head_len_stops_at_first_section_not_tail():
+    # 새 포맷: 머리 뒤 첫 절(## 설명)에서 멈춘다 — 꼬리표가 맨 끝이어도 넘치지 않는다
+    text = "# 셀\n주민: C-1\n\n## 설명\n- a\n- b\n\n## 이유\n- c\n\n## 꼬리표\n저장고: x\n"
+    assert bl.head_len(text) == 2
+
+
 def test_storage_table_reads_each_cells_storage_line(tmp_path):
     d = tmp_path / "수급"
     d.mkdir()

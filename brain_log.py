@@ -2,7 +2,7 @@
 
     python brain_log.py log [시작일] [끝일]   # 커밋 메시지의 `셀:` 줄 모음 — 셀 이력·하루 일기·주간 "뇌 변경 보고"의 원천
     python brain_log.py storage              # 셀마다의 `저장고:` 줄(원본)을 모아 셀관리.md 저장고 표를 다시 만든다
-    python brain_log.py heads                # 셀 머리(제목 ~ "## 꼬리표" 전) 줄 수 — 15 넘으면 표시
+    python brain_log.py heads                # 셀 머리(제목 ~ 첫 "## " 절 전) 줄 수 — 15 넘으면 표시
     python brain_log.py links                # 셀 사이 길(다음 셀 신호) 표 → 셀관리.md + 뇌_초안 안 끊긴 경로 검사(2026-10-20 셀회의)
                                              #   + 셀→코드 문 검사(심볼·@뇌 이름표·줄 번호 금지, 2026-10-21)
     python brain_log.py oldcheck mark        # 옛 뇌 지문 찍기(출근 점검 첫머리) — 옛 claude.md·ARCHIVE.md·메모리 줄별 해시를 상태 파일에
@@ -49,8 +49,13 @@ def cell_lines(since: str | None = None, until: str | None = None) -> list[tuple
 
 
 def head_len(text: str) -> int | None:
+    """머리 = 제목 줄 뒤 ~ 첫 "## " 절 앞(2026-11-03 — 새 포맷은 꼬리표가 맨 끝이라 "## 꼬리표 앞 전부"로 세면
+    거의 모든 장이 넘쳤다). "## " 절이 없으면 None."""
     ls = text.split("\n")
-    return ls.index("## 꼬리표") - 1 if "## 꼬리표" in ls else None
+    for i, ln in enumerate(ls):
+        if ln.startswith("## "):
+            return i - 1
+    return None
 
 
 def storage_table(files: list[Path]) -> str:
@@ -632,7 +637,7 @@ def main() -> int:
         bad = 0
         for p in cell_files():
             n = head_len(p.read_text(encoding="utf-8"))
-            flag = "" if n is not None and n <= HEAD_MAX else "  <-- 넘침/꼬리표 없음"
+            flag = "" if n is not None and n <= HEAD_MAX else "  <-- 넘침/절 없음"
             bad += bool(flag)
             print(f"{n}\t{p.relative_to(BRAIN)}{flag}")
         return 1 if bad else 0
