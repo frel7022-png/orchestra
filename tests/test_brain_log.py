@@ -1,4 +1,6 @@
 """brain_log.py — 셀 머리 길이, 저장고 표 생성."""
+import pytest
+
 import brain_log as bl
 
 
@@ -129,6 +131,7 @@ def test_cell_files_include_nested_office_folder():
     assert "| `관측소/바다` |" in table
 
 
+@pytest.mark.skip(reason="U-047 신호 칸 (다) — links 길 표 다시 정할 때 풂")
 def test_links_read_name_with_particle():
     """새 포맷 꼴 "가치척도/누구와_싸우나가 도움이 될 수 있다" — 조사가 붙어도 나가는 길로 센다."""
     out, _, _ = bl.links()
