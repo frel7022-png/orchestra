@@ -662,7 +662,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
   이 파일 고칠 때 이 방어 구조를 걷어내지 말 것(cron이 깨지면 사람이 안 챙겨도 조용히 실패한
   채로 방치되기 쉬움). 종목별 수급 조회는 153번 순차 요청(비공식 스크레이핑이라 요청 사이
   0.3초 지연을 둠).
-- **DB 스키마** (Supabase 프로젝트: `frel7022-png's Project`, ID `ghpxaznihogafhvdqijw`,
+- **DB 스키마** (Supabase 프로젝트: `frel7022-png's Project`, ID `ghpxaznihogafhvdqijw`, 〔새뇌 반영 e43d2df〕
   Tokyo 리전, 무료 티어):
   - `watchlist(id, user_id, stock_code, stock_name, sector, created_at)` — `user_id`는 항상
     고정 placeholder UUID(`00000000-...`)로 채움(NULL로 두면 UNIQUE 제약이 무력화되는 버그가
@@ -736,7 +736,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
   무관하게 매일 정상 갱신되고 있었음 — 그래도 그 캡션 한 줄이 "오늘"이라고 라벨 붙은 채 12일
   전 값을 보여주고 있었던 건 방치하면 안 되는 문제였음(§6-2의 "stale 값이 오늘 것처럼 보임"과
   같은 부류).
-- **한국 휴장일 스킵 (2026-10-06)**: `resolve_trading_date()`는 주말만 거르고 명절·대체공휴일은 〔새뇌 반영 b8f169a · 70e406b〕
+- **한국 휴장일 스킵 (2026-10-06)**: `resolve_trading_date()`는 주말만 거르고 명절·대체공휴일은 〔새뇌 반영 b8f169a · 70e406b · e43d2df〕
   못 걸러서, 휴장일인 10/5에도 cron이 그대로 돌아 price_history에 10/2 값을 복사한 가짜 10/5 행
   180개, market_flow에 전부 0인 행 2개가 생겼음(세션이 사용자 승인 받고 삭제). **수정**:
   `portfolio_core.market_traded_on(trade_date)` — 삼성전자 실시간 시세의 마지막 체결 시각
@@ -744,7 +744,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
   `main()` 맨 앞에서 False면 아무것도 적재하지 않고 종료, 조회 실패(None)면 거래일로 보고 그대로
   진행(investor_flow는 5영업일 지나면 못 메우니 실제 거래일을 놓치는 쪽이 더 나쁨). 휴장일 목록을
   하드코딩하지 않아도 되는 방식. 회귀 테스트 `test_market_traded_on_*` 3개.
-- **앱 새로고침도 휴장일엔 스냅샷 안 찍음 (2026-10-15 대표 승인)**: `app.py` 시세 새로고침 핸들러가 〔새뇌 반영 b8f169a · bab023d〕
+- **앱 새로고침도 휴장일엔 스냅샷 안 찍음 (2026-10-15 대표 승인)**: `app.py` 시세 새로고침 핸들러가 〔새뇌 반영 b8f169a · bab023d · e43d2df〕
   `market_traded_on(today_kst_str()) is False`(주말·공휴일·평일 09:00 전)면 asset/sector/index/bigcap 스냅샷·capture 로그·
   account_snapshot을 전부 건너뛴다. 평일 공휴일에 새로고침하면 그 휴일 날짜로 행이 생겨 Account:Index·DC/UC가 "0% even일"로
   세던 문제. `resolve_trading_date()` 자체엔 네트워크 호출을 안 넣음(영향 범위 최소). 판정 실패(None)면 예전처럼 찍는다.
