@@ -523,7 +523,7 @@ def address_problems(root: Path | None = None, book: Path | None = None) -> list
 
 
 # 본문 속 끊긴 경로(U-027): `빌딩/이름`이 글자로 적혔는데(백틱·.md 없이도) 그 빌딩에 그 사무실이 없는 것.
-# 옛 주소를 남기는 자리(이력 칸 · "옛 이름"·"옛 주소"·"대체됨" 줄 · 기록관 원문)는 뺀다.
+# 옛 주소를 남기는 자리(이력 칸 · "옛 방법" 칸 · "옛 이름"·"옛 주소"·"대체됨" 줄 · 기록관 원문)는 뺀다.
 # 조사가 붙은 꼴("일과/지금_숫자로_답하기에서")은 그 빌딩의 파일 이름으로 시작하면 산 것으로 본다.
 TEXT_PATH_SKIP_NAMES = {"X", "사무실", "길", "이름", "파일"}
 
@@ -548,7 +548,7 @@ def text_path_problems(root: Path | None = None) -> list[tuple[str, int, str]]:
         for i, ln in enumerate(p.read_text(encoding="utf-8").split("\n"), 1):
             if ln.startswith("## "):
                 sec = ln[3:].strip()
-            if sec.startswith("이력") or "옛 이름" in ln or "옛 주소" in ln or "대체됨" in ln:
+            if sec.startswith("이력") or sec.startswith("옛 방법") or "옛 이름" in ln or "옛 주소" in ln or "대체됨" in ln:
                 continue
             for m in pat.finditer(ln):
                 b, name = m.group(1), m.group(2)

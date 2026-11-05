@@ -60,6 +60,22 @@ def test_text_path_check_flags_moved_office_but_not_history_or_particles(tmp_pat
     assert bl.text_path_problems(root) == [("데이터센터/꺼내는_창구.md", 5, "데이터센터/현행값_집")]
 
 
+def test_text_path_check_skips_old_method_section(tmp_path):
+    """"## 옛 방법 — 되돌아가지 않게" 칸은 옛 주소를 남기는 자리라 끊긴 경로로 잡지 않는다(md_포맷_설명서 11-05 — 모든 갈래에 옛 방법 칸)."""
+    root = _city(tmp_path)
+    (root / "데이터센터" / "꺼내는_창구.md").write_text(
+        "# 창구\n"
+        "- 숫자 집은 데이터센터/현행값_집\n"                  # 끊김(본문)
+        "\n## 옛 방법 — 되돌아가지 않게\n"
+        "- 데이터센터/현행값_집에 숫자를 따로 뒀다 → 세팅 한 곳으로\n"   # 옛 방법 칸은 뺌
+        "\n## 꼬리표\n- 데이터센터/없는방\n",                # 칸이 바뀌면 다시 검사
+        encoding="utf-8")
+    assert bl.text_path_problems(root) == [
+        ("데이터센터/꺼내는_창구.md", 2, "데이터센터/현행값_집"),
+        ("데이터센터/꺼내는_창구.md", 8, "데이터센터/없는방"),
+    ]
+
+
 def test_address_problems_flag_malformed_resident_line(tmp_path):
     """"주민:"으로 시작하는데 꼴이 틀린 줄(네 자리 아님 등)은 주소록에서 조용히 빠지지 않고 문제로 잡힌다(b8 10-27)."""
     root = _city(tmp_path)
