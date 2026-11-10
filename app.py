@@ -17,8 +17,8 @@ import streamlit as st
 from constants import THEMES, UP_COLOR, NEW_COLOR
 from portfolio_core import (
     load_holdings, load_transactions, load_state,
-    snapshot_history, snapshot_sector_history, snapshot_index_history,
-    snapshot_bigcap_history, fetch_bigcap_quotes, fetch_bigcap_detail,
+    snapshot_sector_history, snapshot_index_history,
+    snapshot_live_total_and_bigcap, fetch_bigcap_detail,
     refresh_all_prices, fetch_index_quotes, refresh_dividend_yields, refresh_market_cache,
     compute_metrics, compute_sector_weights,
     compute_index_vs_account, load_index_history, load_history, append_capture_anomalies,
@@ -465,12 +465,11 @@ if refresh_clicked_top or auto_refresh_triggered or settings_clicked:
         # resolve_trading_date()는 공휴일을 못 걸러서, 평일 공휴일에 새로고침하면 그 휴일 날짜로 행이 생겨
         # Account:Index·DC/UC가 그날을 "시장 0% even일"로 셌다. 판정 실패(None)면 예전처럼 찍는다.
         if market_traded_on(today_kst_str()) is not False:
-            snapshot_history(total_assets_top, total_assets_top + unreal_top)
+            snapshot_live_total_and_bigcap(total_assets_top, total_assets_top + unreal_top)   # 15:30 넘으면 안 찍음(§ 원-2026-11-10-14)
             snapshot_sector_history(compute_sector_weights(df_top))
             iq = st.session_state["index_quotes"]
             if iq.get("KOSPI") and iq.get("KOSDAQ"):
                 snapshot_index_history(iq["KOSPI"].get("price"), iq["KOSDAQ"].get("price"))
-            snapshot_bigcap_history(fetch_bigcap_quotes())  # 삼성전자/삼성전자우/SK하이닉스 종가 (§6-19 SamHynix extracted)
             # §6-17: even일(시장이 ±0.1% 안에서만 움직인 날) → report/capture_anomalies.csv에 누적 기록
             # (분기 단위 수동 검토용). 새로고침 때만, 매 렌더링 아님. 코스피 단독 기준으로 충분(무변동 판정).
             try:

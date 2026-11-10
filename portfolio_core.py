@@ -687,6 +687,18 @@ def synthetic_kospi_ex_bigcap(index_hist: pd.DataFrame, bigcap_hist: pd.DataFram
     return h
 
 
+# @뇌 앱_15시30_스냅샷_막기
+def snapshot_live_total_and_bigcap(total_assets: float, adjusted_assets: float, now=None) -> bool:
+    """앱 새로고침의 총자산 · 대형주 스냅샷 — 15:30 넘으면 안 찍는다. 그 뒤 현재가는 애프터장 값이고 오늘 줄의 주인은 15:35 예약이다
+    (대표 2026-11-10 원-2026-11-10-14). 찍었으면 True."""
+    now = now or now_kst()
+    if (now.hour, now.minute) >= (15, 30):
+        return False
+    snapshot_history(total_assets, adjusted_assets)
+    snapshot_bigcap_history(fetch_bigcap_quotes())
+    return True
+
+
 def fetch_bigcap_detail() -> dict:
     """{종목코드: {"price", "prev_close", ...}} — 대형주 셋의 현재가와 시세가 주는 전일 종가(정규장의 전일 = KRX 종가)."""
     q, _ = fetch_quotes(list(BIGCAP_CODES.values()))
