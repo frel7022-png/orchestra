@@ -123,7 +123,7 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
         # 날짜 고정(2026-10-22 대표): 지난날 = bench_history의 그날 하루 등락을 복리로, 오늘만 지금 wk로.
         m = core.bench_cum_map(df, kind, wk, anchor)
         ds = sorted(m)
-        td = core.today_bench_day(kind, wk, iq, bd) if not closed else None
+        td = core.today_bench_day(kind, wk, iq, bd) if not closed else None   # 15:35 기록 여부와 상관없이 시세로
         if td is not None and td[0] == ds[-1] and len(ds) > 1:      # 오늘 = 시세 그대로, 누적은 곱해서 쌓는다
             return (1.0 + m[ds[-2]]) * (1.0 + td[1]) - 1.0, td[1]
         day = core.bench_day_on(df, kind, ds[-1], wk)
@@ -133,9 +133,8 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
     tot, tot_prev = float(val.sum()) + cash, float(prev.sum()) + cash
     # 당일(내 주식·내 계좌 %·원)은 시세를 받은 종목만으로 잰다 — 실패 종목(등락 0 채움)이 분모에 남아
     # 당일 %를 묽게 하지 않게(Q-28, 0930 보고서 ⓐ "당일 계산에서 뺌"). 총자산·누적은 전체 그대로.
-    val_ok, prev_ok = float(val[got.values].sum()), float(prev[got.values].sum())
-    day_stock = val_ok / prev_ok - 1 if prev_ok else 0.0   # 전부 실패면 0(첫 줄 경고가 대신 말함)
-    day_acct = (val_ok + cash) / (prev_ok + cash) - 1 if prev_ok + cash else 0.0
+    my = core.live_my_day(h.assign(현재가=px, 등락률=chg.where(got.values)), cash)   # 앱과 같은 함수
+    day_stock, day_acct, day_won = (my["stock"], my["acct"], my["won"]) if my else (0.0, 0.0, 0.0)   # 전부 실패면 0(첫 줄 경고가 대신 말함)
 
     # 계좌·주식 누적: 앱과 같은 정의(compute_index_vs_account의 마지막 스냅샷) × 그 스냅샷 이후 실시간 변화.
     # 마지막 스냅샷 = 마지막 매매일지 반영일이라 그 뒤로 보유·예수금 흐름이 없다.
@@ -159,7 +158,7 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
         "asof": now.strftime("%Y-%m-%d %H:%M"), "holdings_asof": str(ah["날짜"].max()), "anchor": anchor,
         "kospi": iq["KOSPI"], "kosdaq": iq["KOSDAQ"], "wk": wk,
         "ex": blend(core.fixed_index_levels(idx, bigdf, "ex"), "ex"), "main": blend(idx, "main"),
-        "acct": (acct_cum, day_acct), "acct_won": val_ok - prev_ok,
+        "acct": (acct_cum, day_acct), "acct_won": day_won,
         "stock": (stock_cum, day_stock),
         "total": tot, "initial": st["initial"], "cash": cash, "eval_pl": float(val.sum() - cost.sum()),
         "n": len(h), "n_up": int((ok_chg > 0).sum()), "n_down": int((ok_chg < 0).sum()),

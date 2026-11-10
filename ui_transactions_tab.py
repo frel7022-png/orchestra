@@ -11,7 +11,7 @@ from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, compute_pnl_actions, _index_day_moves,
-    load_bigcap_history, synthetic_kospi_ex_bigcap, synthetic_kospi_sh_only, fixed_index_levels, today_bench_day,
+    load_bigcap_history, synthetic_kospi_ex_bigcap, synthetic_kospi_sh_only, fixed_index_levels, today_bench_day, live_my_day,
     load_fund_nav_history, compute_vip_vs_orchestra, compute_sell_fraction_map,
     DAILY_IMPORT_TAG,
 )
@@ -252,6 +252,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     ks_val = float(hv.loc[hv["_m"] == "KOSPI", "_v"].sum())
     kq_val = float(hv.loc[hv["_m"] == "KOSDAQ", "_v"].sum())
     wk = ks_val / (ks_val + kq_val) if (ks_val + kq_val) > 0 else None
+    _my_d = live_my_day(holdings, state["cash"])       # 오늘 내 주식 · 계좌 % — 매매일지 · 15:35에 안 달림(대표 2026-11-10)
+    _td_my = (today_kst_str(), _my_d["stock"], _my_d["acct"]) if _my_d else None
 
     _wtag = "" if wk is None else (
         f" <span style='font-size:11px;font-weight:400;color:{T['muted']}'>"
@@ -601,7 +603,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
                                     state.get("fee_rate", 0.0), kospi_weight=wk,
                                     fund_nav_hist=load_fund_nav_history(), bench_kind="main",
                                     today_bench_day=today_bench_day("main", wk, st.session_state.get("index_quotes") or {},
-                                                                    st.session_state.get("bigcap_detail") or {}))
+                                                                    st.session_state.get("bigcap_detail") or {}),
+                                    today_my_day=_td_my)
     with st.expander("Account : Index", expanded=False):
         if _wtag:
             st.markdown(f"<div style='margin:-4px 0 2px'>{_wtag.strip()}</div>",
@@ -624,7 +627,8 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
                                                 state.get("fee_rate", 0.0), kospi_weight=wk, bench_kind="ex",
                                                 today_bench_day=today_bench_day("ex", wk, st.session_state.get("index_quotes") or {},
-                                                                                st.session_state.get("bigcap_detail") or {}))
+                                                                                st.session_state.get("bigcap_detail") or {}),
+                                                today_my_day=_td_my)
             _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
 
     # ---- Sour Grapes (§6-26): SamHynix extracted의 정반대 — 코스피 다리를 '삼성전자·

@@ -88,10 +88,42 @@ def test_missing_close_day_does_not_shift_today(monkeypatch):
     assert r["me"]["바구니"].iloc[-1] == "상승"
 
 
-def test_today_saved_row_uses_stored(monkeypatch):
-    monkeypatch.setattr(core, "today_kst_str", lambda: "2026-02-04")
-    monkeypatch.setattr(core, "load_bench_history", lambda: _bh([_bh_row("2026-02-04", -0.02)]))
-    assert core.today_bench_day("main", 0.7, _iq(), _bq()) is None
+def test_today_value_ignores_stored_bench_row_and_uses_krx_close(monkeypatch):
+    """15:35 기록이 있어도 오늘 당일은 시세로 잰다 · 대형주 현재가는 저장된 오늘 KRX 종가로(현재가 NXT 안 섞임)."""
+    d = "2026-02-04"
+    monkeypatch.setattr(core, "today_kst_str", lambda: d)
+    monkeypatch.setattr(core, "load_bench_history", lambda: _bh([_bh_row(d, -0.02)]))
+    monkeypatch.setattr(core, "load_bigcap_history", lambda: pd.DataFrame(columns=["날짜", *core.BIGCAP_CODES]))
+    nxt = core.today_bench_day("ex", 0.7, _iq(), _bq(1.05))
+    assert core.today_bench_day("main", 0.7, _iq(), _bq())[1] == pytest.approx(0.04)
+    monkeypatch.setattr(core, "load_bigcap_history", lambda: pd.DataFrame([{"날짜": d, **{n: 102.0 for n in core.BIGCAP_CODES}}]))
+    krx = core.today_bench_day("ex", 0.7, _iq(), _bq(1.05))
+    assert krx[1] == pytest.approx(core.live_bench_day(0.7, _iq(), _bq(1.02))["ex"])
+    assert krx[1] != pytest.approx(nxt[1])
+
+
+def test_live_my_day_is_quote_based_and_skips_failed():
+    h = pd.DataFrame([{"수량": 10, "현재가": 110.0, "등락률": 10.0}, {"수량": 10, "현재가": 200.0, "등락률": None}])
+    m = core.live_my_day(h, 1000.0)
+    assert m["stock"] == pytest.approx(0.10)
+    assert m["won"] == pytest.approx(100.0)
+    assert m["acct"] == pytest.approx((1100 + 1000) / (1000 + 1000) - 1)
+
+
+def test_lump_ingest_days_keep_their_own_days_and_today_is_quote(monkeypatch):
+    """매매일지를 며칠치 몰아 넣어 줄이 건너뛰어도 지난 구간은 그대로, 오늘 내 주식 · 계좌는 시세 하루치다."""
+    tx, ah, idx = _account_fixture()
+    bh = _bh([_bh_row("2026-02-02", 0.0, "seed"), _bh_row("2026-02-03", -0.10), _bh_row("2026-02-04", -0.02)])
+    monkeypatch.setattr(core, "load_bench_history", lambda: bh)
+    base = core.compute_index_vs_account(tx, ah, idx, 1_000_000.0, kospi_weight=0.7, bench_kind="main")["me"]
+    r = core.compute_index_vs_account(tx, ah, idx, 1_000_000.0, kospi_weight=0.7, bench_kind="main",
+                                      today_bench_day=("2026-02-09", 0.0436), today_my_day=("2026-02-09", 0.015, 0.012))
+    me = r["me"]
+    pd.testing.assert_series_equal(base["주식당일"].iloc[:-1], me["주식당일"].iloc[:-1])
+    pd.testing.assert_series_equal(base["계좌당일"].iloc[:-1], me["계좌당일"].iloc[:-1])
+    pd.testing.assert_series_equal(base["주식수익"], me["주식수익"])
+    assert r["latest"]["주식"][1] == pytest.approx(0.015) and r["latest"]["계좌"][1] == pytest.approx(0.012)
+    assert r["cap"]["stock"]["today"] == pytest.approx(0.015 / 0.0436)
 
 
 def test_app_path_equals_live_check(monkeypatch):

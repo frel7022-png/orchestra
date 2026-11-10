@@ -24,7 +24,7 @@ from portfolio_core import (
     cumulative_price_change_map,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     compute_link_candidates, load_link_watch_log, link_watch_status, fetch_quotes,
-    never_bought_names, drop_ended, ended_watch_names, fixed_index_levels, today_bench_day,
+    never_bought_names, drop_ended, ended_watch_names, fixed_index_levels, today_bench_day, live_my_day,
     load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
     load_claude_notes, seed_engine_series, compute_fa_win_rate, blended_benchmark_cum,
@@ -561,13 +561,15 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     _fr = state.get("fee_rate", 0.0)
     # 혼합 당일 = 홀딩스 밑 지수 박스와 같은 시세(새로고침 때 보관)로 재는 함수 하나 — 앱·리포트 같은 숫자(대표 2026-11-10)
     _iq_s, _bq_s = st.session_state.get("index_quotes") or {}, st.session_state.get("bigcap_detail") or {}
+    _my_d = live_my_day(holdings, state["cash"])
+    _td_my = (today_kst_str(), _my_d["stock"], _my_d["acct"]) if _my_d else None
     _iva_m = compute_index_vs_account(tx, _asset_h, _idx_h, state["initial"], _fr, kospi_weight=_wk, bench_kind="main",
-                                      today_bench_day=today_bench_day("main", _wk, _iq_s, _bq_s))
+                                      today_bench_day=today_bench_day("main", _wk, _iq_s, _bq_s), today_my_day=_td_my)
     _bg_h = load_bigcap_history()
     _idx_ex_h = fixed_index_levels(_idx_h, _bg_h, "ex") if not _bg_h.empty else None
     _iva_s = (compute_index_vs_account(tx, _asset_h, _idx_ex_h,
                                        state["initial"], _fr, kospi_weight=_wk, bench_kind="ex",
-                                       today_bench_day=today_bench_day("ex", _wk, _iq_s, _bq_s))
+                                       today_bench_day=today_bench_day("ex", _wk, _iq_s, _bq_s), today_my_day=_td_my)
               if _idx_ex_h is not None else None)
 
     # @뇌 orchestra_지수

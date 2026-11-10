@@ -3191,16 +3191,36 @@ def live_bench_day(wk: float | None, index_quotes: dict, bigcap_quotes: dict) ->
 def today_bench_day(kind: str, wk: float | None, index_quotes: dict | None = None,
                     bigcap_quotes: dict | None = None) -> tuple | None:
     """(오늘 날짜, 오늘 혼합 당일) — compute_index_vs_account의 today_bench_day 인자용. kind = "main" | "ex".
-    오늘 줄이 bench_history에 이미 저장됐거나(15:35 뒤) 시세가 없으면 None — 그때는 저장된 누적에서 꺼낸 값을 쓴다.
-    시세 인자를 None으로 주면 여기서 받는다(CLI용). 앱은 새로고침 때 보관한 값을 넘긴다."""
+    15:35 기록이 있든 없든 시세로 잰다(대표 2026-11-10 원-2026-11-10-07) — 다만 15:35 뒤 대형주 현재가는 NXT라, 오늘 KRX 종가가
+    저장돼 있으면 그 값을 현재가로 쓴다. 시세가 없으면 None. 시세 인자를 None으로 주면 여기서 받는다(CLI용)."""
     d = today_kst_str()
-    bh = load_bench_history()
-    if not bh.empty and d in set(bh["날짜"].astype(str)):
-        return None
     iq = fetch_index_quotes() if index_quotes is None else index_quotes
-    bq = fetch_bigcap_detail() if bigcap_quotes is None else bigcap_quotes
+    bq = dict(fetch_bigcap_detail() if bigcap_quotes is None else bigcap_quotes)
+    big = load_bigcap_history()
+    row = big[big["날짜"].astype(str) == d] if big is not None and not big.empty else pd.DataFrame()
+    if not row.empty:
+        for n, code in BIGCAP_CODES.items():
+            p = pd.to_numeric(row.iloc[0].get(n), errors="coerce")
+            if pd.notna(p) and p > 0 and bq.get(code):
+                bq[code] = {**bq[code], "price": float(p)}
     v = live_bench_day(wk, iq, bq).get(kind)
     return None if v is None else (d, v)
+
+
+def live_my_day(holdings: pd.DataFrame, cash: float) -> dict | None:
+    """지금 보유의 오늘 하루 등락 — 매매일지가 언제 들어왔는지 · 15:35 기록이 있는지에 안 달린다(대표 2026-11-10 원-2026-11-10-07).
+    보유 수량 × 현재가를 시세 등락률로 되돌린 전일 값과 견준다. 등락률이 없는 종목은 뺀다(조용히 0으로 섞지 않는다).
+    반환 {"stock", "acct", "won"} — stock = 내 주식 %, acct = 예수금 포함 %, won = 원. 잴 종목이 없으면 None."""
+    if holdings is None or holdings.empty or "등락률" not in holdings:
+        return None
+    chg = pd.to_numeric(holdings["등락률"], errors="coerce")
+    ok = chg.notna()
+    val = (pd.to_numeric(holdings["수량"], errors="coerce").fillna(0) * pd.to_numeric(holdings["현재가"], errors="coerce").fillna(0))[ok]
+    prev = val / (1.0 + chg[ok] / 100.0)
+    v, p = float(val.sum()), float(prev.sum())
+    if p <= 0:
+        return None
+    return {"stock": v / p - 1.0, "acct": (v + cash) / (p + cash) - 1.0, "won": v - p}
 
 
 def fixed_index_levels(index_hist: pd.DataFrame, bigcap_hist: pd.DataFrame, kind: str = "ex",
@@ -3494,7 +3514,8 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
                               kospi_weight: float | None = None,
                               fund_nav_hist: pd.DataFrame | None = None,
                               bench_kind: str | None = None,
-                              today_bench_day: tuple | None = None) -> dict:
+                              today_bench_day: tuple | None = None,
+                              today_my_day: tuple | None = None) -> dict:
     """'지수 대비 계좌' 그래프 데이터(§6-17). 값은 전부 소수(0.0145 = +1.45%).
 
     - 계좌수익(t)  = 총자산(t)/최초자본 - 1 을 **anchor일 = 0 으로 리베이스**한 값
@@ -3648,6 +3669,10 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
     # 오늘 줄이 아직 저장 전이면 벤치 당일은 실시간 시세로(직전 행이 며칠 전이어도 오늘 하루치만). 누적은 그대로.
     if today_bench_day is not None and len(me) > 1 and str(me["날짜"].iloc[-1]) == today_bench_day[0]:
         me.loc[me.index[-1], "벤치당일"] = float(today_bench_day[1])
+    # 내 주식 · 계좌의 오늘도 시세로 — (날짜, 주식 당일, 계좌 당일). 직전 asset 행이 며칠 전이어도 오늘 하루치만. 누적은 그대로.
+    if today_my_day is not None and len(me) > 1 and str(me["날짜"].iloc[-1]) == today_my_day[0]:
+        me.loc[me.index[-1], "주식당일"] = float(today_my_day[1])
+        me.loc[me.index[-1], "계좌당일"] = float(today_my_day[2])
 
     def _last(s):
         v = s.iloc[-1] if len(s) else None
