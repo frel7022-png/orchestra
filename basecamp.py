@@ -134,14 +134,9 @@ def _score(closes: np.ndarray, vols: np.ndarray, L: int) -> dict | None:
             "baseline": baseline, "drop_ratio": drop_ratio, "sigma": sigma, "shape": shape, "drop_days": drop_days - 1, "base_hi": float(base.max()), "base_lo": float(base.min())}
 
 
-def _tags(dates: list, closes: np.ndarray, vols: np.ndarray, peak_i: int, all_days: list) -> tuple[str, str]:
-    """순위에서 빼지 않고 붙이는 꼬리표 둘(대표 2026-10-29 「사건 종목 '사건' 꼬리표 자동, 순위에서 빼지는 마」 ·
-    「고점이 하루 튄 종목은 필터 그대로 두고 '고점 하루 튐' 꼬리표만」).
-    사건 = 고점 10거래일 앞부터 지금까지 안에 ① 거래정지 뒤 재개 — 거래량 없이 종가가 그대로인 날이 EVENT_GAP_DAYS일
-    넘게 이어지다(price_history는 정지 중에도 종가를 복사해 쌓는다 — 해태제과식품 09-17~10-23) 거래량이 다시 생긴 첫날,
-    또는 다른 종목이 거래한 날이 그만큼 이 종목만 비었다가 다시 생긴 첫날 ② 하루 종가 변화가 가격제한폭을 넘은 날(권리락·분할·병합 — 수정 안 된 종가라서).
-    유상증자처럼 작은 권리락은 못 잡는다."""
-    lo = dates[max(0, peak_i - 10)]
+def event_tags(dates: list, closes: np.ndarray, vols: np.ndarray, lo: str, all_days: list, exclusive: bool = False) -> list:
+    """lo부터 지금까지 안의 사건 글자 목록 — ① 거래정지 뒤 재개 ② 하루 종가 변화가 ±EVENT_JUMP 넘음(권리락·분할).
+    exclusive=True면 lo 당일은 뺀다(lo를 기준가로 재는 칸은 lo 당일의 하루 변화가 잰 구간 밖이다)."""
     pos = {d: i for i, d in enumerate(all_days)}
     ev = []
     halt = 0   # 직전까지 이어진 "거래량 없고 종가 그대로" 날 수
@@ -149,13 +144,44 @@ def _tags(dates: list, closes: np.ndarray, vols: np.ndarray, peak_i: int, all_da
         dead = (np.isnan(vols[i]) or vols[i] <= 0) and closes[i] == closes[i - 1]
         resumed = not dead and halt >= EVENT_GAP_DAYS and not np.isnan(vols[i]) and vols[i] > 0
         halt = halt + 1 if dead else 0
-        if dates[i] < lo:
+        if dates[i] < lo or (exclusive and dates[i] == lo):
             continue
         a, b = pos.get(dates[i - 1]), pos.get(dates[i])
         if resumed or (a is not None and b is not None and b - a - 1 >= EVENT_GAP_DAYS):
             ev.append(f"거래 재개 {dates[i][5:]}")
         elif closes[i - 1] > 0 and abs(closes[i] / closes[i - 1] - 1) > EVENT_JUMP:
             ev.append(f"권리락·분할 {dates[i][5:]} ({(closes[i] / closes[i - 1] - 1) * 100:+.0f}%)")
+    return ev
+
+
+def event_index(price_hist: pd.DataFrame, flow_hist: pd.DataFrame, today: str | None = None) -> tuple:
+    """events_since용 — ({종목코드: (종가, 거래량, 날짜)}, 전체 거래일). 오늘 행은 장중일 수 있어 뺀다(scan과 같다)."""
+    if price_hist is None or price_hist.empty:
+        return {}, []
+    df = _merge(price_hist, flow_hist)
+    if today:
+        df = df[df["날짜"] < today]
+    by = {str(c): (g["종가"].to_numpy(float), g["거래량"].to_numpy(float), g["날짜"].tolist()) for c, g in df.groupby("종목코드")}
+    return by, sorted(df["날짜"].unique())
+
+
+def events_since(index: tuple, code: str, start: str) -> str:
+    """start(기준일 · 매도일 등 그 칸이 재는 첫날) 뒤로 전 거래일까지의 사건 — 표시 전용, 순위는 안 건드린다."""
+    got = index[0].get(str(code))
+    if not got or not start:
+        return ""
+    closes, vols, dates = got
+    return " · ".join(event_tags(dates, closes, vols, start, index[1], exclusive=True))
+
+
+def _tags(dates: list, closes: np.ndarray, vols: np.ndarray, peak_i: int, all_days: list) -> tuple[str, str]:
+    """순위에서 빼지 않고 붙이는 꼬리표 둘(대표 2026-10-29 「사건 종목 '사건' 꼬리표 자동, 순위에서 빼지는 마」 ·
+    「고점이 하루 튄 종목은 필터 그대로 두고 '고점 하루 튐' 꼬리표만」).
+    사건 = 고점 10거래일 앞부터 지금까지 안에 ① 거래정지 뒤 재개 — 거래량 없이 종가가 그대로인 날이 EVENT_GAP_DAYS일
+    넘게 이어지다(price_history는 정지 중에도 종가를 복사해 쌓는다 — 해태제과식품 09-17~10-23) 거래량이 다시 생긴 첫날,
+    또는 다른 종목이 거래한 날이 그만큼 이 종목만 비었다가 다시 생긴 첫날 ② 하루 종가 변화가 가격제한폭을 넘은 날(권리락·분할·병합 — 수정 안 된 종가라서).
+    유상증자처럼 작은 권리락은 못 잡는다."""
+    ev = event_tags(dates, closes, vols, dates[max(0, peak_i - 10)], all_days)
     pop = ""
     if peak_i > 0 and closes[peak_i - 1] > 0:
         r = closes[peak_i] / closes[peak_i - 1] - 1

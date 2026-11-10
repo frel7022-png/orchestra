@@ -44,6 +44,17 @@ def bc_tags(x) -> str:
                    for t in ((x.get("사건") and "사건: " + x["사건"]), x.get("고점튐")) if t)
 
 
+EVENT_TABLES = (("updown", "매도일"), ("watering", "마지막일"), ("fishing", "기준일"), ("meritz", "최초일"))
+
+
+def add_event_tags(res: dict, index: tuple) -> None:
+    """사건 종목 표시(대표 2026-11-10 원-2026-11-10-11): 표에서는 안 빼고 표시만, 재는 구간 안에 사건일이 있으면 계속.
+    각 줄에 "사건" 칸만 더한다 — 순서 · 칸 수 · CFG 후보는 안 건드린다."""
+    for tb, start in EVENT_TABLES:
+        for x in res.get(tb) or []:
+            x["사건"] = basecamp.events_since(index, x["코드"], x[start])
+
+
 def sign(v, d=1, unit="%"):
     if v is None or pd.isna(v):
         return '<span class="mut">-</span>'
@@ -403,6 +414,7 @@ def build(data, link_res):
         return {"시작": g["날짜"].iloc[0], "시작값": a, "지금": b, "d": b - a, "d3": top3 - a,
                 "rel": (b - a) / a * 100 if a else 0, "끝": g["날짜"].iloc[-1]}
     # @뇌 cfg_후보_출처
+    add_event_tags(res, basecamp.event_index(ph, fh, today))
     srcs = ([("Up/Down", x["코드"], x["종목명"], x["매도일"], x["pct"], "매도가 대비") for x in res["updown"]]
             + [("Watering", x["코드"], x["종목명"], x["마지막일"], x["pct_last"], "마지막 매수가 대비") for x in res["watering"]]
             + [("Fishing", x["코드"], x["종목명"], x["기준일"], x["cum"], "기준일 대비") for x in res["fishing"]]
@@ -609,7 +621,7 @@ def write_action(res, ph):
     rows, cards = [], []
     for i, x in enumerate(res["updown"], 1):
         hl = ' class="hl"' if x["pct"] <= mk_line else ""
-        rows.append(f'<tr{hl}><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}</td><td>{x["매도일"][5:]}</td>'
+        rows.append(f'<tr{hl}><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}{bc_tags(x)}</td><td>{x["매도일"][5:]}</td>'
                     f'<td>{x["매도가"]:,.0f}</td><td>{x["현재가"]:,.0f}</td><td>{sign(x["pct"])}</td>'
                     f'<td>{x["경과"]}일</td><td>{sign(-(1 - x["저점"] / x["매도가"]) * 100)} ({x["저점일"][5:]})</td>'
                     f'<td>{sign(x["반등"])}</td><td class="l">{speed_badge(x["since"], x["pct"])}</td></tr>')
@@ -624,7 +636,7 @@ def write_action(res, ph):
     # Watering
     rows, cards = [], []
     for i, x in enumerate(res["watering"], 1):
-        rows.append(f'<tr><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span></td>'
+        rows.append(f'<tr><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span>{bc_tags(x)}</td>'
                     f'<td>{x["매수횟수"]}회</td><td>{x["마지막일"][5:]}</td><td>{sign(x["pct_last"])}</td><td>{x["경과"]}일</td>'
                     f'<td>{sign(x["pct_first_avg"])}</td><td>{sign(x["pct_first_cur"])}</td>'
                     f'<td class="l">{speed_badge(x["since"], x["pct_last"])}</td></tr>')
@@ -649,7 +661,7 @@ def write_action(res, ph):
              f'<span class="dn">▼{x["순위"] - x["이전"]}</span>' if x["이전"] < x["순위"] else '<span class="mut">-</span>'))
         st_, cls = x["상태"]
         hl = ' class="hl"' if x["cum"] <= NEW_ENTRY_LINE else ""
-        rows.append(f'<tr{hl}><td class="rk">{x["순위"]}</td><td>{mv}</td><td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span></td>'
+        rows.append(f'<tr{hl}><td class="rk">{x["순위"]}</td><td>{mv}</td><td class="l">{esc(x["종목명"])}<span class="own">{own(x["종목명"])}</span>{bc_tags(x)}</td>'
                     f'<td>{sign(x["cum"])}</td><td>{sign(x["저점누적"])} ({x["저점일"][5:]})</td><td>{sign(x["반등"])}</td>'
                     f'<td>{x["저점후"]}일</td><td>{sign(x["최근3일"])}</td><td class="l"><span class="bd st {cls}">{st_}</span></td></tr>')
         cards.append(card(f'{x["순위"]}. {esc(x["종목명"])}',
@@ -695,7 +707,7 @@ def write_action(res, ph):
     # meritz
     rows, cards = [], []
     for i, x in enumerate(res["meritz"], 1):
-        rows.append(f'<tr><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}</td><td>{x["최초일"][5:]}</td><td>{x["매수횟수"]}회</td>'
+        rows.append(f'<tr><td class="rk">{i}</td><td class="l">{esc(x["종목명"])}{bc_tags(x)}</td><td>{x["최초일"][5:]}</td><td>{x["매수횟수"]}회</td>'
                     f'<td>{sign(x["pct_avg"])}</td><td>{sign(x["pct_first"])}</td></tr>')
         cards.append(card(f'{i}. {esc(x["종목명"])}',
                           f'new1 최초 {x["최초가"]:,.0f}({x["최초일"][5:]}) · 평단 {x["평단가"]:,.0f} → 지금 {x["현재가"]:,.0f}',
