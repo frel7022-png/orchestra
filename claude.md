@@ -1964,7 +1964,7 @@ manual/                           # report/와 성격이 다름 — **살아있�
   `test_link_watch_status_prefers_live_quote_over_stale_db_row`(라이브 시세 우선 버그 고정),
   `test_compute_link_candidates_reuses_compute_foreign_flags_exactly`(Foreigner와 dF 완전 일치),
   `test_compute_link_candidates_empty_inputs`, `test_link_watch_status_computes_change_since_flagged`,
-  `test_link_watch_status_empty_log_returns_empty`, `test_add_link_watch_entry_overwrites_same_stock_code`.
+  `test_link_watch_status_empty_log_returns_empty`, `test_add_link_watch_entry_adds_new_row_and_keeps_old_baseline`.
 - **Foreigner "주가" 칸이 다른 기간을 보여주던 버그 (2026-09-17)**: Foreigner 화면에서 〔새뇌 반영 70e406b〕
   "누적"(기준일pp) 라디오를 골라도, 그 옆 "주가" 칸은 항상 `_latest_change_pct_map`(그날
   하루치 등락률)만 보여주고 있었다 — 방향(DOWN/UP)과 무관하게 늘 이랬다. 그래서 "우리금융지주
