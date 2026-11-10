@@ -37,10 +37,13 @@ def main() -> None:
     idx = core.load_index_history()
     ah = core.load_history()
     fr = st.get("fee_rate", 0.0)
-    m = core.compute_index_vs_account(tx, ah, idx, st["initial"], fr, kospi_weight=wk, bench_kind="main")
+    iq, bq = core.fetch_index_quotes(), core.fetch_bigcap_detail()   # 오늘 줄 저장 전이면 실시간 혼합 당일
+    m = core.compute_index_vs_account(tx, ah, idx, st["initial"], fr, kospi_weight=wk, bench_kind="main",
+                                      today_bench_day=core.today_bench_day("main", wk, iq, bq))
     bg = core.load_bigcap_history()
     s = (core.compute_index_vs_account(tx, ah, core.fixed_index_levels(idx, bg, "ex"),
-                                       st["initial"], fr, kospi_weight=wk, bench_kind="ex")
+                                       st["initial"], fr, kospi_weight=wk, bench_kind="ex",
+                                       today_bench_day=core.today_bench_day("ex", wk, iq, bq))
          if not bg.empty else None)
 
     def _cap_today(iva):

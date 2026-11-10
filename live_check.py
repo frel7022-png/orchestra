@@ -20,6 +20,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 
+BIGCAP_KRX_FROM = "2026-10-30"   # bigcap_history가 15:35 KRX 종가인 첫날(계좌_벤치_계산 "대형주 종가 이음매")
 QUOTE_FAIL_STOP = 0.10  # 보유 평가금액의 이 비율 이상이 시세를 못 받으면 한 번 다시 받고, 그래도면 답을 멈춘다
                         # (대표 확정 2026-10-22 "오케이", 데이터센터/세팅 선반 1). 그 아래면 표시만 하고 계속.
 
@@ -61,7 +62,8 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
 
     # 지수·대형주: 확정 종가 + 오늘 실시간
     iq = core.fetch_index_quotes()
-    bq = core.fetch_bigcap_quotes()
+    bd = core.fetch_bigcap_detail()   # 대형주 현재가·전일 종가(KRX) — 혼합 당일 함수 입력
+    bq = {nm: (bd.get(code) or {}).get("price") for nm, code in core.BIGCAP_CODES.items()}
     k = confirmed_series("KOSPI", anchor, cal_today)
     q = confirmed_series("KOSDAQ", anchor, cal_today)
     if closed:
@@ -72,8 +74,20 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
     dates = sorted(set(k) & set(q))
     idx = pd.DataFrame({"날짜": dates, "KOSPI": [k[d] for d in dates], "KOSDAQ": [q[d] for d in dates]})
     big = {nm: confirmed_series(code, anchor, cal_today) for nm, code in core.BIGCAP_CODES.items()}
-    for nm in big:
-        if bq.get(nm) and not closed:
+    # 일별시세 끝값엔 NXT가 섞인다 — 대형주 전날 값은 저장된 15:35 KRX 종가, 그것도 없는 전 거래일은 시세의 전일 종가로(대표 2026-11-10).
+    krx = core.load_bigcap_history()
+    krx = krx[krx["날짜"].astype(str) >= BIGCAP_KRX_FROM] if not krx.empty else krx
+    today_saved = not krx.empty and today in set(krx["날짜"].astype(str))
+    for _, r in krx.iterrows():
+        for nm in big:
+            if pd.notna(r.get(nm)) and float(r[nm]) > 0:
+                big[nm][str(r["날짜"])] = float(r[nm])
+    prev_day = max((d for d in dates if d < today), default=None)
+    for nm, code in core.BIGCAP_CODES.items():
+        pc = (bd.get(code) or {}).get("prev_close")
+        if not closed and prev_day and pc:
+            big[nm][prev_day] = float(pc)
+        if bq.get(nm) and not closed and not today_saved:   # 15:35 뒤엔 저장된 KRX 종가 그대로(현재가는 NXT)
             big[nm][today] = bq[nm]
     bdates = sorted(set.intersection(*(set(v) for v in big.values())))
     bigdf = pd.DataFrame({"날짜": bdates, **{nm: [big[nm][d] for d in bdates] for nm in big}})
@@ -109,6 +123,9 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
         # 날짜 고정(2026-10-22 대표): 지난날 = bench_history의 그날 하루 등락을 복리로, 오늘만 지금 wk로.
         m = core.bench_cum_map(df, kind, wk, anchor)
         ds = sorted(m)
+        td = core.today_bench_day(kind, wk, iq, bd) if not closed else None
+        if td is not None and td[0] == ds[-1] and len(ds) > 1:      # 오늘 = 시세 그대로, 누적은 곱해서 쌓는다
+            return (1.0 + m[ds[-2]]) * (1.0 + td[1]) - 1.0, td[1]
         day = core.bench_day_on(df, kind, ds[-1], wk)
         return m[ds[-1]], (day if day is not None else 0.0)
 
@@ -150,6 +167,7 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
         "quote_fail_share": share, "quote_stop": share >= QUOTE_FAIL_STOP,
         "idx": idx, "bigdf": bigdf, "me": me, "today": today, "cal_today": cal_today, "closed": closed,
         "basis": basis_label(now, cal_today, today, closed), "holdings": h, "px": px, "chg": chg,
+        "nxt_note": (not closed and now.strftime("%H:%M") >= "15:40" and not today_saved),
         "worst": [(r.종목명, r.등락) for r in t.head(6).itertuples()],
         "best": [(r.종목명, r.등락) for r in t.tail(4)[::-1].itertuples()],
     }
@@ -167,6 +185,8 @@ def main():
         print(f"[⚠ 시세 실패 {len(s['quote_failed'])}종목 — 당일 %·원과 상승/하락/보합 수에서 뺌(총자산·누적엔 마지막 저장가로 들어감) · 평가금액의 {s['quote_fail_share']:.0%}] "
               + ", ".join(s["quote_failed"]))
     print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 보유 = 매매일지 {s['holdings_asof']} 반영분")
+    if s.get("nxt_note"):
+        print("[⚠ 15:35 기록 빠짐 — 제외 혼합의 대형주 현재가에 NXT 체결이 섞일 수 있음(일반 혼합은 지수라 해당 없음)]")
     print(f"코스피 {s['kospi']['change_pct']:+.2f}% ({s['kospi']['price']:,.2f}) · "
           f"코스닥 {s['kosdaq']['change_pct']:+.2f}% ({s['kosdaq']['price']:,.2f})")
     print(f"혼합지수(삼성·하이닉스 제외) 당일 {pct(s['ex'][1])} · 누적 {pct(s['ex'][0])}   (코스피 비중 {s['wk']:.0%})")

@@ -18,7 +18,7 @@ from constants import THEMES, UP_COLOR, NEW_COLOR
 from portfolio_core import (
     load_holdings, load_transactions, load_state,
     snapshot_history, snapshot_sector_history, snapshot_index_history,
-    snapshot_bigcap_history, fetch_bigcap_quotes,
+    snapshot_bigcap_history, fetch_bigcap_quotes, fetch_bigcap_detail,
     refresh_all_prices, fetch_index_quotes, refresh_dividend_yields, refresh_market_cache,
     compute_metrics, compute_sector_weights,
     compute_index_vs_account, load_index_history, load_history, append_capture_anomalies,
@@ -428,6 +428,8 @@ tx = load_transactions()
 
 if "index_quotes" not in st.session_state:
     st.session_state["index_quotes"] = fetch_index_quotes()
+if "bigcap_detail" not in st.session_state:
+    st.session_state["bigcap_detail"] = fetch_bigcap_detail()
 
 # 앱을 새로 열었을 때(세션당 1회) 자동으로 시세를 한 번 새로고침 — 안 그러면 마지막으로
 # "시세 새로고침"을 눌렀던 시점(보통 그날 아침 매매일지 반영 직후)의 낡은 가격이 화면에
@@ -456,6 +458,7 @@ if refresh_clicked_top or auto_refresh_triggered or settings_clicked:
         refresh_dividend_yields(holdings["종목코드"].tolist())
         refresh_market_cache(holdings)  # 종목명→KOSPI/KOSDAQ, 캐시 미스만 (§6-17 지수 대비 계좌)
         st.session_state["index_quotes"] = fetch_index_quotes()
+        st.session_state["bigcap_detail"] = fetch_bigcap_detail()   # 혼합 당일 입력(홀딩스 밑 지수 박스와 같은 때 받음)
         df_top, stock_val_top, total_assets_top, unreal_top = compute_metrics(holdings, state["cash"])
         # @뇌 휴장일_스냅샷_건너뜀
         # 오늘 장이 안 열렸으면(주말·공휴일·개장 전) 히스토리 스냅샷을 아예 안 찍는다(2026-10-15 대표 승인).

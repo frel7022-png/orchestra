@@ -877,7 +877,7 @@ def test_compute_index_vs_account_latest_has_cum_and_day():
     assert qd == pytest.approx(0.05)
     _, sday = r["latest"]["주식"]
     _, aday = r["latest"]["계좌"]
-    assert aday == pytest.approx((1_000_500.0 - 1_003_500.0) / 1_000_000.0)  # 마지막 구간 계좌수익 변화
+    assert aday == pytest.approx(1_000_500.0 / 1_003_500.0 - 1.0)  # 마지막 구간 진짜 등락(대표 2026-11-10)
 
 
 def test_compute_index_vs_account_blended_benchmark():
@@ -916,13 +916,16 @@ def test_capture_down_market():
     asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, asset)])
     r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
     ca = r["cap"]["acct"]
-    assert ca["dc"] == pytest.approx(0.5, abs=1e-9)
+    # 당일 = 진짜 하루 등락(대표 2026-11-10) — 내 하루 ÷ 벤치 하루
+    m = [asset[i] / asset[i - 1] - 1 for i in range(1, 7)]
+    b = [kospi[i] / kospi[i - 1] - 1 for i in range(1, 7)]
+    assert ca["dc"] == pytest.approx(sum(m) / sum(b), abs=1e-9)
     assert ca["uc"] is None
-    assert ca["era"] == (6, 6)          # 하락 6구간 전부 c=0.5 < 1
+    assert ca["era"] == (6, 6)          # 하락 6구간 전부 c < 1
     assert ca["pct"] == (0, 0)
-    assert ca["today"] == pytest.approx(0.5) and ca["today_bucket"] == "하락"
+    assert ca["today"] == pytest.approx(m[-1] / b[-1]) and ca["today_bucket"] == "하락"
     assert r["n"] == {"down": 6, "up": 0, "even": 0}
-    assert r["cap"]["stock"]["dc"] == pytest.approx(0.5, abs=5e-3)   # Rs는 복리라 근사
+    assert r["cap"]["stock"]["dc"] == pytest.approx(sum(m) / sum(b), abs=5e-3)
     assert list(r["me"]["바구니"]) == [""] + ["하락"] * 6
     assert pd.isna(r["me"]["캡처계좌"].iloc[0])
     assert r["sensitivity_basis"] == "혼합"
@@ -935,19 +938,19 @@ def test_capture_up_and_down_buckets():
     idx = _idx_hist([[d, k, 100.0] for d, k in zip(dates, kospi)])
     tx = pd.DataFrame([_tx_row("t1", dates[0], "A", "매수", 1000, 1000)])  # 예수금 0 → 계좌==주식
     tot = [1_000_000.0, 990_000.0, 975_000.0, 995_000.0, 1_025_000.0]
-    #  계좌수익: 0/-1%/-2.5%/-0.5%/+2.5%  →  당일 -1%,-1.5%,+2%,+3%
-    #  하락 Σ내/Σ벤치 = (-0.01-0.015)/(-0.02-0.02) = 0.625 ; 상승 = (0.02+0.03)/(0.04+0.04) = 0.625
+    m = [tot[i] / tot[i - 1] - 1 for i in range(1, 5)]        # 진짜 하루 등락(대표 2026-11-10)
+    b = [kospi[i] / kospi[i - 1] - 1 for i in range(1, 5)]
     asset_hist = pd.DataFrame([{"날짜": d, "총자산": a, "조정자산": a} for d, a in zip(dates, tot)])
     r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
     ca = r["cap"]["acct"]
-    assert ca["dc"] == pytest.approx((-0.025) / (-0.04))   # 0.625
-    assert ca["uc"] == pytest.approx(0.05 / 0.08)          # 0.625
+    assert ca["dc"] == pytest.approx((m[0] + m[1]) / (b[0] + b[1]))
+    assert ca["uc"] == pytest.approx((m[2] + m[3]) / (b[2] + b[3]))
     assert ca["era"] == (2, 2)          # 하락 일별 c 둘 다 < 1
     assert ca["pct"] == (0, 2)          # 상승 일별 c 둘 다 < 1 → 승리 0
-    assert ca["today"] == pytest.approx(0.75) and ca["today_bucket"] == "상승"
+    assert ca["today"] == pytest.approx(m[3] / b[3]) and ca["today_bucket"] == "상승"
     assert r["n"] == {"down": 2, "up": 2, "even": 0}
     assert list(r["me"]["바구니"]) == ["", "하락", "하락", "상승", "상승"]
-    assert r["me"]["캡처계좌"].dropna().round(6).tolist() == [0.5, 0.75, 0.5, 0.75]
+    assert r["me"]["캡처계좌"].dropna().tolist() == pytest.approx([x / y for x, y in zip(m, b)])
 
 
 def test_capture_dc_is_ratio_of_sums_not_mean_of_daily_ratios():
@@ -962,8 +965,10 @@ def test_capture_dc_is_ratio_of_sums_not_mean_of_daily_ratios():
     r = core.compute_index_vs_account(tx, asset_hist, idx, initial_capital=1_000_000.0, kospi_weight=1.0)
     ca = r["cap"]["acct"]
     assert list(r["me"]["바구니"]) == ["", "하락", "하락"]
-    assert r["me"]["캡처계좌"].dropna().round(6).tolist() == [0.8, 0.5]   # 일별 c
-    assert ca["dc"] == pytest.approx((-0.004 + -0.02) / (-0.005 + -0.04))  # 0.5333, NOT 0.65
+    m = [tot[i] / tot[i - 1] - 1 for i in (1, 2)]              # 진짜 하루 등락(대표 2026-11-10)
+    b = [kospi[i] / kospi[i - 1] - 1 for i in (1, 2)]
+    assert r["me"]["캡처계좌"].dropna().tolist() == pytest.approx([m[0] / b[0], m[1] / b[1]])   # 일별 c
+    assert ca["dc"] == pytest.approx((m[0] + m[1]) / (b[0] + b[1]))  # 합끼리 나눔(일별 평균 아님)
     assert abs(ca["dc"] - 0.65) > 0.1
 
 
@@ -981,8 +986,9 @@ def test_capture_even_bucket_uses_excess_return():
     me = r["me"]
     assert list(me["바구니"]) == ["", "even", "even", "하락"]
     ca = r["cap"]["acct"]
-    # even 초과수익: i1 = 0.003 − 0.0005 = 0.0025 ; i2 = −0.004 − 0.0005 = −0.0045
-    assert ca["even"] == pytest.approx((0.0025 + (-0.0045)) / 2)
+    m = [tot[i] / tot[i - 1] - 1 for i in (1, 2)]              # 진짜 하루 등락(대표 2026-11-10)
+    b = [kospi[i] / kospi[i - 1] - 1 for i in (1, 2)]
+    assert ca["even"] == pytest.approx(((m[0] - b[0]) + (m[1] - b[1])) / 2)
     assert ca["evr"] == (1, 2)          # i1(+0.25%) >= 0.1% 충족, i2 미충족
     assert ca["dc"] is not None         # 하락일 1개
     assert r["n"] == {"down": 1, "up": 0, "even": 2}

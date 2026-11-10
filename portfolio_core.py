@@ -625,6 +625,21 @@ def fetch_bigcap_quotes() -> dict:
     return out
 
 
+def _ex_kospi_day(r_k: float, cur: dict, prev: dict, kospi_now: float) -> float:
+    """코스피 하루 등락 r_k에서 삼성전자·삼성전자우·SK하이닉스 몫을 덜어낸 하루 등락 — 오늘 실시간과 지난날 레벨이 같은 식을 쓴다.
+      r_ex = (r_k − Σ wᵢ·rᵢ) / (1 − Σ wᵢ),  wᵢ = sharesᵢ · closeᵢ(t) / (TOTAL0 · KOSPI(t)/KOSPI0)
+    대표가 정한 글자는 없고 세션이 짠 근사다."""
+    k0_lvl, total0 = _KOSPI_MKTCAP_ANCHOR
+    total_t = total0 * (kospi_now / k0_lvl)
+    w_sum, wr_sum = 0.0, 0.0
+    for n in BIGCAP_CODES:
+        wi = _BIGCAP_SHARES[n] * cur[n] / total_t
+        ri = cur[n] / prev[n] - 1.0
+        w_sum += wi
+        wr_sum += wi * ri
+    return (r_k - wr_sum) / (1.0 - w_sum) if w_sum < 0.999 else r_k
+
+
 def synthetic_kospi_ex_bigcap(index_hist: pd.DataFrame, bigcap_hist: pd.DataFrame) -> pd.DataFrame:
     """index_hist의 KOSPI 열을 '삼성전자·삼성전자우·SK하이닉스를 덜어낸 코스피' 합성 레벨로
     바꾼 사본을 돌려준다(KOSDAQ·날짜는 그대로). 이 사본을 compute_index_vs_account에 그대로
@@ -649,7 +664,6 @@ def synthetic_kospi_ex_bigcap(index_hist: pd.DataFrame, bigcap_hist: pd.DataFram
     names = list(BIGCAP_CODES)
     bg_by_date = {r["날짜"]: {n: _n(r.get(n)) for n in names}
                   for _, r in bigcap_hist.sort_values("날짜").iterrows()}
-    k0_lvl, total0 = _KOSPI_MKTCAP_ANCHOR
     kospi = pd.to_numeric(h["KOSPI"], errors="coerce").tolist()
     dates = h["날짜"].tolist()
 
@@ -665,19 +679,18 @@ def synthetic_kospi_ex_bigcap(index_hist: pd.DataFrame, bigcap_hist: pd.DataFram
         # 빼버려 ex 지수가 폭주하는 버그가 있었음(2026-09-08, 9/7 bigcap 누락으로 -10% 튐).
         if (cur and prev and kospi[i]
                 and all(cur.get(n) for n in names) and all(prev.get(n) for n in names)):
-            total_t = total0 * (kospi[i] / k0_lvl)
-            w_sum, wr_sum = 0.0, 0.0
-            for n in names:
-                wi = _BIGCAP_SHARES[n] * cur[n] / total_t
-                ri = cur[n] / prev[n] - 1.0
-                w_sum += wi
-                wr_sum += wi * ri
-            r_ex = (r_k - wr_sum) / (1.0 - w_sum) if w_sum < 0.999 else r_k
+            r_ex = _ex_kospi_day(r_k, cur, prev, kospi[i])
         else:
             r_ex = r_k
         ex_level[i] = ex_level[i - 1] * (1.0 + r_ex)
     h["KOSPI"] = ex_level
     return h
+
+
+def fetch_bigcap_detail() -> dict:
+    """{종목코드: {"price", "prev_close", ...}} — 대형주 셋의 현재가와 시세가 주는 전일 종가(정규장의 전일 = KRX 종가)."""
+    q, _ = fetch_quotes(list(BIGCAP_CODES.values()))
+    return q or {}
 
 
 def synthetic_kospi_sh_only(index_hist: pd.DataFrame, bigcap_hist: pd.DataFrame) -> pd.DataFrame:
@@ -3138,6 +3151,58 @@ def _level_days(levels: pd.DataFrame) -> dict:
     return out
 
 
+def day_return(cum: pd.Series) -> pd.Series:
+    """누적(소수) → 그 구간 진짜 등락 = (1 + 오늘 누적) / (1 + 어제 누적) − 1. 첫 행은 NaN.
+    대표 2026-11-10 「누적 쌓는 법은 지금까지 누적이 -10%인데 오늘 -2%가 -12%가 아니야」 — 누적은 곱해서 쌓고, 당일은 나눠서 꺼낸다."""
+    s = pd.to_numeric(cum, errors="coerce")
+    return (1.0 + s) / (1.0 + s.shift(1)) - 1.0
+
+
+# @뇌 혼합지수_당일
+def live_bench_day(wk: float | None, index_quotes: dict, bigcap_quotes: dict) -> dict:
+    """오늘 혼합지수 하루 등락 — 앱·리포트·live_check가 다 이 함수 하나를 쓴다(대표 2026-11-10 원-2026-11-10-04 · 05).
+    입력은 홀딩스 밑 지수 박스와 같은 실시간 시세다: 지수 현재가·전일 대비(fetch_index_quotes), 대형주 현재가·전일 종가
+    (fetch_bigcap_detail). 전날 값을 히스토리에서 찾지 않으니 15:35가 빠진 날에도 밀리지 않는다.
+      일반 = wk·코스피 등락 + (1−wk)·코스닥 등락 / 제외 = wk·r_ex + (1−wk)·코스닥 등락.
+    반환 {"main", "ex", "코스피", "코스닥"}(소수). 입력이 모자라면 그 값은 None."""
+    def _r(d):
+        try:
+            p, c = float(d["price"]), float(d["change"])
+            return p / (p - c) - 1.0
+        except (TypeError, ValueError, KeyError, ZeroDivisionError):
+            return None
+    ks, kq = (index_quotes or {}).get("KOSPI"), (index_quotes or {}).get("KOSDAQ")
+    rk, rq = _r(ks) if ks else None, _r(kq) if kq else None
+    out = {"main": None, "ex": None, "코스피": rk, "코스닥": rq}
+    if rk is None or rq is None:
+        return out
+    w = 1.0 if wk is None else min(max(float(wk), 0.0), 1.0)
+    out["main"] = w * rk + (1.0 - w) * rq
+    cur, prev = {}, {}
+    for n, code in BIGCAP_CODES.items():
+        q = (bigcap_quotes or {}).get(code) or {}
+        if q.get("price") and q.get("prev_close"):
+            cur[n], prev[n] = float(q["price"]), float(q["prev_close"])
+    if len(cur) == len(BIGCAP_CODES):
+        out["ex"] = w * _ex_kospi_day(rk, cur, prev, float(ks["price"])) + (1.0 - w) * rq
+    return out
+
+
+def today_bench_day(kind: str, wk: float | None, index_quotes: dict | None = None,
+                    bigcap_quotes: dict | None = None) -> tuple | None:
+    """(오늘 날짜, 오늘 혼합 당일) — compute_index_vs_account의 today_bench_day 인자용. kind = "main" | "ex".
+    오늘 줄이 bench_history에 이미 저장됐거나(15:35 뒤) 시세가 없으면 None — 그때는 저장된 누적에서 꺼낸 값을 쓴다.
+    시세 인자를 None으로 주면 여기서 받는다(CLI용). 앱은 새로고침 때 보관한 값을 넘긴다."""
+    d = today_kst_str()
+    bh = load_bench_history()
+    if not bh.empty and d in set(bh["날짜"].astype(str)):
+        return None
+    iq = fetch_index_quotes() if index_quotes is None else index_quotes
+    bq = fetch_bigcap_detail() if bigcap_quotes is None else bigcap_quotes
+    v = live_bench_day(wk, iq, bq).get(kind)
+    return None if v is None else (d, v)
+
+
 def fixed_index_levels(index_hist: pd.DataFrame, bigcap_hist: pd.DataFrame, kind: str = "ex",
                        bench_hist: pd.DataFrame | None = None) -> pd.DataFrame:
     """synthetic_kospi_ex_bigcap(kind="ex") / synthetic_kospi_sh_only(kind="sh")의 **날짜 고정** 판.
@@ -3428,7 +3493,8 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
                               initial_capital: float, fee_rate: float = 0.0,
                               kospi_weight: float | None = None,
                               fund_nav_hist: pd.DataFrame | None = None,
-                              bench_kind: str | None = None) -> dict:
+                              bench_kind: str | None = None,
+                              today_bench_day: tuple | None = None) -> dict:
     """'지수 대비 계좌' 그래프 데이터(§6-17). 값은 전부 소수(0.0145 = +1.45%).
 
     - 계좌수익(t)  = 총자산(t)/최초자본 - 1 을 **anchor일 = 0 으로 리베이스**한 값
@@ -3573,11 +3639,15 @@ def compute_index_vs_account(tx: pd.DataFrame, asset_hist: pd.DataFrame, index_h
         prior = [v for bd, v in zip(bdates, bvals) if bd <= d]
         return float(prior[-1]) if prior else None
 
-    # @뇌 당일은_누적diff
-    me["주식당일"] = me["주식수익"].diff()
-    me["계좌당일"] = me["계좌수익"].diff()
+    # @뇌 당일은_하루등락
+    # 당일 = 누적끼리 나눈 그날 진짜 등락(대표 2026-11-10 — 옛 정의 누적 diff는 그날 등락 × (1 + 어제 누적)이라 작게 나왔다).
+    me["주식당일"] = day_return(me["주식수익"])
+    me["계좌당일"] = day_return(me["계좌수익"])
     me["벤치누적"] = [_bench_on(d) for d in me["날짜"]]
-    me["벤치당일"] = me["벤치누적"].diff()
+    me["벤치당일"] = day_return(me["벤치누적"])
+    # 오늘 줄이 아직 저장 전이면 벤치 당일은 실시간 시세로(직전 행이 며칠 전이어도 오늘 하루치만). 누적은 그대로.
+    if today_bench_day is not None and len(me) > 1 and str(me["날짜"].iloc[-1]) == today_bench_day[0]:
+        me.loc[me.index[-1], "벤치당일"] = float(today_bench_day[1])
 
     def _last(s):
         v = s.iloc[-1] if len(s) else None

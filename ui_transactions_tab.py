@@ -11,7 +11,7 @@ from constants import UP_COLOR, DOWN_COLOR, NEW_COLOR
 from portfolio_core import (
     now_kst, today_kst_str, load_history, load_index_history, load_market_cache,
     compute_index_vs_account, compute_pnl_actions, _index_day_moves,
-    load_bigcap_history, synthetic_kospi_ex_bigcap, synthetic_kospi_sh_only, fixed_index_levels,
+    load_bigcap_history, synthetic_kospi_ex_bigcap, synthetic_kospi_sh_only, fixed_index_levels, today_bench_day,
     load_fund_nav_history, compute_vip_vs_orchestra, compute_sell_fraction_map,
     DAILY_IMPORT_TAG,
 )
@@ -599,7 +599,9 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
     #      접힘(SamHynix extracted 위, 같은 포맷). iva는 밑 VIP 패널도 쓰므로 expander 밖에서 계산. ----
     iva = compute_index_vs_account(tx, hist, idx_hist, state["initial"],
                                     state.get("fee_rate", 0.0), kospi_weight=wk,
-                                    fund_nav_hist=load_fund_nav_history(), bench_kind="main")
+                                    fund_nav_hist=load_fund_nav_history(), bench_kind="main",
+                                    today_bench_day=today_bench_day("main", wk, st.session_state.get("index_quotes") or {},
+                                                                    st.session_state.get("bigcap_detail") or {}))
     with st.expander("Account : Index", expanded=False):
         if _wtag:
             st.markdown(f"<div style='margin:-4px 0 2px'>{_wtag.strip()}</div>",
@@ -620,7 +622,9 @@ def render_transactions_tab(state, tx, holdings, total_assets, unrealized_loss, 
         else:
             _syn = fixed_index_levels(idx_hist, _bg, "ex")
             _iva_ex = compute_index_vs_account(tx, hist, _syn, state["initial"],
-                                                state.get("fee_rate", 0.0), kospi_weight=wk, bench_kind="ex")
+                                                state.get("fee_rate", 0.0), kospi_weight=wk, bench_kind="ex",
+                                                today_bench_day=today_bench_day("ex", wk, st.session_state.get("index_quotes") or {},
+                                                                                st.session_state.get("bigcap_detail") or {}))
             _render_iva_panel(_iva_ex, _syn, "삼성·하이닉스 제외", "cwrap_ex")
 
     # ---- Sour Grapes (§6-26): SamHynix extracted의 정반대 — 코스피 다리를 '삼성전자·
