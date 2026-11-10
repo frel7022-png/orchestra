@@ -126,6 +126,18 @@ def test_lump_ingest_days_keep_their_own_days_and_today_is_quote(monkeypatch):
     assert r["cap"]["stock"]["today"] == pytest.approx(0.015 / 0.0436)
 
 
+def test_market_cache_filled_for_all_holdings(monkeypatch):
+    """캐시에 없는 보유종목은 받아 채우고, 못 받은 종목은 조용히 빠지지 않고 이름이 나온다."""
+    written = {}
+    monkeypatch.setattr(core, "load_market_cache", lambda: {"A": "KOSPI"})
+    monkeypatch.setattr(core, "fetch_stock_markets", lambda codes: {"2": "KOSDAQ"})
+    monkeypatch.setattr(core, "update_market_cache", written.update)
+    h = pd.DataFrame([{"종목코드": "1", "종목명": "A"}, {"종목코드": "2", "종목명": "B"}, {"종목코드": "3", "종목명": "C"}])
+    got = core.refresh_market_cache(h)
+    assert got == {"A": "KOSPI", "B": "KOSDAQ"} and written == {"B": "KOSDAQ"}
+    assert h.loc[h["종목명"].map(got).isna().values, "종목명"].tolist() == ["C"]
+
+
 def test_app_path_equals_live_check(monkeypatch):
     """앱 경로(today_bench_day)와 live_check 값이 같다 · 전날 대형주는 시세의 KRX 전일 종가."""
     today, prev, anchor = "2026-02-05", "2026-02-04", "2026-02-02"

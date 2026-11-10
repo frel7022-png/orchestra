@@ -123,7 +123,11 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
     val = qty * px
     prev = val / (1 + chg / 100)
     cost = qty * pd.to_numeric(h["평단가"])
-    mk = h["종목명"].map(core.load_market_cache())
+    # @뇌 상장시장_채우기
+    # 캐시에 없는 보유종목은 여기서 받아 채운다 — 빠지면 혼합지수 코스피 비중이 틀어진다(대표 11-10 「고치자」).
+    mc = core.refresh_market_cache(h)
+    mk = h["종목명"].map(mc)
+    market_missing = h.loc[mk.isna().values, "종목명"].astype(str).tolist()
     ks, kq = float(val[mk == "KOSPI"].sum()), float(val[mk == "KOSDAQ"].sum())
     wk = ks / (ks + kq) if ks + kq else 1.0
 
@@ -164,7 +168,7 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
     ok_chg = chg[got.values]
     return {
         "asof": now.strftime("%Y-%m-%d %H:%M"), "holdings_asof": str(ah["날짜"].max()), "last_trade": last_trade_day(tx), "anchor": anchor,
-        "kospi": iq["KOSPI"], "kosdaq": iq["KOSDAQ"], "wk": wk,
+        "kospi": iq["KOSPI"], "kosdaq": iq["KOSDAQ"], "wk": wk, "market_missing": market_missing,
         "ex": blend(core.fixed_index_levels(idx, bigdf, "ex"), "ex"), "main": blend(idx, "main"),
         "acct": (acct_cum, day_acct), "acct_won": day_won,
         "stock": (stock_cum, day_stock),
@@ -192,6 +196,8 @@ def main():
         print(f"[⚠ 시세 실패 {len(s['quote_failed'])}종목 — 당일 %·원과 상승/하락/보합 수에서 뺌(총자산·누적엔 마지막 저장가로 들어감) · 평가금액의 {s['quote_fail_share']:.0%}] "
               + ", ".join(s["quote_failed"]))
     print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 전날 대비 기준일 {s['holdings_asof']} · 마지막 매매 {s['last_trade']}")
+    if s.get("market_missing"):
+        print(f"[⚠ 상장시장을 못 받아 혼합지수 비중에서 빠진 종목 {len(s['market_missing'])}개] " + ", ".join(s["market_missing"]))
     if s.get("nxt_note"):
         print("[⚠ 15:35 기록 빠짐 — 제외 혼합의 대형주 현재가에 NXT 체결이 섞일 수 있음(일반 혼합은 지수라 해당 없음)]")
     print(f"코스피 {s['kospi']['change_pct']:+.2f}% ({s['kospi']['price']:,.2f}) · "
