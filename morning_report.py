@@ -722,7 +722,7 @@ def write_action(res, ph):
     body = f"""
 <h2>계좌 vs 혼합지수 (8/14 기준 누적)</h2>
 <div class="kpi">{kpi}</div>
-<p class="note">{res["index"]["snap"]["asof"]} 기준 · 지수는 확정 종가 + 지금 실시간, 당일은 전일 확정 종가 대비 · 전날 대비 기준일 {res["index"]["asof"]} · 마지막 매매 {res["index"]["snap"]["last_trade"]}. 혼합지수는 보유종목 코스피/코스닥 평가금액 비중으로 가중.{(" <b>⚠ 상장시장을 못 받아 비중에서 빠진 종목: " + ", ".join(res["index"]["snap"]["market_missing"]) + "</b>") if res["index"]["snap"].get("market_missing") else ""}</p>
+<p class="note">{res["index"]["snap"]["asof"]} 기준 · 지수는 확정 종가 + 지금 실시간, 당일은 전일 확정 종가 대비 · 전날 대비 기준일 {res["index"]["snap"]["base_day"]} · 마지막 매매 {res["index"]["snap"]["last_trade"]}{(" · <b>" + res["index"]["snap"]["base_gap"] + "</b>") if res["index"]["snap"]["base_gap"] else ""}.{(" <b>⚠ 시세를 못 받아 마지막 저장가로 든 보유종목: " + ", ".join(res["index"]["snap"]["quote_failed"]) + "</b>") if res["index"]["snap"]["quote_failed"] else ""} 혼합지수는 보유종목 코스피/코스닥 평가금액 비중으로 가중.{(" <b>⚠ 상장시장을 못 받아 비중에서 빠진 종목: " + ", ".join(res["index"]["snap"]["market_missing"]) + "</b>") if res["index"]["snap"].get("market_missing") else ""}</p>
 
 <h2>Up/Down — 재진입 후보 (매도가 대비 많이 빠진 순, 전체 {res["updown_n"]}종목 중 상위 {TOP})</h2>
 {mkt_html}<p class="legend">빨간 점선 = 마지막 매도가 · 빨간 점 = 매도일</p>

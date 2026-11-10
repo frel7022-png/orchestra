@@ -157,7 +157,7 @@ def extreme_exits(fh: pd.DataFrame) -> pd.DataFrame:
     return df.sort_values("rel") if not df.empty else df
 
 
-def market_series(fh: pd.DataFrame, ph: pd.DataFrame | None) -> tuple[pd.DataFrame, pd.DataFrame]:
+def market_series(fh: pd.DataFrame, ph: pd.DataFrame | None, live: dict | None = None, today: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """전체 그래프용 — 날짜별 대상 종목 평균 외인 변화(그 종목 누적 시작 대비 %)와 평균 주가 변화(%).
     svg_chart(ps, fs)에 그대로 넣을 꼴: ps(날짜, 종가 = 100 × (1 + 평균 주가%/100)), fs(날짜, 외국인보유율 = 평균 외인 변화 %)."""
     piv, _ = _pivot(fh)
@@ -175,6 +175,8 @@ def market_series(fh: pd.DataFrame, ph: pd.DataFrame | None) -> tuple[pd.DataFra
     ps = pd.DataFrame(columns=["날짜", "종가"])
     if ph is not None and not ph.empty:
         pp_ = ph.dropna(subset=["종가"]).pivot_table(index="날짜", columns="종목코드", values="종가", aggfunc="last").sort_index()
+        if live and today and pp_.index[-1] < today:   # 주가만 리포트 시각까지 하루 더, 외인은 마지막 적재일까지(대표 2026-11-10)
+            pp_.loc[today] = pd.Series({c: live.get(c) for c in pp_.columns}, dtype=float)
         pc = []
         for code in pp_.columns:
             s = pp_[code].dropna().astype(float)

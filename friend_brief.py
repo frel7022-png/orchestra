@@ -36,7 +36,7 @@ def pct(v, d=2):
 
 
 def head(s):
-    print(f"[Orchestra] {s['asof']} {s['basis']} · 전날 대비 기준일 {s['holdings_asof']} · 마지막 매매 {s['last_trade']}")
+    print(f"[Orchestra] {s['asof']} {s['basis']} · 전날 대비 기준일 {s['base_day']} · 마지막 매매 {s['last_trade']}")
 
 
 def c(v, unit="%", d=2, won=False):
@@ -61,7 +61,7 @@ def brief():
     day = "오늘" if not s["closed"] else s["today"][5:]
 
     print(f"Orchestra · {s['asof'][5:]} {s['basis']}")
-    print(f"(전날 대비 기준일 {s['holdings_asof']} · 마지막 매매 {s['last_trade']})")
+    print(f"(전날 대비 기준일 {s['base_day']} · 마지막 매매 {s['last_trade']})")
     print()
     print(f"보유종목 평가손익 {s['eval_pl']:+,.0f}원({s['eval_pl'] / cost * 100:+.2f}%)")
     print(f"누적 실현손익 {sells_all.sum():+,.0f}원")

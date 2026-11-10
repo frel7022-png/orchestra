@@ -380,7 +380,7 @@ def foreign_trend_section(today, ph, fh, live, holds_n, holds_m) -> str:
     deep_th = '<tr><th class="nm">종목</th><th>외인 비중</th><th>%p</th><th>영향력</th><th>원천 변화</th><th>σ배</th></tr>'
     marks = ft.window_starts(fh)
     origin = ph.groupby("종목코드")["날짜"].min().to_dict() if not ph.empty else {}
-    ps_avg, fs_avg = ft.market_series(fh, ph)
+    ps_avg, fs_avg = ft.market_series(fh, ph, live, today)
     overall = (svg_chart(ps_avg, fs_avg, None, today, marks) if not ps_avg.empty and not fs_avg.empty
                else '<div class="nochart">데이터 부족</div>')
     blocks = []

@@ -33,6 +33,14 @@ def last_trade_day(tx: pd.DataFrame) -> str:
     return str(t["날짜"].astype(str).max()) if not t.empty else "-"
 
 
+def base_day_note(prev_day: str | None, ah_last: str) -> tuple[str, str]:
+    """리포트 머리의 "전날 대비 기준일" = 오늘 앞 거래일. 매매일지 반영 · 앱 새로고침이 찍은 계좌 줄에 끌려가지 않는다(대표 2026-11-10).
+    그날 계좌 줄이 없으면(15:35 빠진 날) 누적을 어느 줄에서 이었는지 글로 돌려준다."""
+    if not prev_day:
+        return ah_last, ""
+    return prev_day, (f"{prev_day[5:]} 계좌 줄 없음 · {ah_last[5:]} 줄로 이음" if ah_last < prev_day else "")
+
+
 def quote_fail_share(h: pd.DataFrame, quotes: dict) -> tuple[list[str], float]:
     """시세(change_pct)를 못 받은 종목명과, 그 종목들이 보유 평가금액(마지막 저장 현재가 기준)에서 차지하는 비율."""
     codes = h["종목코드"].astype(str)
@@ -164,10 +172,11 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
             if tot_d - cash > 0:
                 stock_cum = (1 + float(me["주식수익"].iloc[-1])) * (float(val.sum()) / (tot_d - cash)) - 1
 
+    base_day, base_gap = base_day_note(prev_day, str(ah["날짜"].max()))
     t = h.assign(등락=chg)[got.values].sort_values("등락")
     ok_chg = chg[got.values]
     return {
-        "asof": now.strftime("%Y-%m-%d %H:%M"), "holdings_asof": str(ah["날짜"].max()), "last_trade": last_trade_day(tx), "anchor": anchor,
+        "asof": now.strftime("%Y-%m-%d %H:%M"), "holdings_asof": str(ah["날짜"].max()), "base_day": base_day, "base_gap": base_gap, "last_trade": last_trade_day(tx), "anchor": anchor,
         "kospi": iq["KOSPI"], "kosdaq": iq["KOSDAQ"], "wk": wk, "market_missing": market_missing,
         "ex": blend(core.fixed_index_levels(idx, bigdf, "ex"), "ex"), "main": blend(idx, "main"),
         "acct": (acct_cum, day_acct), "acct_won": day_won,
@@ -195,7 +204,7 @@ def main():
     if s["quote_failed"]:
         print(f"[⚠ 시세 실패 {len(s['quote_failed'])}종목 — 당일 %·원과 상승/하락/보합 수에서 뺌(총자산·누적엔 마지막 저장가로 들어감) · 평가금액의 {s['quote_fail_share']:.0%}] "
               + ", ".join(s["quote_failed"]))
-    print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 전날 대비 기준일 {s['holdings_asof']} · 마지막 매매 {s['last_trade']}")
+    print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 전날 대비 기준일 {s['base_day']} · 마지막 매매 {s['last_trade']}" + (f" · {s['base_gap']}" if s['base_gap'] else ""))
     if s.get("market_missing"):
         print(f"[⚠ 상장시장을 못 받아 혼합지수 비중에서 빠진 종목 {len(s['market_missing'])}개] " + ", ".join(s["market_missing"]))
     if s.get("nxt_note"):
