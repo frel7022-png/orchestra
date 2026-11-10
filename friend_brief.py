@@ -36,7 +36,7 @@ def pct(v, d=2):
 
 
 def head(s):
-    print(f"[Orchestra] {s['asof']} {s['basis']} · 보유는 매매일지 {s['holdings_asof']} 반영분")
+    print(f"[Orchestra] {s['asof']} {s['basis']} · 전날 대비 기준일 {s['holdings_asof']} · 마지막 매매 {s['last_trade']}")
 
 
 def c(v, unit="%", d=2, won=False):
@@ -61,7 +61,7 @@ def brief():
     day = "오늘" if not s["closed"] else s["today"][5:]
 
     print(f"Orchestra · {s['asof'][5:]} {s['basis']}")
-    print(f"(보유는 매매일지 {s['holdings_asof']} 반영분)")
+    print(f"(전날 대비 기준일 {s['holdings_asof']} · 마지막 매매 {s['last_trade']})")
     print()
     print(f"보유종목 평가손익 {s['eval_pl']:+,.0f}원({s['eval_pl'] / cost * 100:+.2f}%)")
     print(f"누적 실현손익 {sells_all.sum():+,.0f}원")
@@ -84,7 +84,7 @@ def brief():
     print(f"혼합지수 대비  {c((my_day - ex_day) * 100, unit='%p')}")
     print()
     if s["holdings_asof"] < s["today"]:
-        print(f"{day} 매수·매도는 매매일지가 아직 반영 전이야 (마지막 반영 {s['holdings_asof']})")
+        print(f"{day} 매수·매도는 매매일지가 아직 반영 전이야 (마지막 매매 {s['last_trade']})")
         return
 
     prior = tx[(tx["날짜"] < s["today"]) & tx["구분"].isin(["매수", "매도"])].copy()

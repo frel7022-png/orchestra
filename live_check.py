@@ -4,7 +4,7 @@
 있어서 "오늘"을 말할 때 쓰면 틀린다. 그래서 여기서는 지수·대형주를 네이버 일별시세 **확정 종가**로
 처음부터 다시 받고, 오늘 값만 실시간 시세로 덮어쓴다. 파일에는 아무것도 쓰지 않는다.
 
-보유 수량·평단·예수금은 마지막 매매일지 반영분 기준(오늘 매매는 반영 전이면 안 잡힘).
+보유 수량·평단·예수금은 매매일지를 넣은 데까지 기준(오늘 매매는 넣기 전이면 안 잡힘). 머리 글자는 전날 대비 기준일 · 마지막 매매.
 morning_report.py 액션 리포트 맨 위 "계좌 vs 혼합지수" 칸도 live_snapshot()을 그대로 쓴다.
 
 사용: python live_check.py
@@ -23,6 +23,14 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 BIGCAP_KRX_FROM = "2026-10-30"   # bigcap_history가 15:35 KRX 종가인 첫날(계좌_벤치_계산 "대형주 종가 이음매")
 QUOTE_FAIL_STOP = 0.10  # 보유 평가금액의 이 비율 이상이 시세를 못 받으면 한 번 다시 받고, 그래도면 답을 멈춘다
                         # (대표 확정 2026-10-22 "오케이", 데이터센터/세팅 선반 1). 그 아래면 표시만 하고 계속.
+
+
+def last_trade_day(tx: pd.DataFrame) -> str:
+    """거래 기록의 마지막 매수 · 매도 날짜. 입금 · 배당 등은 매매가 아니라 뺀다. 없으면 "-"."""
+    if tx is None or tx.empty:
+        return "-"
+    t = tx[tx["구분"].isin(["매수", "매도"])]
+    return str(t["날짜"].astype(str).max()) if not t.empty else "-"
 
 
 def quote_fail_share(h: pd.DataFrame, quotes: dict) -> tuple[list[str], float]:
@@ -155,7 +163,7 @@ def live_snapshot(holdings: pd.DataFrame | None = None, quotes: dict | None = No
     t = h.assign(등락=chg)[got.values].sort_values("등락")
     ok_chg = chg[got.values]
     return {
-        "asof": now.strftime("%Y-%m-%d %H:%M"), "holdings_asof": str(ah["날짜"].max()), "anchor": anchor,
+        "asof": now.strftime("%Y-%m-%d %H:%M"), "holdings_asof": str(ah["날짜"].max()), "last_trade": last_trade_day(tx), "anchor": anchor,
         "kospi": iq["KOSPI"], "kosdaq": iq["KOSDAQ"], "wk": wk,
         "ex": blend(core.fixed_index_levels(idx, bigdf, "ex"), "ex"), "main": blend(idx, "main"),
         "acct": (acct_cum, day_acct), "acct_won": day_won,
@@ -183,7 +191,7 @@ def main():
     if s["quote_failed"]:
         print(f"[⚠ 시세 실패 {len(s['quote_failed'])}종목 — 당일 %·원과 상승/하락/보합 수에서 뺌(총자산·누적엔 마지막 저장가로 들어감) · 평가금액의 {s['quote_fail_share']:.0%}] "
               + ", ".join(s["quote_failed"]))
-    print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 보유 = 매매일지 {s['holdings_asof']} 반영분")
+    print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 전날 대비 기준일 {s['holdings_asof']} · 마지막 매매 {s['last_trade']}")
     if s.get("nxt_note"):
         print("[⚠ 15:35 기록 빠짐 — 제외 혼합의 대형주 현재가에 NXT 체결이 섞일 수 있음(일반 혼합은 지수라 해당 없음)]")
     print(f"코스피 {s['kospi']['change_pct']:+.2f}% ({s['kospi']['price']:,.2f}) · "
