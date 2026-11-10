@@ -345,6 +345,27 @@ def fix_prev_close(dry_run: bool = False) -> int:
     return 0 if (dry_run or not recs) else upsert("price_history", recs, "stock_code,trade_date")
 
 
+def fix_prev_bigcap_close(dry_run: bool = False) -> dict:
+    """09:25 — 대형주 전날 줄을 시세의 전일 종가(KRX)로. 고쳤으면 히스토리를 commit · push한다. 장중(09:00~15:20)에만."""
+    import daily_close
+    now, today = core.now_kst(), core.today_kst_str()
+    if core.is_krx_closed(today) or not ((9, 0) <= (now.hour, now.minute) < (15, 20)):
+        print(f"{today} {now:%H:%M} — 장중이 아니라 대형주 전날 줄 안 맞춤")
+        return {"status": "skip"}
+    day = prev_trading_day(today)
+    quotes = core.fetch_bigcap_detail()
+    if dry_run:
+        print(f"{day} 대형주 전일 종가(시세): " + ", ".join(f"{c} {(quotes.get(c) or {}).get('prev_close')}" for c in core.BIGCAP_CODES.values()) + " — dry run, 안 씀")
+        return {"status": "dry"}
+    out = daily_close.fix_prev_bigcap(day, quotes, PREV_FIX_MAX_DIFF)
+    print(f"{day} 대형주 전날 줄 KRX 맞추기: {out}")
+    if out["status"] in ("fixed", "filled"):
+        daily_close.push_histories(day, "09:25 대형주 전날 줄 KRX 맞춤")
+    elif out["status"] in ("suspect", "no_quote"):
+        daily_close.log_failure(today, f"대형주 전날 줄 안 맞춤: {out}")
+    return out
+
+
 if __name__ == "__main__":
     import sys
     dry = "--dry-run" in sys.argv
@@ -371,6 +392,13 @@ if __name__ == "__main__":
                 daily_close.push_histories(_day)
     elif "--fix-prev-close" in sys.argv:
         fix_prev_close(dry_run=dry)
+        try:
+            fix_prev_bigcap_close(dry_run=dry)
+        except Exception as e:   # 무인이라 실패가 묻히지 않게 — 다음 출근 점검이 읽는다
+            print(f"[경고] 대형주 전날 줄 맞추기 실패: {e}")
+            if not dry:
+                import daily_close
+                daily_close.log_failure(core.today_kst_str(), f"fix_prev_bigcap 실패: {e}")
     else:
         main()
 

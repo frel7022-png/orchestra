@@ -38,7 +38,7 @@ def log_failure(day: str, msg: str) -> None:
         f.write(f"{day} {core.now_kst():%H:%M} {' '.join(msg.split())}\n")
 
 
-def push_histories(day: str) -> bool:
+def push_histories(day: str, what: str = "15:35 히스토리 다섯(시장 쪽 · 계좌 쪽, KRX 종가)") -> bool:
     """찍은 히스토리 다섯만 commit하고 push(작업 중인 다른 변경은 안 섞음 — `git commit -- 파일`).
     바뀐 게 없으면 True. 실패는 log_failure로 남기고 False."""
     def git(*args):
@@ -47,7 +47,7 @@ def push_histories(day: str) -> bool:
     if not git("status", "--porcelain", "--", *files).stdout.strip():
         print("[push] 히스토리 바뀐 것 없음")
         return True
-    c = git("commit", "-m", f"KRXClose {day}: 15:35 히스토리 다섯(시장 쪽 · 계좌 쪽, KRX 종가)\n\n"
+    c = git("commit", "-m", f"KRXClose {day}: {what}\n\n"
             "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>", "--", *files)
     if c.returncode:
         log_failure(day, f"commit 실패: {c.stderr.strip() or c.stdout.strip()}")
@@ -84,7 +84,12 @@ def snapshot_market_closes(trade_date: str, df) -> None:
     try:
         bq = core.fetch_bigcap_quotes() or {}
         closes = {n: _close_on(core.BIGCAP_CODES[n], trade_date, bq.get(n)) for n in core.BIGCAP_CODES}
-        if all(closes.get(n) for n in core.BIGCAP_CODES):
+        # 지난 날 줄이 이미 있으면(09:25 fix_prev_bigcap이 KRX 종가로 써 둔 줄) 일별시세(애프터장 섞임)로 덮지 않는다(대표 2026-11-10).
+        _big = core.load_bigcap_history()
+        _keep = (trade_date < core.today_kst_str() and not _big.empty and trade_date in set(_big["날짜"].astype(str)))
+        if _keep:
+            print(f"[대형주] {trade_date} 줄 있음 — KRX 줄 그대로")
+        elif all(closes.get(n) for n in core.BIGCAP_CODES):
             core.snapshot_bigcap_history(closes, on_date=trade_date)
             print(f"[대형주] {trade_date} " + " · ".join(f"{n} {closes[n]:,.0f}" for n in core.BIGCAP_CODES)
                   + " bigcap_history 반영")
@@ -105,6 +110,42 @@ def snapshot_market_closes(trade_date: str, df) -> None:
 def _index_dates() -> set:
     idx = core.load_index_history()
     return set(idx["날짜"].astype(str)) if not idx.empty else set()
+
+
+# @뇌 대형주_전날줄_KRX
+def fix_prev_bigcap(day: str, quotes: dict, max_diff: float, tol: float = 0.5) -> dict:
+    """전 거래일(day) 대형주 줄을 시세의 전일 종가(정규장 동안 = KRX 15:30 종가)로 맞춘다(대표 2026-11-10 원-2026-11-10-08 · 14).
+    줄이 없으면(15:35를 놓친 날) 그 값으로 쓰고, 있으면 tol 넘게 다를 때만 고친다. 한 종목이라도 차이가 max_diff를 넘으면
+    권리락 · 분할일 수 있어 안 고친다. 고쳤고 그날이 bench_history 마지막 줄이면 그 줄도 그날 wk로 다시 찍는다.
+    반환 {"status": "same" | "fixed" | "filled" | "suspect" | "no_quote", ...}."""
+    krx = {}
+    for n, code in core.BIGCAP_CODES.items():
+        pc = (quotes.get(code) or {}).get("prev_close")
+        if not pc:
+            return {"status": "no_quote", "name": n}
+        krx[n] = float(pc)
+    big = core.load_bigcap_history()
+    rows = big[big["날짜"].astype(str) == day] if big is not None and not big.empty else big
+    if rows is None or rows.empty:
+        core.snapshot_bigcap_history(krx, on_date=day)
+        return {"status": "filled", "krx": krx, "bench": _rebench(day)}
+    old = {n: float(rows.iloc[0][n]) for n in core.BIGCAP_CODES}
+    bad = [n for n in old if old[n] > 0 and abs(krx[n] / old[n] - 1) > max_diff]
+    if bad:
+        return {"status": "suspect", "names": bad, "old": old, "krx": krx}
+    if all(abs(krx[n] - old[n]) < tol for n in old):
+        return {"status": "same"}
+    core.snapshot_bigcap_history(krx, on_date=day)
+    return {"status": "fixed", "old": old, "krx": krx, "bench": _rebench(day)}
+
+
+def _rebench(day: str) -> str:
+    """그날이 bench_history 마지막 줄이면 그 줄의 wk로 다시 찍는다. 지난 줄은 잠겨 있다."""
+    bh = core.load_bench_history()
+    if bh is None or bh.empty or str(bh["날짜"].max()) != day:
+        return "skip"
+    wk = float(bh[bh["날짜"].astype(str) == day].iloc[0]["wk"])
+    return core.snapshot_bench_history(day, wk)
 
 
 def ensure_market_day(day: str, df) -> bool:
