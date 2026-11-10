@@ -37,7 +37,10 @@ else:
 _fl = core.HERE / "logs" / "daily_close_fail.log"
 _since = (_date.fromisoformat(_today) - _td(days=7)).isoformat()
 _fails = [l.strip() for l in (_fl.read_text(encoding="utf-8").splitlines() if _fl.exists() else []) if l.strip()[:10] >= _since]
+_big_fix = [l for l in _fails if "대형주 전날 줄" in l or "fix_prev_bigcap" in l]   # 09:25 대형주 전날 줄(대표 「어제 종가를 못가져오면 보고해.」)
+_fails = [l for l in _fails if l not in _big_fix]
 print("[15:35 실패 없음(최근 7일)]" if not _fails else "[⚠️ 15:35 실패] " + " | ".join(_fails[-3:]))
+print("[09:25 대형주 전날 줄 OK(최근 7일)]" if not _big_fix else "[⚠️ 09:25 대형주 전날 줄 못 맞춤 — 위크에게] " + " | ".join(_big_fix[-3:]))
 
 sec = tomllib.load(open(".streamlit/secrets.toml", "rb"))["supabase"]
 URL = sec["url"]

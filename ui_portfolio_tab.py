@@ -24,7 +24,7 @@ from portfolio_core import (
     cumulative_price_change_map,
     FLOW_BASIS_KEY, rank_flow_flags, get_flow_prev_day_ranks,
     compute_link_candidates, load_link_watch_log, link_watch_status, fetch_quotes,
-    never_bought_names, drop_ended, ended_watch_names, fixed_index_levels, today_bench_day, live_my_day,
+    never_bought_names, drop_ended, ended_watch_names, fixed_index_levels, today_bench_day, live_my_day, day_change_base,
     load_index_history, load_market_cache,
     load_history, compute_index_vs_account, load_bigcap_history, synthetic_kospi_ex_bigcap,
     load_claude_notes, seed_engine_series, compute_fa_win_rate, blended_benchmark_cum,
@@ -537,8 +537,13 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
     # 오늘 실현한 이익도 총자산에 이미 반영돼 있으므로 자동으로 +로 잡힌다 —
     # "어제 대비 1만원 이익이 나서 매도했다"도 당일 +1만원으로 정당하게 평가됨 (사용자 요청).
     _hist = load_history()
-    _prev = _hist[_hist["날짜"].astype(str) < today_str] if not _hist.empty else _hist
-    prev_total = float(_prev["총자산"].iloc[-1]) if not _prev.empty else state["initial"]
+    # 어제 줄이 없는 날(15:35를 놓친 날)은 지금 보유 × 시세의 전일 종가 + 예수금과 견준다(대표 2026-11-10 「어제 종가 대비 실시간으로」).
+    prev_total, _dc_info = day_change_base(_hist, holdings, state["cash"], state["initial"], today_str,
+                                           failed=st.session_state.get("quote_failed") or [])
+    # 어제 종가를 못 받은 종목은 칸에 글로 보인다(대표 2026-11-10 「어제 종가를 못가져오면 보고해.」)
+    _dc_note = (f'<div style="font-size:10px;color:{DOWN_COLOR}">⚠ 어제 종가 못 받음 {len(_dc_info["missing"])}종목: '
+                f'{", ".join(_dc_info["missing"][:5])}{" 외" if len(_dc_info["missing"]) > 5 else ""} — 직전 기록 {str(_dc_info["row"])[5:]} 대비</div>'
+                if _dc_info["missing"] else "")
     day_change = total_assets - prev_total
     day_color = UP_COLOR if day_change > 0 else (DOWN_COLOR if day_change < 0 else T["muted"])
     day_sign = "+" if day_change > 0 else ""
@@ -773,7 +778,7 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
             <div style="font-size:13px;color:{T['text']};font-weight:600;margin-bottom:2px">Today's Take</div>
             <div>어제 대비&nbsp;
                 <b style="color:{day_color}">{day_sign}{day_change:,.0f}원</b>
-                <span style="color:{_stk_c}">&nbsp;{_tt_arrow} {_tt_p(_stk_day)}</span></div>
+                <span style="color:{_stk_c}">&nbsp;{_tt_arrow} {_tt_p(_stk_day)}</span>{_dc_note}</div>
             <div style="color:{T['muted']}">혼합지수&nbsp;<b style="color:{T['text']}">{_tt_p(_bench_m)}</b>
                 &nbsp;·&nbsp;W/O SH&nbsp;<b style="color:{T['text']}">{_tt_p(_bench_s)}</b></div>
             <div style="color:{T['muted']}"><b style="color:{_dc_m_c}">{_dc_m}</b>

@@ -455,6 +455,7 @@ with top_r:
 if refresh_clicked_top or auto_refresh_triggered or settings_clicked:
     with st.spinner("종목명으로 시세를 찾는 중..."):
         holdings, refresh_report = refresh_all_prices(holdings)
+        st.session_state["quote_failed"] = list(refresh_report.get("failed") or []) + list(refresh_report.get("unresolved") or [])
         refresh_dividend_yields(holdings["종목코드"].tolist())
         refresh_market_cache(holdings)  # 종목명→KOSPI/KOSDAQ, 캐시 미스만 (§6-17 지수 대비 계좌)
         st.session_state["index_quotes"] = fetch_index_quotes()

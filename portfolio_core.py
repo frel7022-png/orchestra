@@ -3219,6 +3219,40 @@ def today_bench_day(kind: str, wk: float | None, index_quotes: dict | None = Non
     return None if v is None else (d, v)
 
 
+def prev_krx_day(day: str) -> str:
+    """day 앞의 직전 거래일(주말 · 달력 휴장 건너뜀)."""
+    d = datetime.strptime(day, "%Y-%m-%d") - timedelta(days=1)
+    while is_krx_closed(d.strftime("%Y-%m-%d")):
+        d -= timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
+
+
+def day_change_base(hist: pd.DataFrame, holdings: pd.DataFrame, cash: float, initial: float, today: str,
+                    failed: list | None = None) -> tuple:
+    """Today's Take 어제 대비(원)의 "어제 총자산". 평소 = 직전 asset_history 줄. 그 줄이 직전 거래일이 아니면(15:35를 놓친 날)
+    지금 보유 수량 × 시세의 전일 종가(현재가를 등락률로 되돌린 값) + 예수금(대표 2026-11-10 원-2026-11-10-16 「어제 종가 대비 실시간으로」).
+    어제 종가를 못 받은 종목이 있으면 틀린 값을 내지 않고 직전 줄로 두되, 그 종목을 돌려줘 화면에 쓴다(대표 「어제 종가를 못가져오면 보고해.」).
+    failed = 이번 새로고침에서 시세를 못 받은 종목명. 반환 (어제 총자산, {"missing": [종목명], "row": 직전 줄 날짜}) — 평소 날은 missing이 빈 목록."""
+    prev = hist[hist["날짜"].astype(str) < today] if hist is not None and not hist.empty else hist
+    if prev is None or prev.empty:
+        return float(initial), {"missing": [], "row": None}
+    row_total = float(prev["총자산"].iloc[-1])
+    row_day = str(prev["날짜"].astype(str).max())
+    info = {"missing": [], "row": row_day}
+    if row_day == prev_krx_day(today):
+        return row_total, info
+    if holdings is None or holdings.empty:
+        return row_total, info
+    names = holdings["종목명"].astype(str) if "종목명" in holdings else pd.Series([""] * len(holdings), index=holdings.index)
+    chg = pd.to_numeric(holdings["등락률"], errors="coerce") if "등락률" in holdings else pd.Series(float("nan"), index=holdings.index)
+    bad = chg.isna() | names.isin(set(failed or []))
+    if bad.any():
+        info["missing"] = names[bad].tolist()
+        return row_total, info
+    val = pd.to_numeric(holdings["수량"], errors="coerce").fillna(0) * pd.to_numeric(holdings["현재가"], errors="coerce").fillna(0)
+    return float((val / (1.0 + chg / 100.0)).sum()) + float(cash), info
+
+
 def live_my_day(holdings: pd.DataFrame, cash: float) -> dict | None:
     """지금 보유의 오늘 하루 등락 — 매매일지가 언제 들어왔는지 · 15:35 기록이 있는지에 안 달린다(대표 2026-11-10 원-2026-11-10-07).
     보유 수량 × 현재가를 시세 등락률로 되돌린 전일 값과 견준다. 등락률이 없는 종목은 뺀다(조용히 0으로 섞지 않는다).
