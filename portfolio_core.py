@@ -3448,7 +3448,7 @@ def seed_engine_series(tx: pd.DataFrame, initial_capital: float, fee_rate: float
                        asset_hist: pd.DataFrame | None = None,
                        bench_cum: dict | None = None) -> pd.DataFrame:
     """스노우볼 스코어카드(§6-27): 거래를 재생하며 날짜별 (예수금, 총매입액=Σ수량×평단가)을 기록.
-    '매입액은 우상향 · 예수금은 300선 평행'이면 씨앗 엔진이 도는 것 — 자잘한 실현손익이 매입
+    '매입액은 우상향 · 예수금은 평행'이면 씨앗 엔진이 도는 것 — 자잘한 실현손익이 매입
     확대를 따라잡으며 예수금 버퍼를 유지한다는 뜻. 예수금 선이 같이 처지면 씨앗보다 배치가 빠름(경고).
     `_cash_by_date`와 같은 재생 루프(§1-1)라 예수금이 rebuild_portfolio_*와 안 어긋난다.
 
