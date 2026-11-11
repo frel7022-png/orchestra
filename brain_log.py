@@ -3,7 +3,7 @@
     python brain_log.py log [시작일] [끝일]   # 커밋 메시지의 `셀:` 줄 모음 — 셀 이력·하루 일기·주간 "뇌 변경 보고"의 원천
     python brain_log.py storage              # 셀마다의 `저장고:` 줄(원본)을 모아 셀관리.md 저장고 표를 다시 만든다
     python brain_log.py heads                # 셀 머리(제목 ~ 첫 "## " 절 전) 줄 수 — 15 넘으면 표시
-    python brain_log.py links                # 셀 사이 길(다음 셀 신호) 표 → 셀관리.md + 뇌_초안 안 끊긴 경로 검사(2026-10-20 셀회의)
+    python brain_log.py links                # 뇌_초안 안 끊긴 경로 · 코드 문 · 줄 주소 검사(2026-10-20 셀회의 · 셀관리.md 길 표 쓰기는 2026-11-11 대표 「맞아」로 끔)
                                              #   + 셀→코드 문 검사(심볼·@뇌 이름표·줄 번호 금지, 2026-10-21)
     python brain_log.py oldcheck mark        # 옛 뇌 지문 찍기(출근 점검 첫머리) — 옛 claude.md·ARCHIVE.md·메모리 줄별 해시를 상태 파일에
     python brain_log.py oldcheck [--md]      # 지문 뒤로 바뀐 옛 뇌 줄 중 새 뇌 주소가 없는 줄 · 열린 〔새뇌 대기〕 · 세팅↔코드 값 다름(하루 끝)
@@ -582,9 +582,8 @@ def main() -> int:
         print(f"저장고 표 갱신 → {MAP}")
     elif a and a[0] == "links":
         out, inc, broken = links()
-        write_links(out, inc)
-        print(links_table(out, inc))
-        print(f"\n길 표 갱신 → {MAP}")
+        # 셀관리.md "길 표"는 쓰지 않는다(대표 11-11 「맞아」 — 신호 칸을 장 밖으로 뺀 뒤 표가 다 "없음"이라 절을 뺌).
+        # write_links · links_table은 남겨 두되 부르지 않는다.
         for f, i, ref in broken:
             print(f"끊긴 경로: {f}:{i}  {ref}")
         print(f"끊긴 경로 {len(broken)}개")
