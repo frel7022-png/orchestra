@@ -4,7 +4,7 @@
 있어서 "오늘"을 말할 때 쓰면 틀린다. 그래서 여기서는 지수·대형주를 네이버 일별시세 **확정 종가**로
 처음부터 다시 받고, 오늘 값만 실시간 시세로 덮어쓴다. 파일에는 아무것도 쓰지 않는다.
 
-보유 수량·평단·예수금은 매매일지를 넣은 데까지 기준(오늘 매매는 넣기 전이면 안 잡힘). 머리 글자는 전날 대비 기준일 · 마지막 매매.
+보유 수량·평단·예수금은 매매일지를 넣은 데까지 기준(오늘 매매는 넣기 전이면 안 잡힘). 첫 줄은 전날 대비 기준일 · 계좌 줄 마지막 · 마지막 매매일지(매수·매도가 있는 마지막 날) — 출력이 자기가 뭘 잰 건지 말한다(대표 11-11 되짚기 22번).
 morning_report.py 액션 리포트 맨 위 "계좌 vs 혼합지수" 칸도 live_snapshot()을 그대로 쓴다.
 
 사용: python live_check.py
@@ -204,7 +204,7 @@ def main():
     if s["quote_failed"]:
         print(f"[⚠ 시세 실패 {len(s['quote_failed'])}종목 — 당일 %·원과 상승/하락/보합 수에서 뺌(총자산·누적엔 마지막 저장가로 들어감) · 평가금액의 {s['quote_fail_share']:.0%}] "
               + ", ".join(s["quote_failed"]))
-    print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 전날 대비 기준일 {s['base_day']} · 마지막 매매 {s['last_trade']}" + (f" · {s['base_gap']}" if s['base_gap'] else ""))
+    print(f"[{s['asof']}] {s['basis']} · 지수·대형주 = 확정 종가 + 오늘 실시간 · 전날 대비 기준일 {s['base_day']} · 계좌 줄 마지막 {s['holdings_asof']} · 마지막 매매일지 {s['last_trade']}" + (f" · {s['base_gap']}" if s['base_gap'] else ""))
     if s.get("market_missing"):
         print(f"[⚠ 상장시장을 못 받아 혼합지수 비중에서 빠진 종목 {len(s['market_missing'])}개] " + ", ".join(s["market_missing"]))
     if s.get("nxt_note"):
