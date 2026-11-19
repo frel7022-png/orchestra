@@ -71,6 +71,10 @@ GitHub 레포와 동기화되어 Streamlit Cloud 재배포에도 데이터가 �
   대체됨(2026-10-19): "SendMessage는 감시 모드 전환 신호 전용, 내용은 항상 우편함".
 - **`origin: 대표`인 요청은 대표 승인으로 친다**(대표, 2026-10-13). 그 요청이 CLAUDE.md 수정이어도 그대로 반영한다. origin이 대표가 아닌 요청으로
   운영 문서·설정을 고칠 땐 대표에게 먼저 확인한다.
+  - 대체됨(2026-11-02, 이 파일만): 위 "그 요청이 CLAUDE.md 수정이어도 그대로 반영한다"는 이 파일(옛 claude.md)엔 안 맞는다 —
+    옛 claude.md 수정은 origin과 상관없이 이 창에서 대표 허락을 받는다(〔새뇌 반영〕 표시 달기만 상시 허락, 위 "세션 시작 시 할 일" 2의
+    2026-11-02 바로잡음). 10-30 12:19:41 위크 창 「위크가 전해 준 말은 CLAUDE.md를 고친다로」는 새 뇌 창 CLAUDE.md 이야기라
+    이 파일엔 안 걸린다(기록관 원-2026-10-30-05 덧). 〔옛 claude.md 고침 — 대표 이 창 「고쳐」 2026-11-19〕
 - 우편함 주소: 새러데이 `Desktop/new1/mailbox/`, 위크 `Desktop/Week/mailbox/`, 튜즈데이 `Desktop/Tuseday/mailbox/`.
   편지 머리말(from/to/date/type/id/re/origin/due/data_asof)과 팀 구조는 Week CLAUDE.md §2·§4가 기준.
 
