@@ -1222,10 +1222,10 @@ def _latest_change_pct_map(price_hist: pd.DataFrame | None) -> dict:
 def cumulative_price_change_map(price_hist: pd.DataFrame | None, live_quotes: dict | None = None) -> dict:
     """종목별 "기준일(추적 시작일) 대비 지금까지" 누적 등락률(%) — `compute_link_candidates`의
     P와 완전히 같은 정의(현재가는 live_quotes 우선, 없으면 price_hist 마지막 저장 종가로 폴백)를
-    Foreigner 화면에서도 재사용하려고 추출(2026-09-17). Foreigner의 "누적"(기준일pp) 라디오
+    Foreigner 화면에서도 재사용하려고 추출(2026-09-16). Foreigner의 "누적"(기준일pp) 라디오
     옆에 예전엔 `_latest_change_pct_map`(오늘 하루치 등락률)을 붙이고 있어서, "외인은 몇 주간
     누적 +3.9%p인데 주가는 -1.5%"처럼 **서로 다른 기간을 나란히 보여주는 바람에 헷갈리는
-    문제**가 있었음(2026-09-17 사용자 지적 — "주가 -1.5%는 외인 3.88%p 담는 동안 저만큼
+    문제**가 있었음(2026-09-16 사용자 지적 — "주가 -1.5%는 외인 3.88%p 담는 동안 저만큼
     떨어졌단거니? 차트 보면 오히려 오른 거 같은데") — "누적" 기준일 땐 주가도 같은 기준일부터
     누적으로 보여줘야 두 숫자가 같은 창을 가리킨다. {종목코드: 누적등락률} dict, 기준가가
     0이거나 데이터가 없는 종목은 빠진다."""
