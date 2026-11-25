@@ -406,6 +406,31 @@ def check_history_alignment(trade_date: str | None = None) -> dict:
             "target_ok": (all(has_target.values()) if trade_date else None)}
 
 
+def friday_steps_line(today: str, files: dict) -> str:
+    """출근 점검(check_daily_db) 첫머리 한 줄 — 금요일 걸음(주간_리포트 걸음 2)이 지난 금요일에 돌았나.
+    files: {이름: 경로}. 셋 다 돌 때마다 파일을 새로 써서 수정 시각(로컬 날짜)으로 잰다.
+    기준 = today 전 마지막 금요일(today가 금요일이면 그 전 금요일 — 걸음이 장 마감 뒤라 그날 아침엔 아직 안 돎).
+    그 금요일 날짜 이상으로 갱신됐으면 OK, 아니면 ⚠️와 경과일. 2026-11-25 대표 13:12:54 「위크 추천대로」(11-24 보고 고를 것 4)."""
+    import os
+    from datetime import date as _d, datetime as _dt, timedelta as _t
+    t = _d.fromisoformat(today)
+    fri = t - _t(days=(t.weekday() - 4) % 7 or 7)
+    parts, stale = [], False
+    for name, p in files.items():
+        p = Path(p)
+        if not p.exists():
+            parts.append(f"{name} 없음")
+            stale = True
+            continue
+        m = _dt.fromtimestamp(os.path.getmtime(p)).date()
+        parts.append(f"{name} {m.isoformat()[5:]}({(t - m).days}일 전)")
+        stale = stale or m < fri
+    head = "[⚠️ 금요일 걸음]" if stale else "[금요일 걸음 OK]"
+    tail = (f" — 지난 금요일 {fri.isoformat()[5:]} 뒤 갱신 안 됨(주간_리포트 걸음 2 · 금요일 15:30 뒤)"
+            + (" · 그 금요일은 휴장" if is_krx_closed(fri.isoformat()) else "")) if stale else f" (지난 금요일 {fri.isoformat()[5:]} 뒤)"
+    return head + " " + " · ".join(parts) + tail
+
+
 def snapshot_sector_history(weights: dict, on_date: str | None = None) -> None:
     """섹터그룹별 오늘자(또는 지정 날짜) 비중(%) 스냅샷 저장. 같은 날짜 데이터는 덮어씀."""
     if not weights:

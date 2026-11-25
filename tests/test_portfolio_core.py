@@ -2527,3 +2527,25 @@ def test_fixed_index_levels_keep_past_when_shares_change(tmp_path, monkeypatch):
         monkeypatch.setitem(core._BIGCAP_SHARES, "SK하이닉스", core._BIGCAP_SHARES["SK하이닉스"] * 2)
         assert abs(core.fixed_index_levels(idx, big, kind)["KOSPI"].to_numpy() - before).max() < 1e-9
         monkeypatch.setitem(core._BIGCAP_SHARES, "SK하이닉스", core._BIGCAP_SHARES["SK하이닉스"] / 2)
+
+
+# --- friday_steps_line: 금요일 걸음(주간_리포트 걸음 2)이 지난 금요일 뒤 돌았나 (2026-11-25, 07 13번) --- #
+def test_friday_steps_line_flags_stale_and_ok(tmp_path):
+    import os
+    from datetime import datetime as _dt
+    a = tmp_path / "a.csv"; b = tmp_path / "b.csv"
+    a.write_text("x"); b.write_text("x")
+    old = _dt(2026, 10, 23, 16, 27).timestamp(); fresh = _dt(2026, 11, 20, 16, 0).timestamp()
+    os.utime(a, (old, old)); os.utime(b, (fresh, fresh))
+    # 수요일 11-25 → 기준 금요일 11-20: a는 멈춤, b는 OK
+    line = core.friday_steps_line("2026-11-25", {"picks_score": a, "cfg_track": b})
+    assert line.startswith("[⚠️ 금요일 걸음]")
+    assert "picks_score 10-23(33일 전)" in line and "cfg_track 11-20(5일 전)" in line
+    assert "지난 금요일 11-20" in line
+    # 둘 다 11-20이면 OK
+    os.utime(a, (fresh, fresh))
+    assert core.friday_steps_line("2026-11-25", {"a": a, "b": b}).startswith("[금요일 걸음 OK]")
+    # 금요일 당일(11-27) 아침엔 그 전 금요일(11-20)이 기준 — 아직 OK
+    assert "지난 금요일 11-20" in core.friday_steps_line("2026-11-27", {"a": a})
+    # 파일이 없으면 ⚠️
+    assert core.friday_steps_line("2026-11-25", {"없는것": tmp_path / "no.csv"}).startswith("[⚠️ 금요일 걸음]")

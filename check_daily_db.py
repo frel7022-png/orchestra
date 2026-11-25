@@ -42,6 +42,15 @@ _fails = [l for l in _fails if l not in _big_fix]
 print("[15:35 실패 없음(최근 7일)]" if not _fails else "[⚠️ 15:35 실패] " + " | ".join(_fails[-3:]))
 print("[09:25 대형주 전날 줄 OK(최근 7일)]" if not _big_fix else "[⚠️ 09:25 대형주 전날 줄 못 맞춤 — 위크에게] " + " | ".join(_big_fix[-3:]))
 
+# 금요일 걸음 셋(2026-11-25 대표 13:12:54 「위크 추천대로」 — 11-24 보고 고를 것 4 · 시뮬레이션 07 13번):
+# 주간_리포트 걸음 2(picks.py score · cfg_track.py · pick_cases.py build)는 세션 기억에 달려 10-30 · 11-06 · 11-13 · 11-20 네 번 빠졌다.
+# 셋 다 돌 때마다 파일을 새로 쓰니 수정 시각으로 잰다. 기준 = 오늘 전 마지막 금요일(금요일 당일엔 그 전 금요일 — 걸음이 장 마감 뒤라서).
+print(core.friday_steps_line(_today, {
+    "picks_score": core.HERE / "picks_score.csv",
+    "cfg_track": core.HERE / "cfg_track" / "summary.csv",
+    "pick_cases": core.HERE / "pick_cases" / "index.csv",
+}))
+
 sec = tomllib.load(open(".streamlit/secrets.toml", "rb"))["supabase"]
 URL = sec["url"]
 KEY = sec.get("anon_key") or sec.get("key")
