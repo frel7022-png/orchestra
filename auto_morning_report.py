@@ -31,6 +31,17 @@ def git(*args) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], cwd=HERE, capture_output=True, text=True, encoding="utf-8")
 
 
+def commit_outputs(msg: str, run=None) -> subprocess.CompletedProcess | None:
+    """리포트 산출물(OUTPUTS)만 커밋한다 — 경로를 박아서, 그 순간 다른 창이 스테이지만 해 둔 파일은 안 섞인다
+    (2026-11-25 대표 19:38:46 「나머진 다 위크추천대로」 — 17시 보고 고를 것 5 · 옛 뇌가 찾음: 예전엔 경로 없는 `git commit`이라 index 전체가 실렸다).
+    변경이 없으면 None."""
+    run = run or git
+    run("add", "--", *OUTPUTS)
+    if not run("diff", "--cached", "--quiet", "--", *OUTPUTS).returncode:
+        return None
+    return run("commit", "-m", msg, "--", *OUTPUTS)
+
+
 def main() -> int:
     # 작업 스케줄러로 돌면 콘솔 인코딩이 cp949라 morning_report의 한글 print가 깨지거나 예외가 날 수 있다
     for s in (sys.stdout, sys.stderr):
@@ -53,11 +64,10 @@ def main() -> int:
     log(f"{today} 리포트 생성 완료")
     if "--no-push" in sys.argv:
         return 0
-    git("add", *OUTPUTS)
-    if not git("diff", "--cached", "--quiet").returncode:
+    c = commit_outputs(f"Overture {today}: 아침 리포트 자동 생성 (09:30)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>")
+    if c is None:
         log("커밋할 변경 없음")
         return 0
-    c = git("commit", "-m", f"Overture {today}: 아침 리포트 자동 생성 (09:30)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>")
     if c.returncode:
         log(f"커밋 실패: {c.stderr.strip()}")
         return 1
