@@ -650,15 +650,25 @@ def fetch_bigcap_quotes() -> dict:
     return out
 
 
-def _ex_kospi_day(r_k: float, cur: dict, prev: dict, kospi_now: float) -> float:
+# @뇌 ex_비중_시점
+EX_PREV_WEIGHT_FROM: str | None = None   # 이 날짜(포함)부터 세 종목 비중 = 전일 비중 — 이음매(11-26 09시 보고 B-5).
+# 지금 꺼짐(None): meritz/portfolio_core.synthetic_kospi_ex_bigcap에 같은 식이 따로 있어, new1만 켜면 두 앱 숫자가 갈린다
+# (앱_고치기 ⛔ 두 레포 짝 함수). meritz 이식을 대표가 정한 뒤 "답 받은 날 다음 거래일"로 켠다.
+
+
+def _ex_kospi_day(r_k: float, cur: dict, prev: dict, kospi_now: float, on_date: str | None = None) -> float:
     """코스피 하루 등락 r_k에서 삼성전자·삼성전자우·SK하이닉스 몫을 덜어낸 하루 등락 — 오늘 실시간과 지난날 레벨이 같은 식을 쓴다.
-      r_ex = (r_k − Σ wᵢ·rᵢ) / (1 − Σ wᵢ),  wᵢ = sharesᵢ · closeᵢ(t) / (TOTAL0 · KOSPI(t)/KOSPI0)
-    대표가 정한 글자는 없고 세션이 짠 근사다."""
+      r_ex = (r_k − Σ wᵢ·rᵢ) / (1 − Σ wᵢ)
+      wᵢ — on_date ≥ EX_PREV_WEIGHT_FROM: 전일 비중 sharesᵢ · closeᵢ(t−1) / (TOTAL0 · KOSPI(t−1)/KOSPI0), KOSPI(t−1) = KOSPI(t)/(1+r_k)
+                (SH 바스켓과 같은 시점 — r_k = Σwᵢrᵢ + (1−Σwᵢ)·r_ex가 맞는 꼴)
+         그 앞 날짜 · on_date 없음 · EX_PREV_WEIGHT_FROM None(지금): 그날 종가 비중 sharesᵢ · closeᵢ(t) / (TOTAL0 · KOSPI(t)/KOSPI0) — 지난 값은 그대로(원-2026-10-22-12 결).
+    공식은 세션이 짠 근사이고, 비중 시점만 대표가 골랐다(11-26 09시 보고 B-5)."""
     k0_lvl, total0 = _KOSPI_MKTCAP_ANCHOR
-    total_t = total0 * (kospi_now / k0_lvl)
+    use_prev = EX_PREV_WEIGHT_FROM is not None and on_date is not None and str(on_date) >= EX_PREV_WEIGHT_FROM
+    total_t = total0 * ((kospi_now / (1.0 + r_k)) if use_prev else kospi_now) / k0_lvl
     w_sum, wr_sum = 0.0, 0.0
     for n in BIGCAP_CODES:
-        wi = _BIGCAP_SHARES[n] * cur[n] / total_t
+        wi = _BIGCAP_SHARES[n] * (prev[n] if use_prev else cur[n]) / total_t
         ri = cur[n] / prev[n] - 1.0
         w_sum += wi
         wr_sum += wi * ri
@@ -704,7 +714,7 @@ def synthetic_kospi_ex_bigcap(index_hist: pd.DataFrame, bigcap_hist: pd.DataFram
         # 빼버려 ex 지수가 폭주하는 버그가 있었음(2026-09-08, 9/7 bigcap 누락으로 -10% 튐).
         if (cur and prev and kospi[i]
                 and all(cur.get(n) for n in names) and all(prev.get(n) for n in names)):
-            r_ex = _ex_kospi_day(r_k, cur, prev, kospi[i])
+            r_ex = _ex_kospi_day(r_k, cur, prev, kospi[i], on_date=str(dates[i]))
         else:
             r_ex = r_k
         ex_level[i] = ex_level[i - 1] * (1.0 + r_ex)
@@ -3196,7 +3206,7 @@ def day_return(cum: pd.Series) -> pd.Series:
 
 
 # @뇌 혼합지수_당일
-def live_bench_day(wk: float | None, index_quotes: dict, bigcap_quotes: dict) -> dict:
+def live_bench_day(wk: float | None, index_quotes: dict, bigcap_quotes: dict, on_date: str | None = None) -> dict:
     """오늘 혼합지수 하루 등락 — 앱·리포트·live_check가 다 이 함수 하나를 쓴다(대표 2026-11-10 원-2026-11-10-04 · 05).
     입력은 홀딩스 밑 지수 박스와 같은 실시간 시세다: 지수 현재가·전일 대비(fetch_index_quotes), 대형주 현재가·전일 종가
     (fetch_bigcap_detail). 전날 값을 히스토리에서 찾지 않으니 15:35가 빠진 날에도 밀리지 않는다.
@@ -3221,7 +3231,7 @@ def live_bench_day(wk: float | None, index_quotes: dict, bigcap_quotes: dict) ->
         if q.get("price") and q.get("prev_close"):
             cur[n], prev[n] = float(q["price"]), float(q["prev_close"])
     if len(cur) == len(BIGCAP_CODES):
-        out["ex"] = w * _ex_kospi_day(rk, cur, prev, float(ks["price"])) + (1.0 - w) * rq
+        out["ex"] = w * _ex_kospi_day(rk, cur, prev, float(ks["price"]), on_date=on_date or resolve_trading_date()) + (1.0 - w) * rq   # 시세가 대표하는 거래일 — 장 전 · 주말엔 직전 거래일(옛 뇌 18:52)
     return out
 
 

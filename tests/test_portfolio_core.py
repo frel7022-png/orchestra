@@ -1358,6 +1358,55 @@ def test_synthetic_kospi_ex_bigcap_missing_middle_day_does_not_blow_up():
     assert lv[2] == pytest.approx(6090.0, rel=1e-6)
 
 
+# --- ex 세 종목 비중 시점(@뇌 ex_비중_시점 · 11-26 09시 보고 B-5) --- #
+def _ex_case():
+    cur = {"삼성전자": 110.0, "삼성전자우": 90.0, "SK하이닉스": 50.0}
+    prev = {"삼성전자": 100.0, "삼성전자우": 100.0, "SK하이닉스": 40.0}
+    return -0.03, cur, prev, 2500.0
+
+
+def test_ex_weight_before_seam_is_same_day_close_weight(monkeypatch):
+    """이음매(EX_PREV_WEIGHT_FROM) 앞 날짜 · 날짜 없음 · 이음매 꺼짐(None)은 그날 종가 비중 — 지난 값은 그대로."""
+    r_k, cur, prev, k = _ex_case()
+    assert core.EX_PREV_WEIGHT_FROM is None   # 지금은 꺼짐 — meritz 짝 함수 결정 뒤 켠다
+    off = core._ex_kospi_day(r_k, cur, prev, k, on_date="2099-01-01")
+    monkeypatch.setattr(core, "EX_PREV_WEIGHT_FROM", "2026-11-27")
+    k0, t0 = core._KOSPI_MKTCAP_ANCHOR
+    tot = t0 * k / k0
+    w = {n: core._BIGCAP_SHARES[n] * cur[n] / tot for n in cur}
+    want = (r_k - sum(w[n] * (cur[n] / prev[n] - 1) for n in w)) / (1 - sum(w.values()))
+    assert core._ex_kospi_day(r_k, cur, prev, k) == pytest.approx(want)
+    assert core._ex_kospi_day(r_k, cur, prev, k, on_date="2026-11-26") == pytest.approx(want)
+    assert off == pytest.approx(want)
+
+
+def test_ex_weight_from_seam_is_prev_day_weight_and_decomposes_kospi(monkeypatch):
+    """이음매 날짜부터는 전일 비중 — 코스피 하루 등락 = Σwᵢ·rᵢ + (1−Σwᵢ)·r_ex가 맞는다(SH 바스켓과 같은 시점)."""
+    monkeypatch.setattr(core, "EX_PREV_WEIGHT_FROM", "2026-11-27")
+    r_k, cur, prev, k = _ex_case()
+    k0, t0 = core._KOSPI_MKTCAP_ANCHOR
+    tot_prev = t0 * (k / (1 + r_k)) / k0
+    w = {n: core._BIGCAP_SHARES[n] * prev[n] / tot_prev for n in prev}
+    r_ex = core._ex_kospi_day(r_k, cur, prev, k, on_date=core.EX_PREV_WEIGHT_FROM)
+    back = sum(w[n] * (cur[n] / prev[n] - 1) for n in w) + (1 - sum(w.values())) * r_ex
+    assert back == pytest.approx(r_k)
+    assert r_ex != pytest.approx(core._ex_kospi_day(r_k, cur, prev, k, on_date="2026-11-26"))
+
+
+def test_synthetic_ex_uses_seam_by_row_date(monkeypatch):
+    """레벨 선은 줄 날짜로 가른다 — 이음매 앞 줄은 옛 비중, 이음매 줄부터 전일 비중."""
+    monkeypatch.setattr(core, "EX_PREV_WEIGHT_FROM", "2026-11-27")
+    r_k, cur, prev, k = _ex_case()
+    k_prev = k / (1 + r_k)
+    names = list(core.BIGCAP_CODES)
+    for d0, d1 in (("2026-11-25", "2026-11-26"), ("2026-11-26", core.EX_PREV_WEIGHT_FROM)):
+        idx = pd.DataFrame({"날짜": [d0, d1], "KOSPI": [k_prev, k], "KOSDAQ": [800.0, 800.0]})
+        bg = pd.DataFrame([{"날짜": d0, **{n: prev[n] for n in names}}, {"날짜": d1, **{n: cur[n] for n in names}}])
+        lv = core.synthetic_kospi_ex_bigcap(idx, bg)["KOSPI"].tolist()
+        want = core._ex_kospi_day(r_k, cur, prev, k, on_date=d1)
+        assert lv[1] / lv[0] - 1 == pytest.approx(want)
+
+
 # --- SamsungHynix (§6-26): synthetic_kospi_sh_only --- #
 def test_synthetic_kospi_sh_only_anchor_and_fallback():
     idx = pd.DataFrame({"날짜": ["2026-08-14", "2026-08-18"],
