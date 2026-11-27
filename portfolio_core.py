@@ -1040,11 +1040,12 @@ def refresh_watchlist_prices(watchlist: pd.DataFrame, supabase_url: str = "",
     today = today_kst_str()
     now = now_kst_str()
 
-    rows = []
+    rows, missing = [], []
     for _, r in watchlist.iterrows():
         name, code = r["종목명"], r["종목코드"]
         q = quotes.get(code)
         if q is None:
+            missing.append(name)   # 표에 없는 종목 — "안 보인다"와 갈리게 아래 경고로 이름을 남긴다(U-060)
             continue
         price, change_pct = q["price"], q["change_pct"]
         origin = origin_prices.get(code)
@@ -1057,6 +1058,11 @@ def refresh_watchlist_prices(watchlist: pd.DataFrame, supabase_url: str = "",
                      "기준일": origin_date})
 
     result = pd.DataFrame(rows, columns=WATCHLIST_PRICE_COLUMNS)
+    if missing:
+        # fetch_quotes 경고는 20개 묶음 실패만 담아 한 종목만 빠진 건 말이 없었다 — 빠진 이름을 늘 한 줄로
+        # (U-060 · 2026-11-25 병행 시험 S21 "Fishing에 SGC에너지 왜 안 보여?"(시험 물음) · 대표 부재 위임 11-27 17:02:59).
+        quote_errors = list(quote_errors) + [
+            f"시세 못 받음 {len(missing)}종목 — 아래 표에 없음: {' · '.join(missing)}"]
     return result, quote_errors
 
 

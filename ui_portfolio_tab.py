@@ -449,6 +449,9 @@ def refresh_fishing_data() -> list:
         return []
     prices_df, quote_errors = refresh_watchlist_prices(watchlist, sb_url, sb_key)
     hist_df = drop_ended(load_watchlist_history_db(sb_url, sb_key))   # 관심 끝은 패널에서 숨김
+    # 경고는 세션 상태에 남겨 rerun 뒤 표 위에 다시 그린다 — 버튼 칸 st.warning은 바로 뒤 st.rerun()에 지워졌다(U-060).
+    st.session_state["fishing_quote_errors"] = list(quote_errors)
+    save_ui_cache_json("fishing_quote_errors", list(quote_errors))   # 세션 리셋 뒤 표만 돌아오고 경고가 사라지지 않게(아래 §6-31 선로드)
     st.session_state["fishing_prices"] = prices_df
     st.session_state["fishing_hist"] = hist_df
     save_ui_cache_df("fishing_prices", prices_df)
@@ -494,6 +497,10 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         _c = load_ui_cache_json("live_quotes")
         if _c is not None:
             st.session_state["live_quotes"] = _c
+    if "fishing_quote_errors" not in st.session_state:   # U-060 — 표(fishing_prices)와 같이 경고도 돌아오게
+        _c = load_ui_cache_json("fishing_quote_errors")
+        if _c is not None:
+            st.session_state["fishing_quote_errors"] = _c
     if "updown_results" not in st.session_state:
         _c = load_ui_cache_json("updown")
         if _c:
@@ -1074,12 +1081,12 @@ def render_portfolio_tab(holdings, state, tx, df, stock_valuation, total_assets,
         else:
             if st.button("새로고침", key="fishing_refresh", use_container_width=True):
                 with st.spinner("관심종목 시세 조회 중..."):
-                    quote_errors = refresh_fishing_data()
-                for err in quote_errors:
-                    st.warning(err)
+                    refresh_fishing_data()   # 경고는 세션 상태 "fishing_quote_errors"에 — 아래에서 rerun 뒤에 그린다(U-060)
                 st.rerun()
 
             prices_df = st.session_state.get("fishing_prices", pd.DataFrame())
+            for err in st.session_state.get("fishing_quote_errors", []):
+                st.warning(err)
 
             if prices_df.empty:
                 st.caption(f"총 {len(watchlist)}개 종목 등록됨. 새로고침을 누르면 추적을 시작합니다.")

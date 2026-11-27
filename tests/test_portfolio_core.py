@@ -2629,3 +2629,18 @@ def test_both_accounts_sync_line():
     lag = core.both_accounts_sync_line("2026-11-26", "2026-11-27")
     assert lag.startswith("[⚠️ 두 계좌 sync]") and "2026-11-26" in lag and "sync_both_accounts.py" in lag
     assert core.both_accounts_sync_line(None, "2026-11-27").startswith("[⚠️ 두 계좌 sync]")
+
+
+# --- refresh_watchlist_prices: 시세 못 받은 종목 이름을 경고로 (U-060 · 2026-11-27) --- #
+def test_refresh_watchlist_prices_names_missing(monkeypatch):
+    wl = pd.DataFrame({"종목명": ["가", "나", "다"], "종목코드": ["000001", "000002", "000003"]})
+    monkeypatch.setattr(core, "fetch_quotes", lambda codes: (
+        {"000001": {"price": 100.0, "change_pct": 1.0}, "000003": {"price": 50.0, "change_pct": -2.0}}, []))
+    monkeypatch.setattr(core, "get_first_day_prices_db", lambda u, k: {"000001": 90.0, "000003": 60.0})
+    monkeypatch.setattr(core, "get_first_day_dates_db", lambda u, k: {"000001": "2026-08-19", "000003": "2026-08-19"})
+    df, errs = core.refresh_watchlist_prices(wl)
+    assert df["종목명"].tolist() == ["가", "다"]
+    assert errs == ["시세 못 받음 1종목 — 아래 표에 없음: 나"]
+    # 다 받으면 경고 없음
+    monkeypatch.setattr(core, "fetch_quotes", lambda codes: ({c: {"price": 1.0, "change_pct": 0.0} for c in codes}, []))
+    assert core.refresh_watchlist_prices(wl)[1] == []

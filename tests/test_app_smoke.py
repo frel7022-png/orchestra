@@ -68,3 +68,42 @@ def test_watering_button_opens_and_closes_holding_detail():
     [b for b in at.button if b.key == key][0].click().run()
     assert not at.exception
     assert at.session_state["holding_detail_open"] is None
+
+
+def test_fishing_refresh_warning_survives_rerun(monkeypatch):
+    """U-060(2026-11-27): Fishing 새로고침에서 시세 못 받은 종목 경고가 rerun 뒤에도 표 위에 남는지 ·
+    다 받으면 경고가 없는지. 시세 · DB는 가짜로 바꿔 네트워크 없이 돈다."""
+    import pandas as pd
+    import ui_portfolio_tab as ui
+
+    def fake_refresh(watchlist, url="", key=""):
+        names, codes = watchlist["종목명"].tolist(), watchlist["종목코드"].tolist()
+        df = pd.DataFrame([{"종목명": names[0], "종목코드": codes[0], "최초가": 100.0, "최근가": 90.0,
+                            "최근조회일시": "2026-11-27 17:30", "전일대비": -1.0, "기준일": "2026-08-19"}],
+                          columns=core.WATCHLIST_PRICE_COLUMNS)
+        return df, state["errs"]
+
+    state = {"errs": ["시세 못 받음 1종목 — 아래 표에 없음: 가짜종목"]}
+    monkeypatch.setattr(ui, "refresh_watchlist_prices", fake_refresh)
+    monkeypatch.setattr(ui, "load_watchlist_history_db", lambda u, k: pd.DataFrame(
+        columns=["종목코드", "종목명", "섹터", "날짜", "종가", "등락률"]))
+
+    at = AppTest.from_file(APP_PATH, default_timeout=60)
+    at.run()
+    btn = [b for b in at.button if b.key == "fishing_refresh"]
+    if not btn:
+        pytest.skip("관심종목이 없어 Fishing 새로고침 버튼이 없음")
+    btn[0].click().run()
+    assert not at.exception
+    assert any("시세 못 받음 1종목" in w.value for w in at.warning)
+
+    # 세션 리셋(새 AppTest = 새 세션) 뒤에도 캐시에서 표와 같이 경고가 돌아온다
+    at2 = AppTest.from_file(APP_PATH, default_timeout=60)
+    at2.run()
+    assert not at2.exception
+    assert any("시세 못 받음 1종목" in w.value for w in at2.warning)
+
+    state["errs"] = []
+    [b for b in at.button if b.key == "fishing_refresh"][0].click().run()
+    assert not at.exception
+    assert not any("시세 못 받음" in w.value for w in at.warning)
