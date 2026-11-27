@@ -1368,8 +1368,9 @@ def _ex_case():
 def test_ex_weight_before_seam_is_same_day_close_weight(monkeypatch):
     """이음매(EX_PREV_WEIGHT_FROM) 앞 날짜 · 날짜 없음 · 이음매 꺼짐(None)은 그날 종가 비중 — 지난 값은 그대로."""
     r_k, cur, prev, k = _ex_case()
-    assert core.EX_PREV_WEIGHT_FROM is None   # 지금은 꺼짐 — meritz 짝 함수 결정 뒤 켠다
-    off = core._ex_kospi_day(r_k, cur, prev, k, on_date="2099-01-01")
+    assert core.EX_PREV_WEIGHT_FROM == "2026-11-30"   # 이음매 = 11-30(월) — meritz 짝과 같은 날(11-27 대표 부재 위임 · 9시 보고 B 3번 칸)
+    monkeypatch.setattr(core, "EX_PREV_WEIGHT_FROM", None)
+    off = core._ex_kospi_day(r_k, cur, prev, k, on_date="2099-01-01")   # 꺼짐(None)이면 어느 날이든 그날 종가 비중
     monkeypatch.setattr(core, "EX_PREV_WEIGHT_FROM", "2026-11-27")
     k0, t0 = core._KOSPI_MKTCAP_ANCHOR
     tot = t0 * k / k0

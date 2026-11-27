@@ -689,9 +689,9 @@ def fetch_bigcap_quotes() -> dict:
 
 
 # @뇌 ex_비중_시점
-EX_PREV_WEIGHT_FROM: str | None = None   # 이 날짜(포함)부터 세 종목 비중 = 전일 비중 — 이음매(11-26 09시 보고 B-5).
-# 지금 꺼짐(None): meritz/portfolio_core.synthetic_kospi_ex_bigcap에 같은 식이 따로 있어, new1만 켜면 두 앱 숫자가 갈린다
-# (앱_고치기 ⛔ 두 레포 짝 함수). meritz 이식을 대표가 정한 뒤 "답 받은 날 다음 거래일"로 켠다.
+EX_PREV_WEIGHT_FROM: str | None = "2026-11-30"   # 이 날짜(포함)부터 세 종목 비중 = 전일 비중 — 이음매(11-26 09시 보고 B-5).
+# meritz/portfolio_core.EX_PREV_WEIGHT_FROM · synthetic_kospi_ex_bigcap에 같은 날 · 같은 식(앱_고치기 ⛔ 두 레포 짝 함수) — 하나를 바꾸면 둘 다.
+# 켠 날: 2026-11-27 대표 부재 위임(17:02:59) — 11-27 9시 보고 B 3번 칸 "meritz도 같은 날 · 이음매는 답 다음 거래일"(11-30 월).
 
 
 def _ex_kospi_day(r_k: float, cur: dict, prev: dict, kospi_now: float, on_date: str | None = None) -> float:
