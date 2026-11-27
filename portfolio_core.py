@@ -406,6 +406,44 @@ def check_history_alignment(trade_date: str | None = None) -> dict:
             "target_ok": (all(has_target.values()) if trade_date else None)}
 
 
+def prev_history_line(today: str, hist_dir) -> str:
+    """출근 점검(check_daily_db) 첫머리 — 직전 거래일 HISTORY 하루 파일이 있나(일/하루_끝 4 — 말 없이 끝난 날은 다음 날 0b에서 전날 치를 먼저).
+    직전 거래일 = today 앞에서 is_krx_closed가 아닌 첫날. 11-25 · 26 하루 파일이 빈 채 지나간 막이
+    (2026-11-27 9시 보고 B 10번 칸 · 대표 부재 위임 11-27 17:02:59)."""
+    from datetime import date as _d, timedelta as _t
+    d = _d.fromisoformat(today) - _t(days=1)
+    while is_krx_closed(d.isoformat()):
+        d -= _t(days=1)
+    day = d.isoformat()
+    if (Path(hist_dir) / f"{day}.md").exists():
+        return f"[전날 HISTORY OK] {day[5:]} 하루 파일 있음"
+    return f"[⚠️ 전날 HISTORY] {day[5:]} 하루 파일 없음 — 출근_점검 0b: 점검 전에 전날 치를 먼저 씀(brain_log.py history {day} 뼈대 · 일/하루_끝 4)"
+
+
+def both_accounts_sync_line(both_last: str | None, hist_latest: str | None) -> str:
+    """출근 점검(check_daily_db) 첫머리 — 두 계좌 채널(both_accounts.csv) 마지막 날이 히스토리 다섯 마지막 날을 따라왔나.
+    sync는 마감 히스토리만 읽으니(출근_점검 걸음 2) 히스토리보다 앞이면 뒤처짐. 15:35 뒤 오늘 줄도 이 줄이 잡는다.
+    (2026-11-27 9시 보고 B 10번 칸 · 대표 부재 위임 11-27 17:02:59)"""
+    if both_last and hist_latest and both_last >= hist_latest:
+        return f"[두 계좌 sync OK] both_accounts 마지막 {both_last[5:]} = 히스토리 {hist_latest[5:]}"
+    return (f"[⚠️ 두 계좌 sync] both_accounts 마지막 {both_last} · 히스토리 {hist_latest} — 뒤처짐: "
+            "출근_점검 걸음 2(python sync_both_accounts.py · 두 레포 커밋)")
+
+
+def pick_track_line(today: str, hm: tuple, tsd: str | None) -> str:
+    """출근 점검(check_daily_db) [픽 추적] 줄 — tracking/summary.csv가 오늘 09:30 아침 리포트에서 갱신됐나.
+    hm = (시, 분) KST, tsd = summary.csv 수정 날짜(없으면 None). 휴장 · 09:35 전엔 오늘 것을 안 보고,
+    괄호는 걸린 갈래 글자만 찍는다(한 글자 "(휴장 · 09:35 전 …)"가 09:35 전 평일에도 "오늘 휴장?"으로 읽혀서 —
+    2026-11-27 17시 보고 물을 것 2, 대표 17:01:36 「… 위크 추천대로 …」 · 17:02:59 부재 위임)."""
+    closed = is_krx_closed(today)
+    if closed or tuple(hm) < (9, 35):
+        why = "휴장" if closed else "09:35 전"
+        return f"[픽 추적] tracking/summary.csv 마지막 갱신 {tsd} ({why} — 오늘 것은 아직 안 봄)"
+    if tsd == today:
+        return f"[픽 추적 OK] tracking/summary.csv 오늘 {tsd} 갱신"
+    return f"[⚠️ 픽 추적] tracking/summary.csv 마지막 갱신 {tsd} — 오늘 09:30 자동 생성에서 안 돎"
+
+
 def friday_steps_line(today: str, files: dict) -> str:
     """출근 점검(check_daily_db) 첫머리 한 줄 — 금요일 걸음(주간_리포트 걸음 2)이 지난 금요일에 돌았나.
     files: {이름: 경로}. 셋 다 돌 때마다 파일을 새로 써서 수정 시각(로컬 날짜)으로 잰다.

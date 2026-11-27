@@ -2598,3 +2598,34 @@ def test_friday_steps_line_flags_stale_and_ok(tmp_path):
     assert "지난 금요일 11-20" in core.friday_steps_line("2026-11-27", {"a": a})
     # 파일이 없으면 ⚠️
     assert core.friday_steps_line("2026-11-25", {"없는것": tmp_path / "no.csv"}).startswith("[⚠️ 금요일 걸음]")
+
+
+# --- pick_track_line: [픽 추적] 괄호를 걸린 갈래대로 (2026-11-27 17시 보고 물을 것 2) --- #
+def test_pick_track_line_labels_branch(monkeypatch):
+    monkeypatch.setattr(core, "is_krx_closed", lambda d: d == "2026-11-28")
+    # 평일 09:35 전 — "09:35 전"만, "휴장"은 안 찍힘(11-27 아침 "오늘 휴장?"으로 읽힌 꼴)
+    early = core.pick_track_line("2026-11-27", (9, 20), "2026-11-26")
+    assert early.startswith("[픽 추적] ") and "(09:35 전 — " in early and "휴장" not in early
+    # 휴장일 — "휴장"만
+    closed = core.pick_track_line("2026-11-28", (10, 0), "2026-11-27")
+    assert "(휴장 — " in closed and "09:35" not in closed
+    # 09:35 뒤 오늘 갱신 / 안 갱신
+    assert core.pick_track_line("2026-11-27", (9, 35), "2026-11-27").startswith("[픽 추적 OK]")
+    assert core.pick_track_line("2026-11-27", (10, 0), "2026-11-26").startswith("[⚠️ 픽 추적]")
+
+
+# --- prev_history_line · both_accounts_sync_line: 출근 점검 첫머리 두 줄 (2026-11-27 9시 보고 B 10번 칸) --- #
+def test_prev_history_line_skips_closed_days(tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "is_krx_closed", lambda d: d in ("2026-11-28", "2026-11-29"))
+    (tmp_path / "2026-11-27.md").write_text("x", encoding="utf-8")
+    # 월요일 11-30 → 직전 거래일은 금 11-27(주말 건너뜀)
+    assert core.prev_history_line("2026-11-30", tmp_path).startswith("[전날 HISTORY OK] 11-27")
+    bad = core.prev_history_line("2026-11-27", tmp_path)
+    assert bad.startswith("[⚠️ 전날 HISTORY] 11-26") and "brain_log.py history 2026-11-26" in bad
+
+
+def test_both_accounts_sync_line():
+    assert core.both_accounts_sync_line("2026-11-27", "2026-11-27").startswith("[두 계좌 sync OK]")
+    lag = core.both_accounts_sync_line("2026-11-26", "2026-11-27")
+    assert lag.startswith("[⚠️ 두 계좌 sync]") and "2026-11-26" in lag and "sync_both_accounts.py" in lag
+    assert core.both_accounts_sync_line(None, "2026-11-27").startswith("[⚠️ 두 계좌 sync]")

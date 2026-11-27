@@ -14,6 +14,14 @@ import requests
 
 DAYS = int(sys.argv[1]) if len(sys.argv) > 1 else 5
 
+# 출력을 파일 · 파이프로 받으면 Windows 기본 cp949라 "—" · "⚠️"에서 UnicodeEncodeError로 멈춘다(터미널에선 안 남).
+# 예약 작업이 로그로 받아도 끝까지 찍히게 utf-8로 고정(2026-11-27 17시 보고 물을 것 2 — picks.py main과 같은 꼴).
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # 휴장일 달력 경고(2026-10-21 위크) — 달력 확인이 사람 기억에만 달리지 않게 매일 점검 첫머리에 찍는다.
 import portfolio_core as core  # noqa: E402
 for _w in core.krx_calendar_warnings():
@@ -28,12 +36,12 @@ print(f"[히스토리 다섯 OK] 모두 {_al['latest']}" if _al["aligned"]
 _today, _now = core.today_kst_str(), core.now_kst()
 _ts = core.HERE / "tracking" / "summary.csv"
 _tsd = _dt.fromtimestamp(os.path.getmtime(_ts)).strftime("%Y-%m-%d") if _ts.exists() else None
-if core.is_krx_closed(_today) or (_now.hour, _now.minute) < (9, 35):
-    print(f"[픽 추적] tracking/summary.csv 마지막 갱신 {_tsd} (휴장 · 09:35 전 — 오늘 것은 아직 안 봄)")
-elif _tsd == _today:
-    print(f"[픽 추적 OK] tracking/summary.csv 오늘 {_tsd} 갱신")
-else:
-    print(f"[⚠️ 픽 추적] tracking/summary.csv 마지막 갱신 {_tsd} — 오늘 09:30 자동 생성에서 안 돎")
+print(core.pick_track_line(_today, (_now.hour, _now.minute), _tsd))
+# 전날 HISTORY · 두 계좌 sync(2026-11-27 9시 보고 B 10번 칸 — 11-25 · 26에 둘 다 빈 채 지나감 · 대표 부재 위임 11-27 17:02:59).
+print(core.prev_history_line(_today, core.HERE / "뇌_초안" / "HISTORY"))
+_ba = core.HERE / "both_accounts.csv"
+_ba_rows = [l.split(",", 1)[0] for l in (_ba.read_text(encoding="utf-8-sig").splitlines()[1:] if _ba.exists() else []) if l.strip()]
+print(core.both_accounts_sync_line(_ba_rows[-1] if _ba_rows else None, _al["latest"]))
 _fl = core.HERE / "logs" / "daily_close_fail.log"
 _since = (_date.fromisoformat(_today) - _td(days=7)).isoformat()
 _fails = [l.strip() for l in (_fl.read_text(encoding="utf-8").splitlines() if _fl.exists() else []) if l.strip()[:10] >= _since]
